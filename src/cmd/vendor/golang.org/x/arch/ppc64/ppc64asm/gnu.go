@@ -1,7 +1,3 @@
-// Copyright 2014 The Go Authors.  All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
 package ppc64asm
 
 import (
@@ -38,7 +34,7 @@ func GNUSyntax(inst Inst) string {
 // NOTE: because GNUSyntax is the only caller of this func, and it receives a copy
 //       of inst, it's ok to modify inst.Args here.
 func gnuArg(inst *Inst, argIndex int, arg Arg) string {
-	// special cases for load/store instructions
+
 	if _, ok := arg.(Offset); ok {
 		if argIndex+1 == len(inst.Args) || inst.Args[argIndex+1] == nil {
 			panic(fmt.Errorf("wrong table: offset not followed by register"))
@@ -52,7 +48,7 @@ func gnuArg(inst *Inst, argIndex int, arg Arg) string {
 		return arg.String()
 	case CondReg:
 		if arg == CR0 && strings.HasPrefix(inst.Op.String(), "cmp") {
-			return "" // don't show cr0 for cmp instructions
+			return ""
 		} else if arg >= CR0 {
 			return fmt.Sprintf("cr%d", int(arg-CR0))
 		}

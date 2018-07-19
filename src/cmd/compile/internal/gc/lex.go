@@ -1,23 +1,18 @@
-// Copyright 2009 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
 package gc
 
 import (
-	"cmd/compile/internal/syntax"
-	"cmd/internal/objabi"
-	"cmd/internal/src"
 	"fmt"
+	"github.com/dave/golib/src/cmd/compile/internal/syntax"
+
+	"github.com/dave/golib/src/cmd/internal/src"
 	"strings"
 )
 
 // lineno is the source position at the start of the most recently lexed token.
 // TODO(gri) rename and eventually remove
-var lineno src.XPos
 
-func makePos(base *src.PosBase, line, col uint) src.XPos {
-	return Ctxt.PosTable.XPos(src.MakePos(base, line, col))
+func (psess *PackageSession) makePos(base *src.PosBase, line, col uint) src.XPos {
+	return psess.Ctxt.PosTable.XPos(src.MakePos(base, line, col))
 }
 
 func isSpace(c rune) bool {
@@ -49,10 +44,10 @@ const (
 	NotInHeap // values of this type must not be heap allocated
 )
 
-func pragmaValue(verb string) syntax.Pragma {
+func (psess *PackageSession) pragmaValue(verb string) syntax.Pragma {
 	switch verb {
 	case "go:nointerface":
-		if objabi.Fieldtrack_enabled != 0 {
+		if psess.objabi.Fieldtrack_enabled != 0 {
 			return Nointerface
 		}
 	case "go:noescape":
@@ -68,23 +63,13 @@ func pragmaValue(verb string) syntax.Pragma {
 	case "go:nowritebarrier":
 		return Nowritebarrier
 	case "go:nowritebarrierrec":
-		return Nowritebarrierrec | Nowritebarrier // implies Nowritebarrier
+		return Nowritebarrierrec | Nowritebarrier
 	case "go:yeswritebarrierrec":
 		return Yeswritebarrierrec
 	case "go:cgo_unsafe_args":
 		return CgoUnsafeArgs
 	case "go:uintptrescapes":
-		// For the next function declared in the file
-		// any uintptr arguments may be pointer values
-		// converted to uintptr. This directive
-		// ensures that the referenced allocated
-		// object, if any, is retained and not moved
-		// until the call completes, even though from
-		// the types alone it would appear that the
-		// object is no longer needed during the
-		// call. The conversion to uintptr must appear
-		// in the argument list.
-		// Used in syscall/dll_windows.go.
+
 		return UintptrEscapes
 	case "go:notinheap":
 		return NotInHeap
@@ -105,7 +90,7 @@ func (p *noder) pragcgo(pos syntax.Pos, text string) {
 		case len(f) == 2 && !isQuoted(f[1]):
 		case len(f) == 3 && !isQuoted(f[1]) && !isQuoted(f[2]):
 		default:
-			p.error(syntax.Error{Pos: pos, Msg: fmt.Sprintf(`usage: //go:%s local [remote]`, verb)})
+			p.error(syntax.Error{Pos: pos, Msg: fmt.Sprintf("usage: //go:%s local [remote]", verb)})
 			return
 		}
 	case "cgo_import_dynamic":
@@ -113,32 +98,32 @@ func (p *noder) pragcgo(pos syntax.Pos, text string) {
 		case len(f) == 2 && !isQuoted(f[1]):
 		case len(f) == 3 && !isQuoted(f[1]) && !isQuoted(f[2]):
 		case len(f) == 4 && !isQuoted(f[1]) && !isQuoted(f[2]) && isQuoted(f[3]):
-			f[3] = strings.Trim(f[3], `"`)
+			f[3] = strings.Trim(f[3], "\"")
 		default:
-			p.error(syntax.Error{Pos: pos, Msg: `usage: //go:cgo_import_dynamic local [remote ["library"]]`})
+			p.error(syntax.Error{Pos: pos, Msg: "usage: //go:cgo_import_dynamic local [remote [\"library\"]]"})
 			return
 		}
 	case "cgo_import_static":
 		switch {
 		case len(f) == 2 && !isQuoted(f[1]):
 		default:
-			p.error(syntax.Error{Pos: pos, Msg: `usage: //go:cgo_import_static local`})
+			p.error(syntax.Error{Pos: pos, Msg: "usage: //go:cgo_import_static local"})
 			return
 		}
 	case "cgo_dynamic_linker":
 		switch {
 		case len(f) == 2 && isQuoted(f[1]):
-			f[1] = strings.Trim(f[1], `"`)
+			f[1] = strings.Trim(f[1], "\"")
 		default:
-			p.error(syntax.Error{Pos: pos, Msg: `usage: //go:cgo_dynamic_linker "path"`})
+			p.error(syntax.Error{Pos: pos, Msg: "usage: //go:cgo_dynamic_linker \"path\""})
 			return
 		}
 	case "cgo_ldflag":
 		switch {
 		case len(f) == 2 && isQuoted(f[1]):
-			f[1] = strings.Trim(f[1], `"`)
+			f[1] = strings.Trim(f[1], "\"")
 		default:
-			p.error(syntax.Error{Pos: pos, Msg: `usage: //go:cgo_ldflag "arg"`})
+			p.error(syntax.Error{Pos: pos, Msg: "usage: //go:cgo_ldflag \"arg\""})
 			return
 		}
 	default:
@@ -155,7 +140,7 @@ func (p *noder) pragcgo(pos syntax.Pos, text string) {
 func pragmaFields(s string) []string {
 	var a []string
 	inQuote := false
-	fieldStart := -1 // Set to -1 when looking for start of field.
+	fieldStart := -1
 	for i, c := range s {
 		switch {
 		case c == '"':
@@ -181,7 +166,7 @@ func pragmaFields(s string) []string {
 			}
 		}
 	}
-	if !inQuote && fieldStart >= 0 { // Last field might end at the end of the string.
+	if !inQuote && fieldStart >= 0 {
 		a = append(a, s[fieldStart:])
 	}
 	return a

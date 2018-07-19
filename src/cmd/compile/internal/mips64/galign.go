@@ -1,29 +1,24 @@
-// Copyright 2009 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
 package mips64
 
 import (
-	"cmd/compile/internal/gc"
-	"cmd/compile/internal/ssa"
-	"cmd/internal/obj/mips"
-	"cmd/internal/objabi"
+	"github.com/dave/golib/src/cmd/compile/internal/gc"
+	"github.com/dave/golib/src/cmd/compile/internal/ssa"
+	"github.com/dave/golib/src/cmd/internal/obj/mips"
 )
 
-func Init(arch *gc.Arch) {
-	arch.LinkArch = &mips.Linkmips64
-	if objabi.GOARCH == "mips64le" {
-		arch.LinkArch = &mips.Linkmips64le
+func (psess *PackageSession) Init(arch *gc.Arch) {
+	arch.LinkArch = &psess.mips.Linkmips64
+	if psess.objabi.GOARCH == "mips64le" {
+		arch.LinkArch = &psess.mips.Linkmips64le
 	}
 	arch.REGSP = mips.REGSP
 	arch.MAXWIDTH = 1 << 50
-	arch.SoftFloat = objabi.GOMIPS64 == "softfloat"
-	arch.ZeroRange = zerorange
-	arch.ZeroAuto = zeroAuto
-	arch.Ginsnop = ginsnop
+	arch.SoftFloat = psess.objabi.GOMIPS64 == "softfloat"
+	arch.ZeroRange = psess.zerorange
+	arch.ZeroAuto = psess.zeroAuto
+	arch.Ginsnop = psess.ginsnop
 
 	arch.SSAMarkMoves = func(s *gc.SSAGenState, b *ssa.Block) {}
-	arch.SSAGenValue = ssaGenValue
-	arch.SSAGenBlock = ssaGenBlock
+	arch.SSAGenValue = psess.ssaGenValue
+	arch.SSAGenBlock = psess.ssaGenBlock
 }

@@ -6,7 +6,7 @@ import (
 	"debug/macho"
 	"debug/pe"
 	"fmt"
-	"internal/testenv"
+	"github.com/dave/golib/src/internal/testenv"
 	"io"
 	"runtime"
 	"testing"
@@ -101,10 +101,10 @@ func TestStmtLines(t *testing.T) {
 		}
 	}
 
-	if runtime.GOARCH == "amd64" && len(nonStmtLines)*100 > len(lines) { // > 99% obtained on amd64, no backsliding
+	if runtime.GOARCH == "amd64" && len(nonStmtLines)*100 > len(lines) {
 		t.Errorf("Saw too many (amd64, > 1%%) lines without statement marks, total=%d, nostmt=%d\n", len(lines), len(nonStmtLines))
 	}
-	if len(nonStmtLines)*100 > 2*len(lines) { // expect 98% elsewhere.
+	if len(nonStmtLines)*100 > 2*len(lines) {
 		t.Errorf("Saw too many (not amd64, > 2%%) lines without statement marks, total=%d, nostmt=%d\n", len(lines), len(nonStmtLines))
 	}
 	t.Logf("total=%d, nostmt=%d\n", len(lines), len(nonStmtLines))

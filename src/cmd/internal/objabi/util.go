@@ -1,7 +1,3 @@
-// Copyright 2015 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
 package objabi
 
 import (
@@ -18,18 +14,7 @@ func envOr(key, value string) string {
 	return value
 }
 
-var (
-	defaultGOROOT string // set by linker
-
-	GOROOT   = envOr("GOROOT", defaultGOROOT)
-	GOARCH   = envOr("GOARCH", defaultGOARCH)
-	GOOS     = envOr("GOOS", defaultGOOS)
-	GO386    = envOr("GO386", defaultGO386)
-	GOARM    = goarm()
-	GOMIPS   = gomips()
-	GOMIPS64 = gomips64()
-	Version  = version
-)
+// set by linker
 
 func goarm() int {
 	switch v := envOr("GOARM", defaultGOARM); v {
@@ -40,7 +25,7 @@ func goarm() int {
 	case "7":
 		return 7
 	}
-	// Fail here, rather than validate at multiple call sites.
+
 	log.Fatalf("Invalid GOARM value. Must be 5, 6, or 7.")
 	panic("unreachable")
 }
@@ -67,30 +52,31 @@ func Getgoextlinkenabled() string {
 	return envOr("GO_EXTLINK_ENABLED", defaultGO_EXTLINK_ENABLED)
 }
 
-func init() {
+func (psess *PackageSession) init() {
 	for _, f := range strings.Split(goexperiment, ",") {
 		if f != "" {
-			addexp(f)
+			psess.
+				addexp(f)
 		}
 	}
 }
 
-func Framepointer_enabled(goos, goarch string) bool {
-	return framepointer_enabled != 0 && goarch == "amd64" && goos != "nacl"
+func (psess *PackageSession) Framepointer_enabled(goos, goarch string) bool {
+	return psess.framepointer_enabled != 0 && goarch == "amd64" && goos != "nacl"
 }
 
-func addexp(s string) {
-	// Could do general integer parsing here, but the runtime copy doesn't yet.
+func (psess *PackageSession) addexp(s string) {
+
 	v := 1
 	name := s
 	if len(name) > 2 && name[:2] == "no" {
 		v = 0
 		name = name[2:]
 	}
-	for i := 0; i < len(exper); i++ {
-		if exper[i].name == name {
-			if exper[i].val != nil {
-				*exper[i].val = v
+	for i := 0; i < len(psess.exper); i++ {
+		if psess.exper[i].name == name {
+			if psess.exper[i].val != nil {
+				*psess.exper[i].val = v
 			}
 			return
 		}
@@ -100,40 +86,20 @@ func addexp(s string) {
 	os.Exit(2)
 }
 
-var (
-	framepointer_enabled     int = 1
-	Fieldtrack_enabled       int
-	Preemptibleloops_enabled int
-	Clobberdead_enabled      int
-	DebugCPU_enabled         int
-)
-
 // Toolchain experiments.
 // These are controlled by the GOEXPERIMENT environment
 // variable recorded when the toolchain is built.
 // This list is also known to cmd/gc.
-var exper = []struct {
-	name string
-	val  *int
-}{
-	{"fieldtrack", &Fieldtrack_enabled},
-	{"framepointer", &framepointer_enabled},
-	{"preemptibleloops", &Preemptibleloops_enabled},
-	{"clobberdead", &Clobberdead_enabled},
-	{"debugcpu", &DebugCPU_enabled},
+
+func (psess *PackageSession) DefaultExpstring() string {
+	return psess.defaultExpstring
 }
 
-var defaultExpstring = Expstring()
-
-func DefaultExpstring() string {
-	return defaultExpstring
-}
-
-func Expstring() string {
+func (psess *PackageSession) Expstring() string {
 	buf := "X"
-	for i := range exper {
-		if *exper[i].val != 0 {
-			buf += "," + exper[i].name
+	for i := range psess.exper {
+		if *psess.exper[i].val != 0 {
+			buf += "," + psess.exper[i].name
 		}
 	}
 	if buf == "X" {

@@ -1,7 +1,3 @@
-// Copyright 2013 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
 // Package goobj implements reading of Go object files and archives.
 //
 // TODO(rsc): Decide where this package should live. (golang.org/issue/6932)
@@ -11,9 +7,9 @@ package goobj
 import (
 	"bufio"
 	"bytes"
-	"cmd/internal/objabi"
 	"errors"
 	"fmt"
+	"github.com/dave/golib/src/cmd/internal/objabi"
 	"io"
 	"os"
 	"strconv"
@@ -108,8 +104,6 @@ type Func struct {
 	InlTree  []InlinedCall
 }
 
-// TODO: Add PCData []byte and PCDataIter (similar to liblink).
-
 // A FuncData is a single function-specific data value.
 type FuncData struct {
 	Sym    SymID // symbol holding data
@@ -187,7 +181,7 @@ func (r *objReader) error(err error) error {
 		}
 		r.err = err
 	}
-	// panic("corrupt") // useful for debugging
+
 	return r.err
 }
 
@@ -290,15 +284,8 @@ func (r *objReader) readSymID() SymID {
 func (r *objReader) readRef() {
 	name, vers := r.readString(), r.readInt()
 
-	// In a symbol name in an object file, "". denotes the
-	// prefix for the package in which the object file has been found.
-	// Expand it.
-	name = strings.Replace(name, `"".`, r.pkgprefix, -1)
+	name = strings.Replace(name, "\"\".", r.pkgprefix, -1)
 
-	// An individual object file only records version 0 (extern) or 1 (static).
-	// To make static symbols unique across all files being read, we
-	// replace version 1 with the version corresponding to the current
-	// file number. The number is incremented on each call to parseObject.
 	if vers != 0 {
 		vers = r.p.MaxVersion
 	}
@@ -319,19 +306,17 @@ func (r *objReader) skip(n int64) {
 		r.error(fmt.Errorf("debug/goobj: internal error: misuse of skip"))
 	}
 	if n < int64(len(r.tmp)) {
-		// Since the data is so small, a just reading from the buffered
-		// reader is better than flushing the buffer and seeking.
+
 		r.readFull(r.tmp[:n])
 	} else if n <= int64(r.b.Buffered()) {
-		// Even though the data is not small, it has already been read.
-		// Advance the buffer instead of seeking.
+
 		for n > int64(len(r.tmp)) {
 			r.readFull(r.tmp[:])
 			n -= int64(len(r.tmp))
 		}
 		r.readFull(r.tmp[:n])
 	} else {
-		// Seek, giving up buffered data.
+
 		_, err := r.f.Seek(r.offset+n, io.SeekStart)
 		if err != nil {
 			r.error(err)
@@ -345,7 +330,7 @@ func (r *objReader) skip(n int64) {
 // assuming that its import path is pkgpath.
 func Parse(f *os.File, pkgpath string) (*Package, error) {
 	if pkgpath == "" {
-		pkgpath = `""`
+		pkgpath = "\"\""
 	}
 	p := new(Package)
 	p.ImportPath = pkgpath
@@ -391,22 +376,6 @@ func (r *objReader) parseArchive() error {
 		}
 		data := r.tmp[:60]
 
-		// Each file is preceded by this text header (slice indices in first column):
-		//	 0:16	name
-		//	16:28 date
-		//	28:34 uid
-		//	34:40 gid
-		//	40:48 mode
-		//	48:58 size
-		//	58:60 magic - `\n
-		// We only care about name, size, and magic.
-		// The fields are space-padded on the right.
-		// The size is in decimal.
-		// The file data - size bytes - follows the header.
-		// Headers are 2-byte aligned, so if size is odd, an extra padding
-		// byte sits between the file data and the next header.
-		// The file data that follows is padded to an even number of bytes:
-		// if size is odd, an extra padding byte is inserted betw the next header.
 		if len(data) < 60 {
 			return errTruncatedArchive
 		}
@@ -470,8 +439,7 @@ func (r *objReader) parseObject(prefix []byte) error {
 	for {
 		c1, c2, c3 = c2, c3, r.readByte()
 		h = append(h, c3)
-		// The new export format can contain 0 bytes.
-		// Don't consider them errors, only look for r.err != nil.
+
 		if r.err != nil {
 			return errCorruptObject
 		}
@@ -484,7 +452,6 @@ func (r *objReader) parseObject(prefix []byte) error {
 	if len(hs) >= 4 {
 		r.p.Arch = hs[3]
 	}
-	// TODO: extract OS + build ID if/when we need it
 
 	r.readFull(r.tmp[:8])
 	if !bytes.Equal(r.tmp[:8], []byte("\x00\x00go19ld")) {
@@ -496,7 +463,6 @@ func (r *objReader) parseObject(prefix []byte) error {
 		return r.error(errCorruptObject)
 	}
 
-	// Direct package dependencies.
 	for {
 		s := r.readString()
 		if s == "" {
@@ -518,16 +484,15 @@ func (r *objReader) parseObject(prefix []byte) error {
 	}
 
 	dataLength := r.readInt()
-	r.readInt() // n relocations - ignore
-	r.readInt() // n pcdata - ignore
-	r.readInt() // n autom - ignore
-	r.readInt() // n funcdata - ignore
-	r.readInt() // n files - ignore
+	r.readInt()
+	r.readInt()
+	r.readInt()
+	r.readInt()
+	r.readInt()
 
 	r.dataOffset = r.offset
 	r.skip(dataLength)
 
-	// Symbols.
 	for {
 		if b := r.readByte(); b != 0xfe {
 			if b != 0xff {
@@ -585,7 +550,7 @@ func (r *objReader) parseObject(prefix []byte) error {
 				f.FuncData[i].Sym = r.readSymID()
 			}
 			for i := range f.FuncData {
-				f.FuncData[i].Offset = r.readInt() // TODO
+				f.FuncData[i].Offset = r.readInt()
 			}
 			f.File = make([]string, r.readInt())
 			for i := range f.File {

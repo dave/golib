@@ -1,7 +1,3 @@
-// Copyright 2016 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
 package syntax
 
 import (
@@ -36,38 +32,29 @@ func (p *parser) init(file *PosBase, r io.Reader, errh ErrorHandler, pragh Pragm
 	p.mode = mode
 	p.scanner.init(
 		r,
-		// Error and directive handler for scanner.
-		// Because the (line, col) positions passed to the
-		// handler is always at or after the current reading
-		// position, it is safe to use the most recent position
-		// base to compute the corresponding Pos value.
+
 		func(line, col uint, msg string) {
 			if msg[0] != '/' {
 				p.errorAt(p.posAt(line, col), msg)
 				return
 			}
 
-			// otherwise it must be a comment containing a line or go: directive
 			text := commentText(msg)
 			if strings.HasPrefix(text, "line ") {
 				var pos Pos // position immediately following the comment
 				if msg[1] == '/' {
-					// line comment (newline is part of the comment)
+
 					pos = MakePos(p.file, line+1, colbase)
 				} else {
-					// regular comment
-					// (if the comment spans multiple lines it's not
-					// a valid line directive and will be discarded
-					// by updateBase)
+
 					pos = MakePos(p.file, line, col+uint(len(msg)))
 				}
-				p.updateBase(pos, line, col+2+5, text[5:]) // +2 to skip over // or /*
+				p.updateBase(pos, line, col+2+5, text[5:])
 				return
 			}
 
-			// go: directive (but be conservative and test)
 			if pragh != nil && strings.HasPrefix(text, "go:") {
-				p.pragma |= pragh(p.posAt(line, col+2), text) // +2 to skip over // or /*
+				p.pragma |= pragh(p.posAt(line, col+2), text)
 			}
 		},
 		directives,
@@ -89,12 +76,11 @@ func (p *parser) init(file *PosBase, r io.Reader, errh ErrorHandler, pragh Pragm
 func (p *parser) updateBase(pos Pos, tline, tcol uint, text string) {
 	i, n, ok := trailingDigits(text)
 	if i == 0 {
-		return // ignore (not a line directive)
+		return
 	}
-	// i > 0
 
 	if !ok {
-		// text has a suffix :xxx but xxx is not a number
+
 		p.errorAt(p.posAt(tline, tcol+i), "invalid line number: "+text[i:])
 		return
 	}
@@ -102,16 +88,16 @@ func (p *parser) updateBase(pos Pos, tline, tcol uint, text string) {
 	var line, col uint
 	i2, n2, ok2 := trailingDigits(text[:i-1])
 	if ok2 {
-		//line filename:line:col
+
 		i, i2 = i2, i
 		line, col = n2, n
 		if col == 0 || col > PosMax {
 			p.errorAt(p.posAt(tline, tcol+i2), "invalid column number: "+text[i2:])
 			return
 		}
-		text = text[:i2-1] // lop off ":col"
+		text = text[:i2-1]
 	} else {
-		//line filename:line
+
 		line = n
 	}
 
@@ -120,9 +106,7 @@ func (p *parser) updateBase(pos Pos, tline, tcol uint, text string) {
 		return
 	}
 
-	// If we have a column (//line filename:line:col form),
-	// an empty filename means to use the previous filename.
-	filename := text[:i-1] // lop off ":line"
+	filename := text[:i-1]
 	if filename == "" && ok2 {
 		filename = p.base.Filename()
 	}
@@ -132,46 +116,41 @@ func (p *parser) updateBase(pos Pos, tline, tcol uint, text string) {
 
 func commentText(s string) string {
 	if s[:2] == "/*" {
-		return s[2 : len(s)-2] // lop off /* and */
+		return s[2 : len(s)-2]
 	}
 
-	// line comment (does not include newline)
-	// (on Windows, the line comment may end in \r\n)
 	i := len(s)
 	if s[i-1] == '\r' {
 		i--
 	}
-	return s[2:i] // lop off //, and \r at end, if any
+	return s[2:i]
 }
 
 func trailingDigits(text string) (uint, uint, bool) {
-	// Want to use LastIndexByte below but it's not defined in Go1.4 and bootstrap fails.
-	i := strings.LastIndex(text, ":") // look from right (Windows filenames may contain ':')
+
+	i := strings.LastIndex(text, ":")
 	if i < 0 {
-		return 0, 0, false // no ":"
+		return 0, 0, false
 	}
-	// i >= 0
+
 	n, err := strconv.ParseUint(text[i+1:], 10, 0)
 	return uint(i + 1), uint(n), err == nil
 }
 
-func (p *parser) got(tok token) bool {
+func (p *parser) got(psess *PackageSession, tok token) bool {
 	if p.tok == tok {
-		p.next()
+		p.next(psess)
 		return true
 	}
 	return false
 }
 
-func (p *parser) want(tok token) {
-	if !p.got(tok) {
-		p.syntaxError("expecting " + tokstring(tok))
-		p.advance()
+func (p *parser) want(psess *PackageSession, tok token) {
+	if !p.got(psess, tok) {
+		p.syntaxError(psess, "expecting "+psess.tokstring(tok))
+		p.advance(psess)
 	}
 }
-
-// ----------------------------------------------------------------------------
-// Error handling
 
 // posAt returns the Pos value for (line, col) and the current position base.
 func (p *parser) posAt(line, col uint) Pos {
@@ -192,25 +171,24 @@ func (p *parser) errorAt(pos Pos, msg string) {
 }
 
 // syntaxErrorAt reports a syntax error at the given position.
-func (p *parser) syntaxErrorAt(pos Pos, msg string) {
+func (p *parser) syntaxErrorAt(psess *PackageSession, pos Pos, msg string) {
 	if trace {
 		p.print("syntax error: " + msg)
 	}
 
 	if p.tok == _EOF && p.first != nil {
-		return // avoid meaningless follow-up errors
+		return
 	}
 
-	// add punctuation etc. as needed to msg
 	switch {
 	case msg == "":
-		// nothing to do
+
 	case strings.HasPrefix(msg, "in "), strings.HasPrefix(msg, "at "), strings.HasPrefix(msg, "after "):
 		msg = " " + msg
 	case strings.HasPrefix(msg, "expecting "):
 		msg = ", " + msg
 	default:
-		// plain error - we don't care about current token
+
 		p.errorAt(pos, "syntax error: "+msg)
 		return
 	}
@@ -223,14 +201,14 @@ func (p *parser) syntaxErrorAt(pos Pos, msg string) {
 	case _Literal:
 		tok = "literal " + p.lit
 	case _Operator:
-		tok = p.op.String()
+		tok = p.op.String(psess)
 	case _AssignOp:
-		tok = p.op.String() + "="
+		tok = p.op.String(psess) + "="
 	case _IncOp:
-		tok = p.op.String()
+		tok = p.op.String(psess)
 		tok += tok
 	default:
-		tok = tokstring(p.tok)
+		tok = psess.tokstring(p.tok)
 	}
 
 	p.errorAt(pos, "syntax error: unexpected "+tok+msg)
@@ -238,19 +216,19 @@ func (p *parser) syntaxErrorAt(pos Pos, msg string) {
 
 // tokstring returns the English word for selected punctuation tokens
 // for more readable error messages.
-func tokstring(tok token) string {
+func (psess *PackageSession) tokstring(tok token) string {
 	switch tok {
 	case _Comma:
 		return "comma"
 	case _Semi:
 		return "semicolon or newline"
 	}
-	return tok.String()
+	return tok.String(psess)
 }
 
 // Convenience methods using the current token position.
-func (p *parser) pos() Pos               { return p.posAt(p.line, p.col) }
-func (p *parser) syntaxError(msg string) { p.syntaxErrorAt(p.pos(), msg) }
+func (p *parser) pos() Pos                                      { return p.posAt(p.line, p.col) }
+func (p *parser) syntaxError(psess *PackageSession, msg string) { p.syntaxErrorAt(psess, p.pos(), msg) }
 
 // The stopset contains keywords that start a statement.
 // They are good synchronization points in case of syntax
@@ -274,7 +252,7 @@ const stopset uint64 = 1<<_Break |
 // The stopset is only considered if we are inside a function (p.fnest > 0).
 // The followlist is the list of valid tokens that can follow a production;
 // if it is empty, exactly one (non-EOF) token is consumed to ensure progress.
-func (p *parser) advance(followlist ...token) {
+func (p *parser) advance(psess *PackageSession, followlist ...token) {
 	if trace {
 		p.print(fmt.Sprintf("advance %s", followlist))
 	}
@@ -293,16 +271,16 @@ func (p *parser) advance(followlist ...token) {
 
 	for !contains(followset, p.tok) {
 		if trace {
-			p.print("skip " + p.tok.String())
+			p.print("skip " + p.tok.String(psess))
 		}
-		p.next()
+		p.next(psess)
 		if len(followlist) == 0 {
 			break
 		}
 	}
 
 	if trace {
-		p.print("next " + p.tok.String())
+		p.print("next " + p.tok.String(psess))
 	}
 }
 
@@ -314,7 +292,7 @@ func (p *parser) trace(msg string) func() {
 	return func() {
 		p.indent = p.indent[:len(p.indent)-len(tab)]
 		if x := recover(); x != nil {
-			panic(x) // skip print_trace
+			panic(x)
 		}
 		p.print(")")
 	}
@@ -324,18 +302,8 @@ func (p *parser) print(msg string) {
 	fmt.Printf("%5d: %s%s\n", p.line, p.indent, msg)
 }
 
-// ----------------------------------------------------------------------------
-// Package files
-//
-// Parse methods are annotated with matching Go productions as appropriate.
-// The annotations are intended as guidelines only since a single Go grammar
-// rule may be covered by multiple parse methods and vice versa.
-//
-// Excluding methods returning slices, parse methods named xOrNil may return
-// nil; all others are expected to return a valid non-nil node.
-
 // SourceFile = PackageClause ";" { ImportDecl ";" } { TopLevelDecl ";" } .
-func (p *parser) fileOrNil() *File {
+func (p *parser) fileOrNil(psess *PackageSession) *File {
 	if trace {
 		defer p.trace("file")()
 	}
@@ -343,67 +311,60 @@ func (p *parser) fileOrNil() *File {
 	f := new(File)
 	f.pos = p.pos()
 
-	// PackageClause
-	if !p.got(_Package) {
-		p.syntaxError("package statement must be first")
+	if !p.got(psess, _Package) {
+		p.syntaxError(psess, "package statement must be first")
 		return nil
 	}
-	f.PkgName = p.name()
-	p.want(_Semi)
+	f.PkgName = p.name(psess)
+	p.want(psess, _Semi)
 
-	// don't bother continuing if package clause has errors
 	if p.first != nil {
 		return nil
 	}
 
-	// { ImportDecl ";" }
-	for p.got(_Import) {
-		f.DeclList = p.appendGroup(f.DeclList, p.importDecl)
-		p.want(_Semi)
+	for p.got(psess, _Import) {
+		f.DeclList = p.appendGroup(psess, f.DeclList, p.importDecl)
+		p.want(psess, _Semi)
 	}
 
-	// { TopLevelDecl ";" }
 	for p.tok != _EOF {
 		switch p.tok {
 		case _Const:
-			p.next()
-			f.DeclList = p.appendGroup(f.DeclList, p.constDecl)
+			p.next(psess)
+			f.DeclList = p.appendGroup(psess, f.DeclList, p.constDecl)
 
 		case _Type:
-			p.next()
-			f.DeclList = p.appendGroup(f.DeclList, p.typeDecl)
+			p.next(psess)
+			f.DeclList = p.appendGroup(psess, f.DeclList, p.typeDecl)
 
 		case _Var:
-			p.next()
-			f.DeclList = p.appendGroup(f.DeclList, p.varDecl)
+			p.next(psess)
+			f.DeclList = p.appendGroup(psess, f.DeclList, p.varDecl)
 
 		case _Func:
-			p.next()
-			if d := p.funcDeclOrNil(); d != nil {
+			p.next(psess)
+			if d := p.funcDeclOrNil(psess); d != nil {
 				f.DeclList = append(f.DeclList, d)
 			}
 
 		default:
 			if p.tok == _Lbrace && len(f.DeclList) > 0 && isEmptyFuncDecl(f.DeclList[len(f.DeclList)-1]) {
-				// opening { of function declaration on next line
-				p.syntaxError("unexpected semicolon or newline before {")
+
+				p.syntaxError(psess, "unexpected semicolon or newline before {")
 			} else {
-				p.syntaxError("non-declaration statement outside function body")
+				p.syntaxError(psess, "non-declaration statement outside function body")
 			}
-			p.advance(_Const, _Type, _Var, _Func)
+			p.advance(psess, _Const, _Type, _Var, _Func)
 			continue
 		}
 
-		// Reset p.pragma BEFORE advancing to the next token (consuming ';')
-		// since comments before may set pragmas for the next function decl.
 		p.pragma = 0
 
-		if p.tok != _EOF && !p.got(_Semi) {
-			p.syntaxError("after top level declaration")
-			p.advance(_Const, _Type, _Var, _Func)
+		if p.tok != _EOF && !p.got(psess, _Semi) {
+			p.syntaxError(psess, "after top level declaration")
+			p.advance(psess, _Const, _Type, _Var, _Func)
 		}
 	}
-	// p.tok == _EOF
 
 	f.Lines = p.source.line
 
@@ -414,9 +375,6 @@ func isEmptyFuncDecl(dcl Decl) bool {
 	f, ok := dcl.(*FuncDecl)
 	return ok && f.Body == nil
 }
-
-// ----------------------------------------------------------------------------
-// Declarations
 
 // list parses a possibly empty, sep-separated list, optionally
 // followed by sep and enclosed by ( and ) or { and }. open is
@@ -429,33 +387,33 @@ func isEmptyFuncDecl(dcl Decl) bool {
 // list = "(" { f sep } ")" |
 //        "{" { f sep } "}" . // sep is optional before ")" or "}"
 //
-func (p *parser) list(open, sep, close token, f func() bool) Pos {
-	p.want(open)
+func (p *parser) list(psess *PackageSession, open, sep, close token, f func() bool) Pos {
+	p.want(psess, open)
 
 	var done bool
 	for p.tok != _EOF && p.tok != close && !done {
 		done = f()
-		// sep is optional before close
-		if !p.got(sep) && p.tok != close {
-			p.syntaxError(fmt.Sprintf("expecting %s or %s", tokstring(sep), tokstring(close)))
-			p.advance(_Rparen, _Rbrack, _Rbrace)
+
+		if !p.got(psess, sep) && p.tok != close {
+			p.syntaxError(psess, fmt.Sprintf("expecting %s or %s", psess.tokstring(sep), psess.tokstring(close)))
+			p.advance(psess, _Rparen, _Rbrack, _Rbrace)
 			if p.tok != close {
-				// position could be better but we had an error so we don't care
+
 				return p.pos()
 			}
 		}
 	}
 
 	pos := p.pos()
-	p.want(close)
+	p.want(psess, close)
 	return pos
 }
 
 // appendGroup(f) = f | "(" { f ";" } ")" . // ";" is optional before ")"
-func (p *parser) appendGroup(list []Decl, f func(*Group) Decl) []Decl {
+func (p *parser) appendGroup(psess *PackageSession, list []Decl, f func(*Group) Decl) []Decl {
 	if p.tok == _Lparen {
 		g := new(Group)
-		p.list(_Lparen, _Semi, _Rparen, func() bool {
+		p.list(psess, _Lparen, _Semi, _Rparen, func() bool {
 			list = append(list, f(g))
 			return false
 		})
@@ -476,7 +434,7 @@ func (p *parser) appendGroup(list []Decl, f func(*Group) Decl) []Decl {
 
 // ImportSpec = [ "." | PackageName ] ImportPath .
 // ImportPath = string_lit .
-func (p *parser) importDecl(group *Group) Decl {
+func (p *parser) importDecl(psess *PackageSession, group *Group) Decl {
 	if trace {
 		defer p.trace("importDecl")()
 	}
@@ -486,15 +444,15 @@ func (p *parser) importDecl(group *Group) Decl {
 
 	switch p.tok {
 	case _Name:
-		d.LocalPkgName = p.name()
+		d.LocalPkgName = p.name(psess)
 	case _Dot:
 		d.LocalPkgName = p.newName(".")
-		p.next()
+		p.next(psess)
 	}
-	d.Path = p.oliteral()
+	d.Path = p.oliteral(psess)
 	if d.Path == nil {
-		p.syntaxError("missing import path")
-		p.advance(_Semi, _Rparen)
+		p.syntaxError(psess, "missing import path")
+		p.advance(psess, _Semi, _Rparen)
 		return nil
 	}
 	d.Group = group
@@ -503,7 +461,7 @@ func (p *parser) importDecl(group *Group) Decl {
 }
 
 // ConstSpec = IdentifierList [ [ Type ] "=" ExpressionList ] .
-func (p *parser) constDecl(group *Group) Decl {
+func (p *parser) constDecl(psess *PackageSession, group *Group) Decl {
 	if trace {
 		defer p.trace("constDecl")()
 	}
@@ -511,11 +469,11 @@ func (p *parser) constDecl(group *Group) Decl {
 	d := new(ConstDecl)
 	d.pos = p.pos()
 
-	d.NameList = p.nameList(p.name())
+	d.NameList = p.nameList(psess, p.name(psess))
 	if p.tok != _EOF && p.tok != _Semi && p.tok != _Rparen {
-		d.Type = p.typeOrNil()
-		if p.got(_Assign) {
-			d.Values = p.exprList()
+		d.Type = p.typeOrNil(psess)
+		if p.got(psess, _Assign) {
+			d.Values = p.exprList(psess)
 		}
 	}
 	d.Group = group
@@ -524,7 +482,7 @@ func (p *parser) constDecl(group *Group) Decl {
 }
 
 // TypeSpec = identifier [ "=" ] Type .
-func (p *parser) typeDecl(group *Group) Decl {
+func (p *parser) typeDecl(psess *PackageSession, group *Group) Decl {
 	if trace {
 		defer p.trace("typeDecl")()
 	}
@@ -532,13 +490,13 @@ func (p *parser) typeDecl(group *Group) Decl {
 	d := new(TypeDecl)
 	d.pos = p.pos()
 
-	d.Name = p.name()
-	d.Alias = p.got(_Assign)
-	d.Type = p.typeOrNil()
+	d.Name = p.name(psess)
+	d.Alias = p.got(psess, _Assign)
+	d.Type = p.typeOrNil(psess)
 	if d.Type == nil {
 		d.Type = p.bad()
-		p.syntaxError("in type declaration")
-		p.advance(_Semi, _Rparen)
+		p.syntaxError(psess, "in type declaration")
+		p.advance(psess, _Semi, _Rparen)
 	}
 	d.Group = group
 	d.Pragma = p.pragma
@@ -547,7 +505,7 @@ func (p *parser) typeDecl(group *Group) Decl {
 }
 
 // VarSpec = IdentifierList ( Type [ "=" ExpressionList ] | "=" ExpressionList ) .
-func (p *parser) varDecl(group *Group) Decl {
+func (p *parser) varDecl(psess *PackageSession, group *Group) Decl {
 	if trace {
 		defer p.trace("varDecl")()
 	}
@@ -555,13 +513,13 @@ func (p *parser) varDecl(group *Group) Decl {
 	d := new(VarDecl)
 	d.pos = p.pos()
 
-	d.NameList = p.nameList(p.name())
-	if p.got(_Assign) {
-		d.Values = p.exprList()
+	d.NameList = p.nameList(psess, p.name(psess))
+	if p.got(psess, _Assign) {
+		d.Values = p.exprList(psess)
 	} else {
-		d.Type = p.type_()
-		if p.got(_Assign) {
-			d.Values = p.exprList()
+		d.Type = p.type_(psess)
+		if p.got(psess, _Assign) {
+			d.Values = p.exprList(psess)
 		}
 	}
 	d.Group = group
@@ -574,7 +532,7 @@ func (p *parser) varDecl(group *Group) Decl {
 // Function     = Signature FunctionBody .
 // MethodDecl   = "func" Receiver MethodName ( Function | Signature ) .
 // Receiver     = Parameters .
-func (p *parser) funcDeclOrNil() *FuncDecl {
+func (p *parser) funcDeclOrNil(psess *PackageSession) *FuncDecl {
 	if trace {
 		defer p.trace("funcDecl")()
 	}
@@ -583,7 +541,7 @@ func (p *parser) funcDeclOrNil() *FuncDecl {
 	f.pos = p.pos()
 
 	if p.tok == _Lparen {
-		rcvr := p.paramList()
+		rcvr := p.paramList(psess)
 		switch len(rcvr) {
 		case 0:
 			p.error("method has no receiver")
@@ -596,68 +554,62 @@ func (p *parser) funcDeclOrNil() *FuncDecl {
 	}
 
 	if p.tok != _Name {
-		p.syntaxError("expecting name or (")
-		p.advance(_Lbrace, _Semi)
+		p.syntaxError(psess, "expecting name or (")
+		p.advance(psess, _Lbrace, _Semi)
 		return nil
 	}
 
-	f.Name = p.name()
-	f.Type = p.funcType()
+	f.Name = p.name(psess)
+	f.Type = p.funcType(psess)
 	if p.tok == _Lbrace {
-		f.Body = p.funcBody()
+		f.Body = p.funcBody(psess)
 	}
 	f.Pragma = p.pragma
 
 	return f
 }
 
-func (p *parser) funcBody() *BlockStmt {
+func (p *parser) funcBody(psess *PackageSession) *BlockStmt {
 	p.fnest++
 	errcnt := p.errcnt
-	body := p.blockStmt("")
+	body := p.blockStmt(psess, "")
 	p.fnest--
 
-	// Don't check branches if there were syntax errors in the function
-	// as it may lead to spurious errors (e.g., see test/switch2.go) or
-	// possibly crashes due to incomplete syntax trees.
 	if p.mode&CheckBranches != 0 && errcnt == p.errcnt {
-		checkBranches(body, p.errh)
+		psess.
+			checkBranches(body, p.errh)
 	}
 
 	return body
 }
 
-// ----------------------------------------------------------------------------
-// Expressions
-
-func (p *parser) expr() Expr {
+func (p *parser) expr(psess *PackageSession) Expr {
 	if trace {
 		defer p.trace("expr")()
 	}
 
-	return p.binaryExpr(0)
+	return p.binaryExpr(psess, 0)
 }
 
 // Expression = UnaryExpr | Expression binary_op Expression .
-func (p *parser) binaryExpr(prec int) Expr {
-	// don't trace binaryExpr - only leads to overly nested trace output
+func (p *parser) binaryExpr(psess *PackageSession, prec int) Expr {
 
-	x := p.unaryExpr()
+	x := p.unaryExpr(psess)
 	for (p.tok == _Operator || p.tok == _Star) && p.prec > prec {
 		t := new(Operation)
 		t.pos = p.pos()
 		t.Op = p.op
 		t.X = x
 		tprec := p.prec
-		p.next()
-		t.Y = p.binaryExpr(tprec)
+		p.next(psess)
+		t.Y = p.binaryExpr(psess, tprec)
 		x = t
 	}
 	return x
 }
 
 // UnaryExpr = PrimaryExpr | unary_op UnaryExpr .
-func (p *parser) unaryExpr() Expr {
+func (p *parser) unaryExpr(psess *PackageSession) Expr {
 	if trace {
 		defer p.trace("unaryExpr")()
 	}
@@ -669,45 +621,29 @@ func (p *parser) unaryExpr() Expr {
 			x := new(Operation)
 			x.pos = p.pos()
 			x.Op = p.op
-			p.next()
-			x.X = p.unaryExpr()
+			p.next(psess)
+			x.X = p.unaryExpr(psess)
 			return x
 
 		case And:
 			x := new(Operation)
 			x.pos = p.pos()
 			x.Op = And
-			p.next()
-			// unaryExpr may have returned a parenthesized composite literal
-			// (see comment in operand) - remove parentheses if any
-			x.X = unparen(p.unaryExpr())
+			p.next(psess)
+
+			x.X = unparen(p.unaryExpr(psess))
 			return x
 		}
 
 	case _Arrow:
-		// receive op (<-x) or receive-only channel (<-chan E)
+
 		pos := p.pos()
-		p.next()
+		p.next(psess)
 
-		// If the next token is _Chan we still don't know if it is
-		// a channel (<-chan int) or a receive op (<-chan int(ch)).
-		// We only know once we have found the end of the unaryExpr.
-
-		x := p.unaryExpr()
-
-		// There are two cases:
-		//
-		//   <-chan...  => <-x is a channel type
-		//   <-x        => <-x is a receive operation
-		//
-		// In the first case, <- must be re-associated with
-		// the channel type parsed already:
-		//
-		//   <-(chan E)   =>  (<-chan E)
-		//   <-(chan<-E)  =>  (<-chan (<-E))
+		x := p.unaryExpr(psess)
 
 		if _, ok := x.(*ChanType); ok {
-			// x is a channel type => re-associate <-
+
 			dir := SendOnly
 			t := x
 			for dir == SendOnly {
@@ -717,24 +653,21 @@ func (p *parser) unaryExpr() Expr {
 				}
 				dir = c.Dir
 				if dir == RecvOnly {
-					// t is type <-chan E but <-<-chan E is not permitted
-					// (report same error as for "type _ <-<-chan E")
-					p.syntaxError("unexpected <-, expecting chan")
-					// already progressed, no need to advance
+
+					p.syntaxError(psess, "unexpected <-, expecting chan")
+
 				}
 				c.Dir = RecvOnly
 				t = c.Elem
 			}
 			if dir == SendOnly {
-				// channel dir is <- but channel element E is not a channel
-				// (report same error as for "type _ <-chan<-E")
-				p.syntaxError(fmt.Sprintf("unexpected %s, expecting chan", String(t)))
-				// already progressed, no need to advance
+
+				p.syntaxError(psess, fmt.Sprintf("unexpected %s, expecting chan", psess.String(t)))
+
 			}
 			return x
 		}
 
-		// x is not a channel type => we have a receive op
 		o := new(Operation)
 		o.pos = pos
 		o.Op = Recv
@@ -742,37 +675,34 @@ func (p *parser) unaryExpr() Expr {
 		return o
 	}
 
-	// TODO(mdempsky): We need parens here so we can report an
-	// error for "(x) := true". It should be possible to detect
-	// and reject that more efficiently though.
-	return p.pexpr(true)
+	return p.pexpr(psess, true)
 }
 
 // callStmt parses call-like statements that can be preceded by 'defer' and 'go'.
-func (p *parser) callStmt() *CallStmt {
+func (p *parser) callStmt(psess *PackageSession) *CallStmt {
 	if trace {
 		defer p.trace("callStmt")()
 	}
 
 	s := new(CallStmt)
 	s.pos = p.pos()
-	s.Tok = p.tok // _Defer or _Go
-	p.next()
+	s.Tok = p.tok
+	p.next(psess)
 
-	x := p.pexpr(p.tok == _Lparen) // keep_parens so we can report error below
+	x := p.pexpr(psess, p.tok == _Lparen)
 	if t := unparen(x); t != x {
 		p.errorAt(x.Pos(), fmt.Sprintf("expression in %s must not be parenthesized", s.Tok))
-		// already progressed, no need to advance
+
 		x = t
 	}
 
 	cx, ok := x.(*CallExpr)
 	if !ok {
 		p.errorAt(x.Pos(), fmt.Sprintf("expression in %s must be function call", s.Tok))
-		// already progressed, no need to advance
+
 		cx = new(CallExpr)
 		cx.pos = x.Pos()
-		cx.Fun = x // assume common error of missing parentheses (function invocation)
+		cx.Fun = x
 	}
 
 	s.Call = cx
@@ -783,47 +713,30 @@ func (p *parser) callStmt() *CallStmt {
 // Literal     = BasicLit | CompositeLit | FunctionLit .
 // BasicLit    = int_lit | float_lit | imaginary_lit | rune_lit | string_lit .
 // OperandName = identifier | QualifiedIdent.
-func (p *parser) operand(keep_parens bool) Expr {
+func (p *parser) operand(psess *PackageSession, keep_parens bool) Expr {
 	if trace {
-		defer p.trace("operand " + p.tok.String())()
+		defer p.trace("operand " + p.tok.String(psess))()
 	}
 
 	switch p.tok {
 	case _Name:
-		return p.name()
+		return p.name(psess)
 
 	case _Literal:
-		return p.oliteral()
+		return p.oliteral(psess)
 
 	case _Lparen:
 		pos := p.pos()
-		p.next()
+		p.next(psess)
 		p.xnest++
-		x := p.expr()
+		x := p.expr(psess)
 		p.xnest--
-		p.want(_Rparen)
+		p.want(psess, _Rparen)
 
-		// Optimization: Record presence of ()'s only where needed
-		// for error reporting. Don't bother in other cases; it is
-		// just a waste of memory and time.
-
-		// Parentheses are not permitted on lhs of := .
-		// switch x.Op {
-		// case ONAME, ONONAME, OPACK, OTYPE, OLITERAL, OTYPESW:
-		// 	keep_parens = true
-		// }
-
-		// Parentheses are not permitted around T in a composite
-		// literal T{}. If the next token is a {, assume x is a
-		// composite literal type T (it may not be, { could be
-		// the opening brace of a block, but we don't know yet).
 		if p.tok == _Lbrace {
 			keep_parens = true
 		}
 
-		// Parentheses are also not permitted around the expression
-		// in a go/defer statement. In that case, operand is called
-		// with keep_parens set.
 		if keep_parens {
 			px := new(ParenExpr)
 			px.pos = pos
@@ -834,15 +747,15 @@ func (p *parser) operand(keep_parens bool) Expr {
 
 	case _Func:
 		pos := p.pos()
-		p.next()
-		t := p.funcType()
+		p.next(psess)
+		t := p.funcType(psess)
 		if p.tok == _Lbrace {
 			p.xnest++
 
 			f := new(FuncLit)
 			f.pos = pos
 			f.Type = t
-			f.Body = p.funcBody()
+			f.Body = p.funcBody(psess)
 
 			p.xnest--
 			return f
@@ -850,19 +763,15 @@ func (p *parser) operand(keep_parens bool) Expr {
 		return t
 
 	case _Lbrack, _Chan, _Map, _Struct, _Interface:
-		return p.type_() // othertype
+		return p.type_(psess)
 
 	default:
 		x := p.bad()
-		p.syntaxError("expecting expression")
-		p.advance()
+		p.syntaxError(psess, "expecting expression")
+		p.advance(psess)
 		return x
 	}
 
-	// Syntactically, composite literals are operands. Because a complit
-	// type may be a qualified identifier which is handled by pexpr
-	// (together with selector expressions), complits are parsed there
-	// as well (operand is only called from pexpr).
 }
 
 // PrimaryExpr =
@@ -881,33 +790,33 @@ func (p *parser) operand(keep_parens bool) Expr {
 //                  "]" .
 // TypeAssertion  = "." "(" Type ")" .
 // Arguments      = "(" [ ( ExpressionList | Type [ "," ExpressionList ] ) [ "..." ] [ "," ] ] ")" .
-func (p *parser) pexpr(keep_parens bool) Expr {
+func (p *parser) pexpr(psess *PackageSession, keep_parens bool) Expr {
 	if trace {
 		defer p.trace("pexpr")()
 	}
 
-	x := p.operand(keep_parens)
+	x := p.operand(psess, keep_parens)
 
 loop:
 	for {
 		pos := p.pos()
 		switch p.tok {
 		case _Dot:
-			p.next()
+			p.next(psess)
 			switch p.tok {
 			case _Name:
-				// pexpr '.' sym
+
 				t := new(SelectorExpr)
 				t.pos = pos
 				t.X = x
-				t.Sel = p.name()
+				t.Sel = p.name(psess)
 				x = t
 
 			case _Lparen:
-				p.next()
-				if p.got(_Type) {
+				p.next(psess)
+				if p.got(psess, _Type) {
 					t := new(TypeSwitchGuard)
-					// t.Lhs is filled in by parser.simpleStmt
+
 					t.pos = pos
 					t.X = x
 					x = t
@@ -915,25 +824,25 @@ loop:
 					t := new(AssertExpr)
 					t.pos = pos
 					t.X = x
-					t.Type = p.type_()
+					t.Type = p.type_(psess)
 					x = t
 				}
-				p.want(_Rparen)
+				p.want(psess, _Rparen)
 
 			default:
-				p.syntaxError("expecting name or (")
-				p.advance(_Semi, _Rparen)
+				p.syntaxError(psess, "expecting name or (")
+				p.advance(psess, _Semi, _Rparen)
 			}
 
 		case _Lbrack:
-			p.next()
+			p.next(psess)
 			p.xnest++
 
 			var i Expr
 			if p.tok != _Colon {
-				i = p.expr()
-				if p.got(_Rbrack) {
-					// x[i]
+				i = p.expr(psess)
+				if p.got(psess, _Rbrack) {
+
 					t := new(IndexExpr)
 					t.pos = pos
 					t.X = x
@@ -944,30 +853,29 @@ loop:
 				}
 			}
 
-			// x[i:...
 			t := new(SliceExpr)
 			t.pos = pos
 			t.X = x
 			t.Index[0] = i
-			p.want(_Colon)
+			p.want(psess, _Colon)
 			if p.tok != _Colon && p.tok != _Rbrack {
-				// x[i:j...
-				t.Index[1] = p.expr()
+
+				t.Index[1] = p.expr(psess)
 			}
-			if p.got(_Colon) {
+			if p.got(psess, _Colon) {
 				t.Full = true
-				// x[i:j:...]
+
 				if t.Index[1] == nil {
 					p.error("middle index required in 3-index slice")
 				}
 				if p.tok != _Rbrack {
-					// x[i:j:k...
-					t.Index[2] = p.expr()
+
+					t.Index[2] = p.expr(psess)
 				} else {
 					p.error("final index required in 3-index slice")
 				}
 			}
-			p.want(_Rbrack)
+			p.want(psess, _Rbrack)
 
 			x = t
 			p.xnest--
@@ -976,33 +884,32 @@ loop:
 			t := new(CallExpr)
 			t.pos = pos
 			t.Fun = x
-			t.ArgList, t.HasDots = p.argList()
+			t.ArgList, t.HasDots = p.argList(psess)
 			x = t
 
 		case _Lbrace:
-			// operand may have returned a parenthesized complit
-			// type; accept it but complain if we have a complit
+
 			t := unparen(x)
-			// determine if '{' belongs to a composite literal or a block statement
+
 			complit_ok := false
 			switch t.(type) {
 			case *Name, *SelectorExpr:
 				if p.xnest >= 0 {
-					// x is considered a composite literal type
+
 					complit_ok = true
 				}
 			case *ArrayType, *SliceType, *StructType, *MapType:
-				// x is a comptype
+
 				complit_ok = true
 			}
 			if !complit_ok {
 				break loop
 			}
 			if t != x {
-				p.syntaxError("cannot parenthesize type in composite literal")
-				// already progressed, no need to advance
+				p.syntaxError(psess, "cannot parenthesize type in composite literal")
+
 			}
-			n := p.complitexpr()
+			n := p.complitexpr(psess)
 			n.Type = x
 			x = n
 
@@ -1015,21 +922,21 @@ loop:
 }
 
 // Element = Expression | LiteralValue .
-func (p *parser) bare_complitexpr() Expr {
+func (p *parser) bare_complitexpr(psess *PackageSession) Expr {
 	if trace {
 		defer p.trace("bare_complitexpr")()
 	}
 
 	if p.tok == _Lbrace {
-		// '{' start_complit braced_keyval_list '}'
-		return p.complitexpr()
+
+		return p.complitexpr(psess)
 	}
 
-	return p.expr()
+	return p.expr(psess)
 }
 
 // LiteralValue = "{" [ ElementList [ "," ] ] "}" .
-func (p *parser) complitexpr() *CompositeLit {
+func (p *parser) complitexpr(psess *PackageSession) *CompositeLit {
 	if trace {
 		defer p.trace("complitexpr")()
 	}
@@ -1038,16 +945,16 @@ func (p *parser) complitexpr() *CompositeLit {
 	x.pos = p.pos()
 
 	p.xnest++
-	x.Rbrace = p.list(_Lbrace, _Comma, _Rbrace, func() bool {
-		// value
-		e := p.bare_complitexpr()
+	x.Rbrace = p.list(psess, _Lbrace, _Comma, _Rbrace, func() bool {
+
+		e := p.bare_complitexpr(psess)
 		if p.tok == _Colon {
-			// key ':' value
+
 			l := new(KeyValueExpr)
 			l.pos = p.pos()
-			p.next()
+			p.next(psess)
 			l.Key = e
-			l.Value = p.bare_complitexpr()
+			l.Value = p.bare_complitexpr(psess)
 			e = l
 			x.NKeys++
 		}
@@ -1059,19 +966,16 @@ func (p *parser) complitexpr() *CompositeLit {
 	return x
 }
 
-// ----------------------------------------------------------------------------
-// Types
-
-func (p *parser) type_() Expr {
+func (p *parser) type_(psess *PackageSession) Expr {
 	if trace {
 		defer p.trace("type_")()
 	}
 
-	typ := p.typeOrNil()
+	typ := p.typeOrNil(psess)
 	if typ == nil {
 		typ = p.bad()
-		p.syntaxError("expecting type")
-		p.advance(_Comma, _Colon, _Semi, _Rparen, _Rbrack, _Rbrace)
+		p.syntaxError(psess, "expecting type")
+		p.advance(psess, _Comma, _Colon, _Semi, _Rparen, _Rbrack, _Rbrace)
 	}
 
 	return typ
@@ -1092,7 +996,7 @@ func newIndirect(pos Pos, typ Expr) Expr {
 // TypeName = identifier | QualifiedIdent .
 // TypeLit  = ArrayType | StructType | PointerType | FunctionType | InterfaceType |
 // 	      SliceType | MapType | Channel_Type .
-func (p *parser) typeOrNil() Expr {
+func (p *parser) typeOrNil(psess *PackageSession) Expr {
 	if trace {
 		defer p.trace("typeOrNil")()
 	}
@@ -1100,121 +1004,118 @@ func (p *parser) typeOrNil() Expr {
 	pos := p.pos()
 	switch p.tok {
 	case _Star:
-		// ptrtype
-		p.next()
-		return newIndirect(pos, p.type_())
+
+		p.next(psess)
+		return newIndirect(pos, p.type_(psess))
 
 	case _Arrow:
-		// recvchantype
-		p.next()
-		p.want(_Chan)
+
+		p.next(psess)
+		p.want(psess, _Chan)
 		t := new(ChanType)
 		t.pos = pos
 		t.Dir = RecvOnly
-		t.Elem = p.chanElem()
+		t.Elem = p.chanElem(psess)
 		return t
 
 	case _Func:
-		// fntype
-		p.next()
-		return p.funcType()
+
+		p.next(psess)
+		return p.funcType(psess)
 
 	case _Lbrack:
-		// '[' oexpr ']' ntype
-		// '[' _DotDotDot ']' ntype
-		p.next()
+
+		p.next(psess)
 		p.xnest++
-		if p.got(_Rbrack) {
-			// []T
+		if p.got(psess, _Rbrack) {
+
 			p.xnest--
 			t := new(SliceType)
 			t.pos = pos
-			t.Elem = p.type_()
+			t.Elem = p.type_(psess)
 			return t
 		}
 
-		// [n]T
 		t := new(ArrayType)
 		t.pos = pos
-		if !p.got(_DotDotDot) {
-			t.Len = p.expr()
+		if !p.got(psess, _DotDotDot) {
+			t.Len = p.expr(psess)
 		}
-		p.want(_Rbrack)
+		p.want(psess, _Rbrack)
 		p.xnest--
-		t.Elem = p.type_()
+		t.Elem = p.type_(psess)
 		return t
 
 	case _Chan:
-		// _Chan non_recvchantype
-		// _Chan _Comm ntype
-		p.next()
+
+		p.next(psess)
 		t := new(ChanType)
 		t.pos = pos
-		if p.got(_Arrow) {
+		if p.got(psess, _Arrow) {
 			t.Dir = SendOnly
 		}
-		t.Elem = p.chanElem()
+		t.Elem = p.chanElem(psess)
 		return t
 
 	case _Map:
-		// _Map '[' ntype ']' ntype
-		p.next()
-		p.want(_Lbrack)
+
+		p.next(psess)
+		p.want(psess, _Lbrack)
 		t := new(MapType)
 		t.pos = pos
-		t.Key = p.type_()
-		p.want(_Rbrack)
-		t.Value = p.type_()
+		t.Key = p.type_(psess)
+		p.want(psess, _Rbrack)
+		t.Value = p.type_(psess)
 		return t
 
 	case _Struct:
-		return p.structType()
+		return p.structType(psess)
 
 	case _Interface:
-		return p.interfaceType()
+		return p.interfaceType(psess)
 
 	case _Name:
-		return p.dotname(p.name())
+		return p.dotname(psess, p.name(psess))
 
 	case _Lparen:
-		p.next()
-		t := p.type_()
-		p.want(_Rparen)
+		p.next(psess)
+		t := p.type_(psess)
+		p.want(psess, _Rparen)
 		return t
 	}
 
 	return nil
 }
 
-func (p *parser) funcType() *FuncType {
+func (p *parser) funcType(psess *PackageSession) *FuncType {
 	if trace {
 		defer p.trace("funcType")()
 	}
 
 	typ := new(FuncType)
 	typ.pos = p.pos()
-	typ.ParamList = p.paramList()
-	typ.ResultList = p.funcResult()
+	typ.ParamList = p.paramList(psess)
+	typ.ResultList = p.funcResult(psess)
 
 	return typ
 }
 
-func (p *parser) chanElem() Expr {
+func (p *parser) chanElem(psess *PackageSession) Expr {
 	if trace {
 		defer p.trace("chanElem")()
 	}
 
-	typ := p.typeOrNil()
+	typ := p.typeOrNil(psess)
 	if typ == nil {
 		typ = p.bad()
-		p.syntaxError("missing channel element type")
-		// assume element type is simply absent - don't advance
+		p.syntaxError(psess, "missing channel element type")
+
 	}
 
 	return typ
 }
 
-func (p *parser) dotname(name *Name) Expr {
+func (p *parser) dotname(psess *PackageSession, name *Name) Expr {
 	if trace {
 		defer p.trace("dotname")()
 	}
@@ -1222,16 +1123,16 @@ func (p *parser) dotname(name *Name) Expr {
 	if p.tok == _Dot {
 		s := new(SelectorExpr)
 		s.pos = p.pos()
-		p.next()
+		p.next(psess)
 		s.X = name
-		s.Sel = p.name()
+		s.Sel = p.name(psess)
 		return s
 	}
 	return name
 }
 
 // StructType = "struct" "{" { FieldDecl ";" } "}" .
-func (p *parser) structType() *StructType {
+func (p *parser) structType(psess *PackageSession) *StructType {
 	if trace {
 		defer p.trace("structType")()
 	}
@@ -1239,9 +1140,9 @@ func (p *parser) structType() *StructType {
 	typ := new(StructType)
 	typ.pos = p.pos()
 
-	p.want(_Struct)
-	p.list(_Lbrace, _Semi, _Rbrace, func() bool {
-		p.fieldDecl(typ)
+	p.want(psess, _Struct)
+	p.list(psess, _Lbrace, _Semi, _Rbrace, func() bool {
+		p.fieldDecl(psess, typ)
 		return false
 	})
 
@@ -1249,7 +1150,7 @@ func (p *parser) structType() *StructType {
 }
 
 // InterfaceType = "interface" "{" { MethodSpec ";" } "}" .
-func (p *parser) interfaceType() *InterfaceType {
+func (p *parser) interfaceType(psess *PackageSession) *InterfaceType {
 	if trace {
 		defer p.trace("interfaceType")()
 	}
@@ -1257,9 +1158,9 @@ func (p *parser) interfaceType() *InterfaceType {
 	typ := new(InterfaceType)
 	typ.pos = p.pos()
 
-	p.want(_Interface)
-	p.list(_Lbrace, _Semi, _Rbrace, func() bool {
-		if m := p.methodDecl(); m != nil {
+	p.want(psess, _Interface)
+	p.list(psess, _Lbrace, _Semi, _Rbrace, func() bool {
+		if m := p.methodDecl(psess); m != nil {
 			typ.MethodList = append(typ.MethodList, m)
 		}
 		return false
@@ -1269,17 +1170,17 @@ func (p *parser) interfaceType() *InterfaceType {
 }
 
 // Result = Parameters | Type .
-func (p *parser) funcResult() []*Field {
+func (p *parser) funcResult(psess *PackageSession) []*Field {
 	if trace {
 		defer p.trace("funcResult")()
 	}
 
 	if p.tok == _Lparen {
-		return p.paramList()
+		return p.paramList(psess)
 	}
 
 	pos := p.pos()
-	if typ := p.typeOrNil(); typ != nil {
+	if typ := p.typeOrNil(psess); typ != nil {
 		f := new(Field)
 		f.pos = pos
 		f.Type = typ
@@ -1311,7 +1212,7 @@ func (p *parser) addField(styp *StructType, pos Pos, name *Name, typ Expr, tag *
 // FieldDecl      = (IdentifierList Type | AnonymousField) [ Tag ] .
 // AnonymousField = [ "*" ] TypeName .
 // Tag            = string_lit .
-func (p *parser) fieldDecl(styp *StructType) {
+func (p *parser) fieldDecl(psess *PackageSession, styp *StructType) {
 	if trace {
 		defer p.trace("fieldDecl")()
 	}
@@ -1319,75 +1220,74 @@ func (p *parser) fieldDecl(styp *StructType) {
 	pos := p.pos()
 	switch p.tok {
 	case _Name:
-		name := p.name()
+		name := p.name(psess)
 		if p.tok == _Dot || p.tok == _Literal || p.tok == _Semi || p.tok == _Rbrace {
-			// embed oliteral
-			typ := p.qualifiedName(name)
-			tag := p.oliteral()
+
+			typ := p.qualifiedName(psess, name)
+			tag := p.oliteral(psess)
 			p.addField(styp, pos, nil, typ, tag)
 			return
 		}
 
-		// new_name_list ntype oliteral
-		names := p.nameList(name)
-		typ := p.type_()
-		tag := p.oliteral()
+		names := p.nameList(psess, name)
+		typ := p.type_(psess)
+		tag := p.oliteral(psess)
 
 		for _, name := range names {
 			p.addField(styp, name.Pos(), name, typ, tag)
 		}
 
 	case _Lparen:
-		p.next()
+		p.next(psess)
 		if p.tok == _Star {
-			// '(' '*' embed ')' oliteral
+
 			pos := p.pos()
-			p.next()
-			typ := newIndirect(pos, p.qualifiedName(nil))
-			p.want(_Rparen)
-			tag := p.oliteral()
+			p.next(psess)
+			typ := newIndirect(pos, p.qualifiedName(psess, nil))
+			p.want(psess, _Rparen)
+			tag := p.oliteral(psess)
 			p.addField(styp, pos, nil, typ, tag)
-			p.syntaxError("cannot parenthesize embedded type")
+			p.syntaxError(psess, "cannot parenthesize embedded type")
 
 		} else {
-			// '(' embed ')' oliteral
-			typ := p.qualifiedName(nil)
-			p.want(_Rparen)
-			tag := p.oliteral()
+
+			typ := p.qualifiedName(psess, nil)
+			p.want(psess, _Rparen)
+			tag := p.oliteral(psess)
 			p.addField(styp, pos, nil, typ, tag)
-			p.syntaxError("cannot parenthesize embedded type")
+			p.syntaxError(psess, "cannot parenthesize embedded type")
 		}
 
 	case _Star:
-		p.next()
-		if p.got(_Lparen) {
-			// '*' '(' embed ')' oliteral
-			typ := newIndirect(pos, p.qualifiedName(nil))
-			p.want(_Rparen)
-			tag := p.oliteral()
+		p.next(psess)
+		if p.got(psess, _Lparen) {
+
+			typ := newIndirect(pos, p.qualifiedName(psess, nil))
+			p.want(psess, _Rparen)
+			tag := p.oliteral(psess)
 			p.addField(styp, pos, nil, typ, tag)
-			p.syntaxError("cannot parenthesize embedded type")
+			p.syntaxError(psess, "cannot parenthesize embedded type")
 
 		} else {
-			// '*' embed oliteral
-			typ := newIndirect(pos, p.qualifiedName(nil))
-			tag := p.oliteral()
+
+			typ := newIndirect(pos, p.qualifiedName(psess, nil))
+			tag := p.oliteral(psess)
 			p.addField(styp, pos, nil, typ, tag)
 		}
 
 	default:
-		p.syntaxError("expecting field name or embedded type")
-		p.advance(_Semi, _Rbrace)
+		p.syntaxError(psess, "expecting field name or embedded type")
+		p.advance(psess, _Semi, _Rbrace)
 	}
 }
 
-func (p *parser) oliteral() *BasicLit {
+func (p *parser) oliteral(psess *PackageSession) *BasicLit {
 	if p.tok == _Literal {
 		b := new(BasicLit)
 		b.pos = p.pos()
 		b.Value = p.lit
 		b.Kind = p.kind
-		p.next()
+		p.next(psess)
 		return b
 	}
 	return nil
@@ -1396,56 +1296,55 @@ func (p *parser) oliteral() *BasicLit {
 // MethodSpec        = MethodName Signature | InterfaceTypeName .
 // MethodName        = identifier .
 // InterfaceTypeName = TypeName .
-func (p *parser) methodDecl() *Field {
+func (p *parser) methodDecl(psess *PackageSession) *Field {
 	if trace {
 		defer p.trace("methodDecl")()
 	}
 
 	switch p.tok {
 	case _Name:
-		name := p.name()
+		name := p.name(psess)
 
-		// accept potential name list but complain
 		hasNameList := false
-		for p.got(_Comma) {
-			p.name()
+		for p.got(psess, _Comma) {
+			p.name(psess)
 			hasNameList = true
 		}
 		if hasNameList {
-			p.syntaxError("name list not allowed in interface type")
-			// already progressed, no need to advance
+			p.syntaxError(psess, "name list not allowed in interface type")
+
 		}
 
 		f := new(Field)
 		f.pos = name.Pos()
 		if p.tok != _Lparen {
-			// packname
-			f.Type = p.qualifiedName(name)
+
+			f.Type = p.qualifiedName(psess, name)
 			return f
 		}
 
 		f.Name = name
-		f.Type = p.funcType()
+		f.Type = p.funcType(psess)
 		return f
 
 	case _Lparen:
-		p.syntaxError("cannot parenthesize embedded type")
+		p.syntaxError(psess, "cannot parenthesize embedded type")
 		f := new(Field)
 		f.pos = p.pos()
-		p.next()
-		f.Type = p.qualifiedName(nil)
-		p.want(_Rparen)
+		p.next(psess)
+		f.Type = p.qualifiedName(psess, nil)
+		p.want(psess, _Rparen)
 		return f
 
 	default:
-		p.syntaxError("expecting method or interface name")
-		p.advance(_Semi, _Rbrace)
+		p.syntaxError(psess, "expecting method or interface name")
+		p.advance(psess, _Semi, _Rbrace)
 		return nil
 	}
 }
 
 // ParameterDecl = [ IdentifierList ] [ "..." ] Type .
-func (p *parser) paramDeclOrNil() *Field {
+func (p *parser) paramDeclOrNil(psess *PackageSession) *Field {
 	if trace {
 		defer p.trace("paramDecl")()
 	}
@@ -1455,34 +1354,33 @@ func (p *parser) paramDeclOrNil() *Field {
 
 	switch p.tok {
 	case _Name:
-		f.Name = p.name()
+		f.Name = p.name(psess)
 		switch p.tok {
 		case _Name, _Star, _Arrow, _Func, _Lbrack, _Chan, _Map, _Struct, _Interface, _Lparen:
-			// sym name_or_type
-			f.Type = p.type_()
+
+			f.Type = p.type_(psess)
 
 		case _DotDotDot:
-			// sym dotdotdot
-			f.Type = p.dotsType()
+
+			f.Type = p.dotsType(psess)
 
 		case _Dot:
-			// name_or_type
-			// from dotname
-			f.Type = p.dotname(f.Name)
+
+			f.Type = p.dotname(psess, f.Name)
 			f.Name = nil
 		}
 
 	case _Arrow, _Star, _Func, _Lbrack, _Chan, _Map, _Struct, _Interface, _Lparen:
-		// name_or_type
-		f.Type = p.type_()
+
+		f.Type = p.type_(psess)
 
 	case _DotDotDot:
-		// dotdotdot
-		f.Type = p.dotsType()
+
+		f.Type = p.dotsType(psess)
 
 	default:
-		p.syntaxError("expecting )")
-		p.advance(_Comma, _Rparen)
+		p.syntaxError(psess, "expecting )")
+		p.advance(psess, _Comma, _Rparen)
 		return nil
 	}
 
@@ -1490,7 +1388,7 @@ func (p *parser) paramDeclOrNil() *Field {
 }
 
 // ...Type
-func (p *parser) dotsType() *DotsType {
+func (p *parser) dotsType(psess *PackageSession) *DotsType {
 	if trace {
 		defer p.trace("dotsType")()
 	}
@@ -1498,11 +1396,11 @@ func (p *parser) dotsType() *DotsType {
 	t := new(DotsType)
 	t.pos = p.pos()
 
-	p.want(_DotDotDot)
-	t.Elem = p.typeOrNil()
+	p.want(psess, _DotDotDot)
+	t.Elem = p.typeOrNil(psess)
 	if t.Elem == nil {
 		t.Elem = p.bad()
-		p.syntaxError("final argument in variadic function missing type")
+		p.syntaxError(psess, "final argument in variadic function missing type")
 	}
 
 	return t
@@ -1510,7 +1408,7 @@ func (p *parser) dotsType() *DotsType {
 
 // Parameters    = "(" [ ParameterList [ "," ] ] ")" .
 // ParameterList = ParameterDecl { "," ParameterDecl } .
-func (p *parser) paramList() (list []*Field) {
+func (p *parser) paramList(psess *PackageSession) (list []*Field) {
 	if trace {
 		defer p.trace("paramList")()
 	}
@@ -1518,8 +1416,8 @@ func (p *parser) paramList() (list []*Field) {
 	pos := p.pos()
 
 	var named int // number of parameters that have an explicit name and type
-	p.list(_Lparen, _Comma, _Rparen, func() bool {
-		if par := p.paramDeclOrNil(); par != nil {
+	p.list(psess, _Lparen, _Comma, _Rparen, func() bool {
+		if par := p.paramDeclOrNil(psess); par != nil {
 			if debug && par.Name == nil && par.Type == nil {
 				panic("parameter without name or type")
 			}
@@ -1531,9 +1429,8 @@ func (p *parser) paramList() (list []*Field) {
 		return false
 	})
 
-	// distribute parameter types
 	if named == 0 {
-		// all unnamed => found names are named types
+
 		for _, par := range list {
 			if typ := par.Name; typ != nil {
 				par.Type = typ
@@ -1541,7 +1438,7 @@ func (p *parser) paramList() (list []*Field) {
 			}
 		}
 	} else if named != len(list) {
-		// some named => all must be named
+
 		ok := true
 		var typ Expr
 		for i := len(list) - 1; i >= 0; i-- {
@@ -1550,21 +1447,21 @@ func (p *parser) paramList() (list []*Field) {
 				if par.Name == nil {
 					ok = false
 					n := p.newName("_")
-					n.pos = typ.Pos() // correct position
+					n.pos = typ.Pos()
 					par.Name = n
 				}
 			} else if typ != nil {
 				par.Type = typ
 			} else {
-				// par.Type == nil && typ == nil => we only have a par.Name
+
 				ok = false
 				t := p.bad()
-				t.pos = par.Name.Pos() // correct position
+				t.pos = par.Name.Pos()
 				par.Type = t
 			}
 		}
 		if !ok {
-			p.syntaxErrorAt(pos, "mixed named and unnamed function parameters")
+			p.syntaxErrorAt(psess, pos, "mixed named and unnamed function parameters")
 		}
 	}
 
@@ -1577,58 +1474,54 @@ func (p *parser) bad() *BadExpr {
 	return b
 }
 
-// ----------------------------------------------------------------------------
-// Statements
-
 // We represent x++, x-- as assignments x += ImplicitOne, x -= ImplicitOne.
 // ImplicitOne should not be used elsewhere.
-var ImplicitOne = &BasicLit{Value: "1"}
 
 // SimpleStmt = EmptyStmt | ExpressionStmt | SendStmt | IncDecStmt | Assignment | ShortVarDecl .
-func (p *parser) simpleStmt(lhs Expr, keyword token) SimpleStmt {
+func (p *parser) simpleStmt(psess *PackageSession, lhs Expr, keyword token) SimpleStmt {
 	if trace {
 		defer p.trace("simpleStmt")()
 	}
 
 	if keyword == _For && p.tok == _Range {
-		// _Range expr
+
 		if debug && lhs != nil {
 			panic("invalid call of simpleStmt")
 		}
-		return p.newRangeClause(nil, false)
+		return p.newRangeClause(psess, nil, false)
 	}
 
 	if lhs == nil {
-		lhs = p.exprList()
+		lhs = p.exprList(psess)
 	}
 
 	if _, ok := lhs.(*ListExpr); !ok && p.tok != _Assign && p.tok != _Define {
-		// expr
+
 		pos := p.pos()
 		switch p.tok {
 		case _AssignOp:
-			// lhs op= rhs
+
 			op := p.op
-			p.next()
-			return p.newAssignStmt(pos, op, lhs, p.expr())
+			p.next(psess)
+			return p.newAssignStmt(pos, op, lhs, p.expr(psess))
 
 		case _IncOp:
-			// lhs++ or lhs--
+
 			op := p.op
-			p.next()
-			return p.newAssignStmt(pos, op, lhs, ImplicitOne)
+			p.next(psess)
+			return p.newAssignStmt(pos, op, lhs, psess.ImplicitOne)
 
 		case _Arrow:
-			// lhs <- rhs
+
 			s := new(SendStmt)
 			s.pos = pos
-			p.next()
+			p.next(psess)
 			s.Chan = lhs
-			s.Value = p.expr()
+			s.Value = p.expr(psess)
 			return s
 
 		default:
-			// expr
+
 			s := new(ExprStmt)
 			s.pos = lhs.Pos()
 			s.X = lhs
@@ -1636,7 +1529,6 @@ func (p *parser) simpleStmt(lhs Expr, keyword token) SimpleStmt {
 		}
 	}
 
-	// expr_list
 	switch p.tok {
 	case _Assign, _Define:
 		pos := p.pos()
@@ -1644,19 +1536,18 @@ func (p *parser) simpleStmt(lhs Expr, keyword token) SimpleStmt {
 		if p.tok == _Define {
 			op = Def
 		}
-		p.next()
+		p.next(psess)
 
 		if keyword == _For && p.tok == _Range {
-			// expr_list op= _Range expr
-			return p.newRangeClause(lhs, op == Def)
+
+			return p.newRangeClause(psess, lhs, op == Def)
 		}
 
-		// expr_list op= expr_list
-		rhs := p.exprList()
+		rhs := p.exprList(psess)
 
 		if x, ok := rhs.(*TypeSwitchGuard); ok && keyword == _Switch && op == Def {
 			if lhs, ok := lhs.(*Name); ok {
-				// switch … lhs := rhs.(type)
+
 				x.Lhs = lhs
 				s := new(ExprStmt)
 				s.pos = x.Pos()
@@ -1668,9 +1559,9 @@ func (p *parser) simpleStmt(lhs Expr, keyword token) SimpleStmt {
 		return p.newAssignStmt(pos, op, lhs, rhs)
 
 	default:
-		p.syntaxError("expecting := or = or comma")
-		p.advance(_Semi, _Rbrace)
-		// make the best of what we have
+		p.syntaxError(psess, "expecting := or = or comma")
+		p.advance(psess, _Semi, _Rbrace)
+
 		if x, ok := lhs.(*ListExpr); ok {
 			lhs = x.ElemList[0]
 		}
@@ -1681,13 +1572,13 @@ func (p *parser) simpleStmt(lhs Expr, keyword token) SimpleStmt {
 	}
 }
 
-func (p *parser) newRangeClause(lhs Expr, def bool) *RangeClause {
+func (p *parser) newRangeClause(psess *PackageSession, lhs Expr, def bool) *RangeClause {
 	r := new(RangeClause)
 	r.pos = p.pos()
-	p.next() // consume _Range
+	p.next(psess)
 	r.Lhs = lhs
 	r.Def = def
-	r.X = p.expr()
+	r.X = p.expr(psess)
 	return r
 }
 
@@ -1700,7 +1591,7 @@ func (p *parser) newAssignStmt(pos Pos, op Operator, lhs, rhs Expr) *AssignStmt 
 	return a
 }
 
-func (p *parser) labeledStmtOrNil(label *Name) Stmt {
+func (p *parser) labeledStmtOrNil(psess *PackageSession, label *Name) Stmt {
 	if trace {
 		defer p.trace("labeledStmt")()
 	}
@@ -1709,31 +1600,28 @@ func (p *parser) labeledStmtOrNil(label *Name) Stmt {
 	s.pos = p.pos()
 	s.Label = label
 
-	p.want(_Colon)
+	p.want(psess, _Colon)
 
 	if p.tok == _Rbrace {
-		// We expect a statement (incl. an empty statement), which must be
-		// terminated by a semicolon. Because semicolons may be omitted before
-		// an _Rbrace, seeing an _Rbrace implies an empty statement.
+
 		e := new(EmptyStmt)
 		e.pos = p.pos()
 		s.Stmt = e
 		return s
 	}
 
-	s.Stmt = p.stmtOrNil()
+	s.Stmt = p.stmtOrNil(psess)
 	if s.Stmt != nil {
 		return s
 	}
 
-	// report error at line of ':' token
-	p.syntaxErrorAt(s.pos, "missing statement after label")
-	// we are already at the end of the labeled statement - no need to advance
-	return nil // avoids follow-on errors (see e.g., fixedbugs/bug274.go)
+	p.syntaxErrorAt(psess, s.pos, "missing statement after label")
+
+	return nil
 }
 
 // context must be a non-empty string unless we know that p.tok == _Lbrace.
-func (p *parser) blockStmt(context string) *BlockStmt {
+func (p *parser) blockStmt(psess *PackageSession, context string) *BlockStmt {
 	if trace {
 		defer p.trace("blockStmt")()
 	}
@@ -1741,24 +1629,23 @@ func (p *parser) blockStmt(context string) *BlockStmt {
 	s := new(BlockStmt)
 	s.pos = p.pos()
 
-	// people coming from C may forget that braces are mandatory in Go
-	if !p.got(_Lbrace) {
-		p.syntaxError("expecting { after " + context)
-		p.advance(_Name, _Rbrace)
-		s.Rbrace = p.pos() // in case we found "}"
-		if p.got(_Rbrace) {
+	if !p.got(psess, _Lbrace) {
+		p.syntaxError(psess, "expecting { after "+context)
+		p.advance(psess, _Name, _Rbrace)
+		s.Rbrace = p.pos()
+		if p.got(psess, _Rbrace) {
 			return s
 		}
 	}
 
-	s.List = p.stmtList()
+	s.List = p.stmtList(psess)
 	s.Rbrace = p.pos()
-	p.want(_Rbrace)
+	p.want(psess, _Rbrace)
 
 	return s
 }
 
-func (p *parser) declStmt(f func(*Group) Decl) *DeclStmt {
+func (p *parser) declStmt(psess *PackageSession, f func(*Group) Decl) *DeclStmt {
 	if trace {
 		defer p.trace("declStmt")()
 	}
@@ -1766,13 +1653,13 @@ func (p *parser) declStmt(f func(*Group) Decl) *DeclStmt {
 	s := new(DeclStmt)
 	s.pos = p.pos()
 
-	p.next() // _Const, _Type, or _Var
-	s.DeclList = p.appendGroup(nil, f)
+	p.next(psess)
+	s.DeclList = p.appendGroup(psess, nil, f)
 
 	return s
 }
 
-func (p *parser) forStmt() Stmt {
+func (p *parser) forStmt(psess *PackageSession) Stmt {
 	if trace {
 		defer p.trace("forStmt")()
 	}
@@ -1780,33 +1667,32 @@ func (p *parser) forStmt() Stmt {
 	s := new(ForStmt)
 	s.pos = p.pos()
 
-	s.Init, s.Cond, s.Post = p.header(_For)
-	s.Body = p.blockStmt("for clause")
+	s.Init, s.Cond, s.Post = p.header(psess, _For)
+	s.Body = p.blockStmt(psess, "for clause")
 
 	return s
 }
 
-func (p *parser) header(keyword token) (init SimpleStmt, cond Expr, post SimpleStmt) {
-	p.want(keyword)
+func (p *parser) header(psess *PackageSession, keyword token) (init SimpleStmt, cond Expr, post SimpleStmt) {
+	p.want(psess, keyword)
 
 	if p.tok == _Lbrace {
 		if keyword == _If {
-			p.syntaxError("missing condition in if statement")
+			p.syntaxError(psess, "missing condition in if statement")
 		}
 		return
 	}
-	// p.tok != _Lbrace
 
 	outer := p.xnest
 	p.xnest = -1
 
 	if p.tok != _Semi {
-		// accept potential varDecl but complain
-		if p.got(_Var) {
-			p.syntaxError(fmt.Sprintf("var declaration not allowed in %s initializer", keyword.String()))
+
+		if p.got(psess, _Var) {
+			p.syntaxError(psess, fmt.Sprintf("var declaration not allowed in %s initializer", keyword.String(psess)))
 		}
-		init = p.simpleStmt(nil, keyword)
-		// If we have a range clause, we are done (can only happen for keyword == _For).
+		init = p.simpleStmt(psess, nil, keyword)
+
 		if _, ok := init.(*RangeClause); ok {
 			p.xnest = outer
 			return
@@ -1822,28 +1708,28 @@ func (p *parser) header(keyword token) (init SimpleStmt, cond Expr, post SimpleS
 		if p.tok == _Semi {
 			semi.pos = p.pos()
 			semi.lit = p.lit
-			p.next()
+			p.next(psess)
 		} else {
-			// asking for a '{' rather than a ';' here leads to a better error message
-			p.want(_Lbrace)
+
+			p.want(psess, _Lbrace)
 		}
 		if keyword == _For {
 			if p.tok != _Semi {
 				if p.tok == _Lbrace {
-					p.syntaxError("expecting for loop condition")
+					p.syntaxError(psess, "expecting for loop condition")
 					goto done
 				}
-				condStmt = p.simpleStmt(nil, 0 /* range not permitted */)
+				condStmt = p.simpleStmt(psess, nil, 0)
 			}
-			p.want(_Semi)
+			p.want(psess, _Semi)
 			if p.tok != _Lbrace {
-				post = p.simpleStmt(nil, 0 /* range not permitted */)
+				post = p.simpleStmt(psess, nil, 0)
 				if a, _ := post.(*AssignStmt); a != nil && a.Op == Def {
-					p.syntaxErrorAt(a.Pos(), "cannot declare in post statement of for loop")
+					p.syntaxErrorAt(psess, a.Pos(), "cannot declare in post statement of for loop")
 				}
 			}
 		} else if p.tok != _Lbrace {
-			condStmt = p.simpleStmt(nil, keyword)
+			condStmt = p.simpleStmt(psess, nil, keyword)
 		}
 	} else {
 		condStmt = init
@@ -1851,35 +1737,32 @@ func (p *parser) header(keyword token) (init SimpleStmt, cond Expr, post SimpleS
 	}
 
 done:
-	// unpack condStmt
+
 	switch s := condStmt.(type) {
 	case nil:
 		if keyword == _If && semi.pos.IsKnown() {
 			if semi.lit != "semicolon" {
-				p.syntaxErrorAt(semi.pos, fmt.Sprintf("unexpected %s, expecting { after if clause", semi.lit))
+				p.syntaxErrorAt(psess, semi.pos, fmt.Sprintf("unexpected %s, expecting { after if clause", semi.lit))
 			} else {
-				p.syntaxErrorAt(semi.pos, "missing condition in if statement")
+				p.syntaxErrorAt(psess, semi.pos, "missing condition in if statement")
 			}
 		}
 	case *ExprStmt:
 		cond = s.X
 	default:
-		// A common syntax error is to write '=' instead of '==',
-		// which turns an expression into an assignment. Provide
-		// a more explicit error message in that case to prevent
-		// further confusion.
-		str := String(s)
+
+		str := psess.String(s)
 		if as, ok := s.(*AssignStmt); ok && as.Op == 0 {
 			str = "assignment " + str
 		}
-		p.syntaxError(fmt.Sprintf("%s used as value", str))
+		p.syntaxError(psess, fmt.Sprintf("%s used as value", str))
 	}
 
 	p.xnest = outer
 	return
 }
 
-func (p *parser) ifStmt() *IfStmt {
+func (p *parser) ifStmt(psess *PackageSession) *IfStmt {
 	if trace {
 		defer p.trace("ifStmt")()
 	}
@@ -1887,25 +1770,25 @@ func (p *parser) ifStmt() *IfStmt {
 	s := new(IfStmt)
 	s.pos = p.pos()
 
-	s.Init, s.Cond, _ = p.header(_If)
-	s.Then = p.blockStmt("if clause")
+	s.Init, s.Cond, _ = p.header(psess, _If)
+	s.Then = p.blockStmt(psess, "if clause")
 
-	if p.got(_Else) {
+	if p.got(psess, _Else) {
 		switch p.tok {
 		case _If:
-			s.Else = p.ifStmt()
+			s.Else = p.ifStmt(psess)
 		case _Lbrace:
-			s.Else = p.blockStmt("")
+			s.Else = p.blockStmt(psess, "")
 		default:
-			p.syntaxError("else must be followed by if or statement block")
-			p.advance(_Name, _Rbrace)
+			p.syntaxError(psess, "else must be followed by if or statement block")
+			p.advance(psess, _Name, _Rbrace)
 		}
 	}
 
 	return s
 }
 
-func (p *parser) switchStmt() *SwitchStmt {
+func (p *parser) switchStmt(psess *PackageSession) *SwitchStmt {
 	if trace {
 		defer p.trace("switchStmt")()
 	}
@@ -1913,22 +1796,22 @@ func (p *parser) switchStmt() *SwitchStmt {
 	s := new(SwitchStmt)
 	s.pos = p.pos()
 
-	s.Init, s.Tag, _ = p.header(_Switch)
+	s.Init, s.Tag, _ = p.header(psess, _Switch)
 
-	if !p.got(_Lbrace) {
-		p.syntaxError("missing { after switch clause")
-		p.advance(_Case, _Default, _Rbrace)
+	if !p.got(psess, _Lbrace) {
+		p.syntaxError(psess, "missing { after switch clause")
+		p.advance(psess, _Case, _Default, _Rbrace)
 	}
 	for p.tok != _EOF && p.tok != _Rbrace {
-		s.Body = append(s.Body, p.caseClause())
+		s.Body = append(s.Body, p.caseClause(psess))
 	}
 	s.Rbrace = p.pos()
-	p.want(_Rbrace)
+	p.want(psess, _Rbrace)
 
 	return s
 }
 
-func (p *parser) selectStmt() *SelectStmt {
+func (p *parser) selectStmt(psess *PackageSession) *SelectStmt {
 	if trace {
 		defer p.trace("selectStmt")()
 	}
@@ -1936,21 +1819,21 @@ func (p *parser) selectStmt() *SelectStmt {
 	s := new(SelectStmt)
 	s.pos = p.pos()
 
-	p.want(_Select)
-	if !p.got(_Lbrace) {
-		p.syntaxError("missing { after select clause")
-		p.advance(_Case, _Default, _Rbrace)
+	p.want(psess, _Select)
+	if !p.got(psess, _Lbrace) {
+		p.syntaxError(psess, "missing { after select clause")
+		p.advance(psess, _Case, _Default, _Rbrace)
 	}
 	for p.tok != _EOF && p.tok != _Rbrace {
-		s.Body = append(s.Body, p.commClause())
+		s.Body = append(s.Body, p.commClause(psess))
 	}
 	s.Rbrace = p.pos()
-	p.want(_Rbrace)
+	p.want(psess, _Rbrace)
 
 	return s
 }
 
-func (p *parser) caseClause() *CaseClause {
+func (p *parser) caseClause(psess *PackageSession) *CaseClause {
 	if trace {
 		defer p.trace("caseClause")()
 	}
@@ -1960,25 +1843,25 @@ func (p *parser) caseClause() *CaseClause {
 
 	switch p.tok {
 	case _Case:
-		p.next()
-		c.Cases = p.exprList()
+		p.next(psess)
+		c.Cases = p.exprList(psess)
 
 	case _Default:
-		p.next()
+		p.next(psess)
 
 	default:
-		p.syntaxError("expecting case or default or }")
-		p.advance(_Colon, _Case, _Default, _Rbrace)
+		p.syntaxError(psess, "expecting case or default or }")
+		p.advance(psess, _Colon, _Case, _Default, _Rbrace)
 	}
 
 	c.Colon = p.pos()
-	p.want(_Colon)
-	c.Body = p.stmtList()
+	p.want(psess, _Colon)
+	c.Body = p.stmtList(psess)
 
 	return c
 }
 
-func (p *parser) commClause() *CommClause {
+func (p *parser) commClause(psess *PackageSession) *CommClause {
 	if trace {
 		defer p.trace("commClause")()
 	}
@@ -1988,32 +1871,20 @@ func (p *parser) commClause() *CommClause {
 
 	switch p.tok {
 	case _Case:
-		p.next()
-		c.Comm = p.simpleStmt(nil, 0)
-
-		// The syntax restricts the possible simple statements here to:
-		//
-		//     lhs <- x (send statement)
-		//     <-x
-		//     lhs = <-x
-		//     lhs := <-x
-		//
-		// All these (and more) are recognized by simpleStmt and invalid
-		// syntax trees are flagged later, during type checking.
-		// TODO(gri) eventually may want to restrict valid syntax trees
-		// here.
+		p.next(psess)
+		c.Comm = p.simpleStmt(psess, nil, 0)
 
 	case _Default:
-		p.next()
+		p.next(psess)
 
 	default:
-		p.syntaxError("expecting case or default or }")
-		p.advance(_Colon, _Case, _Default, _Rbrace)
+		p.syntaxError(psess, "expecting case or default or }")
+		p.advance(psess, _Colon, _Case, _Default, _Rbrace)
 	}
 
 	c.Colon = p.pos()
-	p.want(_Colon)
-	c.Body = p.stmtList()
+	p.want(psess, _Colon)
+	c.Body = p.stmtList(psess)
 
 	return c
 }
@@ -2023,61 +1894,59 @@ func (p *parser) commClause() *CommClause {
 // 	GoStmt | ReturnStmt | BreakStmt | ContinueStmt | GotoStmt |
 // 	FallthroughStmt | Block | IfStmt | SwitchStmt | SelectStmt | ForStmt |
 // 	DeferStmt .
-func (p *parser) stmtOrNil() Stmt {
+func (p *parser) stmtOrNil(psess *PackageSession) Stmt {
 	if trace {
-		defer p.trace("stmt " + p.tok.String())()
+		defer p.trace("stmt " + p.tok.String(psess))()
 	}
 
-	// Most statements (assignments) start with an identifier;
-	// look for it first before doing anything more expensive.
 	if p.tok == _Name {
-		lhs := p.exprList()
+		lhs := p.exprList(psess)
 		if label, ok := lhs.(*Name); ok && p.tok == _Colon {
-			return p.labeledStmtOrNil(label)
+			return p.labeledStmtOrNil(psess, label)
 		}
-		return p.simpleStmt(lhs, 0)
+		return p.simpleStmt(psess, lhs, 0)
 	}
 
 	switch p.tok {
 	case _Lbrace:
-		return p.blockStmt("")
+		return p.blockStmt(psess, "")
 
 	case _Var:
-		return p.declStmt(p.varDecl)
+		return p.declStmt(psess, p.varDecl)
 
 	case _Const:
-		return p.declStmt(p.constDecl)
+		return p.declStmt(psess, p.constDecl)
 
 	case _Type:
-		return p.declStmt(p.typeDecl)
+		return p.declStmt(psess, p.typeDecl)
 
 	case _Operator, _Star:
 		switch p.op {
 		case Add, Sub, Mul, And, Xor, Not:
-			return p.simpleStmt(nil, 0) // unary operators
+			return p.simpleStmt(psess, nil, 0)
 		}
 
-	case _Literal, _Func, _Lparen, // operands
-		_Lbrack, _Struct, _Map, _Chan, _Interface, // composite types
-		_Arrow: // receive operator
-		return p.simpleStmt(nil, 0)
+	case _Literal, _Func, _Lparen,
+		_Lbrack, _Struct, _Map, _Chan, _Interface,
+		_Arrow:
+		return p.simpleStmt(psess, nil, 0)
 
 	case _For:
-		return p.forStmt()
+		return p.forStmt(psess)
 
 	case _Switch:
-		return p.switchStmt()
+		return p.switchStmt(psess)
 
 	case _Select:
-		return p.selectStmt()
+		return p.selectStmt(psess)
 
 	case _If:
-		return p.ifStmt()
+		return p.ifStmt(psess)
 
 	case _Fallthrough:
 		s := new(BranchStmt)
 		s.pos = p.pos()
-		p.next()
+		p.next(psess)
 		s.Tok = _Fallthrough
 		return s
 
@@ -2085,29 +1954,29 @@ func (p *parser) stmtOrNil() Stmt {
 		s := new(BranchStmt)
 		s.pos = p.pos()
 		s.Tok = p.tok
-		p.next()
+		p.next(psess)
 		if p.tok == _Name {
-			s.Label = p.name()
+			s.Label = p.name(psess)
 		}
 		return s
 
 	case _Go, _Defer:
-		return p.callStmt()
+		return p.callStmt(psess)
 
 	case _Goto:
 		s := new(BranchStmt)
 		s.pos = p.pos()
 		s.Tok = _Goto
-		p.next()
-		s.Label = p.name()
+		p.next(psess)
+		s.Label = p.name(psess)
 		return s
 
 	case _Return:
 		s := new(ReturnStmt)
 		s.pos = p.pos()
-		p.next()
+		p.next(psess)
 		if p.tok != _Semi && p.tok != _Rbrace {
-			s.Results = p.exprList()
+			s.Results = p.exprList(psess)
 		}
 		return s
 
@@ -2121,46 +1990,43 @@ func (p *parser) stmtOrNil() Stmt {
 }
 
 // StatementList = { Statement ";" } .
-func (p *parser) stmtList() (l []Stmt) {
+func (p *parser) stmtList(psess *PackageSession) (l []Stmt) {
 	if trace {
 		defer p.trace("stmtList")()
 	}
 
 	for p.tok != _EOF && p.tok != _Rbrace && p.tok != _Case && p.tok != _Default {
-		s := p.stmtOrNil()
+		s := p.stmtOrNil(psess)
 		if s == nil {
 			break
 		}
 		l = append(l, s)
-		// ";" is optional before "}"
-		if !p.got(_Semi) && p.tok != _Rbrace {
-			p.syntaxError("at end of statement")
-			p.advance(_Semi, _Rbrace, _Case, _Default)
-			p.got(_Semi) // avoid spurious empty statement
+
+		if !p.got(psess, _Semi) && p.tok != _Rbrace {
+			p.syntaxError(psess, "at end of statement")
+			p.advance(psess, _Semi, _Rbrace, _Case, _Default)
+			p.got(psess, _Semi)
 		}
 	}
 	return
 }
 
 // Arguments = "(" [ ( ExpressionList | Type [ "," ExpressionList ] ) [ "..." ] [ "," ] ] ")" .
-func (p *parser) argList() (list []Expr, hasDots bool) {
+func (p *parser) argList(psess *PackageSession) (list []Expr, hasDots bool) {
 	if trace {
 		defer p.trace("argList")()
 	}
 
 	p.xnest++
-	p.list(_Lparen, _Comma, _Rparen, func() bool {
-		list = append(list, p.expr())
-		hasDots = p.got(_DotDotDot)
+	p.list(psess, _Lparen, _Comma, _Rparen, func() bool {
+		list = append(list, p.expr(psess))
+		hasDots = p.got(psess, _DotDotDot)
 		return hasDots
 	})
 	p.xnest--
 
 	return
 }
-
-// ----------------------------------------------------------------------------
-// Common productions
 
 func (p *parser) newName(value string) *Name {
 	n := new(Name)
@@ -2169,24 +2035,23 @@ func (p *parser) newName(value string) *Name {
 	return n
 }
 
-func (p *parser) name() *Name {
-	// no tracing to avoid overly verbose output
+func (p *parser) name(psess *PackageSession) *Name {
 
 	if p.tok == _Name {
 		n := p.newName(p.lit)
-		p.next()
+		p.next(psess)
 		return n
 	}
 
 	n := p.newName("_")
-	p.syntaxError("expecting name")
-	p.advance()
+	p.syntaxError(psess, "expecting name")
+	p.advance(psess)
 	return n
 }
 
 // IdentifierList = identifier { "," identifier } .
 // The first name must be provided.
-func (p *parser) nameList(first *Name) []*Name {
+func (p *parser) nameList(psess *PackageSession, first *Name) []*Name {
 	if trace {
 		defer p.trace("nameList")()
 	}
@@ -2196,44 +2061,44 @@ func (p *parser) nameList(first *Name) []*Name {
 	}
 
 	l := []*Name{first}
-	for p.got(_Comma) {
-		l = append(l, p.name())
+	for p.got(psess, _Comma) {
+		l = append(l, p.name(psess))
 	}
 
 	return l
 }
 
 // The first name may be provided, or nil.
-func (p *parser) qualifiedName(name *Name) Expr {
+func (p *parser) qualifiedName(psess *PackageSession, name *Name) Expr {
 	if trace {
 		defer p.trace("qualifiedName")()
 	}
 
 	switch {
 	case name != nil:
-		// name is provided
+
 	case p.tok == _Name:
-		name = p.name()
+		name = p.name(psess)
 	default:
 		name = p.newName("_")
-		p.syntaxError("expecting name")
-		p.advance(_Dot, _Semi, _Rbrace)
+		p.syntaxError(psess, "expecting name")
+		p.advance(psess, _Dot, _Semi, _Rbrace)
 	}
 
-	return p.dotname(name)
+	return p.dotname(psess, name)
 }
 
 // ExpressionList = Expression { "," Expression } .
-func (p *parser) exprList() Expr {
+func (p *parser) exprList(psess *PackageSession) Expr {
 	if trace {
 		defer p.trace("exprList")()
 	}
 
-	x := p.expr()
-	if p.got(_Comma) {
-		list := []Expr{x, p.expr()}
-		for p.got(_Comma) {
-			list = append(list, p.expr())
+	x := p.expr(psess)
+	if p.got(psess, _Comma) {
+		list := []Expr{x, p.expr(psess)}
+		for p.got(psess, _Comma) {
+			list = append(list, p.expr(psess))
 		}
 		t := new(ListExpr)
 		t.pos = x.Pos()

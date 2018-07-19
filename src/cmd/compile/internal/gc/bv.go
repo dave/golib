@@ -1,7 +1,3 @@
-// Copyright 2013 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
 package gc
 
 const (
@@ -27,11 +23,12 @@ type bulkBvec struct {
 	nword int32
 }
 
-func bvbulkalloc(nbit int32, count int32) bulkBvec {
+func (psess *PackageSession) bvbulkalloc(nbit int32, count int32) bulkBvec {
 	nword := (nbit + wordBits - 1) / wordBits
 	size := int64(nword) * int64(count)
 	if int64(int32(size*4)) != size*4 {
-		Fatalf("bvbulkalloc too big: nbit=%d count=%d nword=%d size=%d", nbit, count, nword, size)
+		psess.
+			Fatalf("bvbulkalloc too big: nbit=%d count=%d nword=%d size=%d", nbit, count, nword, size)
 	}
 	return bulkBvec{
 		words: make([]uint32, size),
@@ -46,9 +43,10 @@ func (b *bulkBvec) next() bvec {
 	return out
 }
 
-func (bv1 bvec) Eq(bv2 bvec) bool {
+func (bv1 bvec) Eq(psess *PackageSession, bv2 bvec) bool {
 	if bv1.n != bv2.n {
-		Fatalf("bvequal: lengths %d and %d are not equal", bv1.n, bv2.n)
+		psess.
+			Fatalf("bvequal: lengths %d and %d are not equal", bv1.n, bv2.n)
 	}
 	for i, x := range bv1.b {
 		if x != bv2.b[i] {
@@ -62,25 +60,28 @@ func (dst bvec) Copy(src bvec) {
 	copy(dst.b, src.b)
 }
 
-func (bv bvec) Get(i int32) bool {
+func (bv bvec) Get(psess *PackageSession, i int32) bool {
 	if i < 0 || i >= bv.n {
-		Fatalf("bvget: index %d is out of bounds with length %d\n", i, bv.n)
+		psess.
+			Fatalf("bvget: index %d is out of bounds with length %d\n", i, bv.n)
 	}
 	mask := uint32(1 << uint(i%wordBits))
 	return bv.b[i>>wordShift]&mask != 0
 }
 
-func (bv bvec) Set(i int32) {
+func (bv bvec) Set(psess *PackageSession, i int32) {
 	if i < 0 || i >= bv.n {
-		Fatalf("bvset: index %d is out of bounds with length %d\n", i, bv.n)
+		psess.
+			Fatalf("bvset: index %d is out of bounds with length %d\n", i, bv.n)
 	}
 	mask := uint32(1 << uint(i%wordBits))
 	bv.b[i/wordBits] |= mask
 }
 
-func (bv bvec) Unset(i int32) {
+func (bv bvec) Unset(psess *PackageSession, i int32) {
 	if i < 0 || i >= bv.n {
-		Fatalf("bvunset: index %d is out of bounds with length %d\n", i, bv.n)
+		psess.
+			Fatalf("bvunset: index %d is out of bounds with length %d\n", i, bv.n)
 	}
 	mask := uint32(1 << uint(i%wordBits))
 	bv.b[i/wordBits] &^= mask
@@ -93,7 +94,6 @@ func (bv bvec) Next(i int32) int32 {
 		return -1
 	}
 
-	// Jump i ahead to next word with bits.
 	if bv.b[i>>wordShift]>>uint(i&wordMask) == 0 {
 		i &^= wordMask
 		i += wordBits
@@ -106,7 +106,6 @@ func (bv bvec) Next(i int32) int32 {
 		return -1
 	}
 
-	// Find 1 bit.
 	w := bv.b[i>>wordShift] >> uint(i&wordMask)
 
 	for w&1 == 0 {
@@ -152,7 +151,7 @@ func (dst bvec) Or(src1, src2 bvec) {
 	if len(src1.b) == 0 {
 		return
 	}
-	_, _ = dst.b[len(src1.b)-1], src2.b[len(src1.b)-1] // hoist bounds checks out of the loop
+	_, _ = dst.b[len(src1.b)-1], src2.b[len(src1.b)-1]
 
 	for i, x := range src1.b {
 		dst.b[i] = x | src2.b[i]
@@ -164,7 +163,7 @@ func (dst bvec) And(src1, src2 bvec) {
 	if len(src1.b) == 0 {
 		return
 	}
-	_, _ = dst.b[len(src1.b)-1], src2.b[len(src1.b)-1] // hoist bounds checks out of the loop
+	_, _ = dst.b[len(src1.b)-1], src2.b[len(src1.b)-1]
 
 	for i, x := range src1.b {
 		dst.b[i] = x & src2.b[i]
@@ -176,19 +175,19 @@ func (dst bvec) AndNot(src1, src2 bvec) {
 	if len(src1.b) == 0 {
 		return
 	}
-	_, _ = dst.b[len(src1.b)-1], src2.b[len(src1.b)-1] // hoist bounds checks out of the loop
+	_, _ = dst.b[len(src1.b)-1], src2.b[len(src1.b)-1]
 
 	for i, x := range src1.b {
 		dst.b[i] = x &^ src2.b[i]
 	}
 }
 
-func (bv bvec) String() string {
+func (bv bvec) String(psess *PackageSession,) string {
 	s := make([]byte, 2+bv.n)
 	copy(s, "#*")
 	for i := int32(0); i < bv.n; i++ {
 		ch := byte('0')
-		if bv.Get(i) {
+		if bv.Get(psess, i) {
 			ch = '1'
 		}
 		s[2+i] = ch
@@ -228,9 +227,7 @@ type bvecSet struct {
 }
 
 func newBvecSet(size int) bvecSet {
-	// bvecSet is a linear probing hash table.
-	// The hash table has 4n entries to keep the linear
-	// scan short.
+
 	index := make([]int, size*4)
 	for i := range index {
 		index[i] = -1
@@ -239,7 +236,7 @@ func newBvecSet(size int) bvecSet {
 }
 
 func (m *bvecSet) grow() {
-	// Allocate new index.
+
 	n := len(m.index) * 2
 	if n == 0 {
 		n = 32
@@ -249,7 +246,6 @@ func (m *bvecSet) grow() {
 		newIndex[i] = -1
 	}
 
-	// Rehash into newIndex.
 	for i, bv := range m.uniq {
 		h := hashbitmap(H0, bv) % uint32(len(newIndex))
 		for {
@@ -269,7 +265,7 @@ func (m *bvecSet) grow() {
 
 // add adds bv to the set and returns its index in m.extractUniqe.
 // The caller must not modify bv after this.
-func (m *bvecSet) add(bv bvec) int {
+func (m *bvecSet) add(psess *PackageSession, bv bvec) int {
 	if len(m.uniq)*4 >= len(m.index) {
 		m.grow()
 	}
@@ -279,14 +275,14 @@ func (m *bvecSet) add(bv bvec) int {
 	for {
 		j := index[h]
 		if j < 0 {
-			// New bvec.
+
 			index[h] = len(m.uniq)
 			m.uniq = append(m.uniq, bv)
 			return len(m.uniq) - 1
 		}
 		jlive := m.uniq[j]
-		if bv.Eq(jlive) {
-			// Existing bvec.
+		if bv.Eq(psess, jlive) {
+
 			return j
 		}
 

@@ -1,7 +1,3 @@
-// Copyright 2014 The Go Authors.  All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
 package armasm
 
 import (
@@ -83,7 +79,6 @@ Search:
 		}
 		op := f.op + Op(delta)
 
-		// Special case: BKPT encodes with condition but cannot have one.
 		if op&^15 == BKPT_EQ && op != BKPT {
 			continue Search
 		}
@@ -94,7 +89,7 @@ Search:
 				break
 			}
 			arg := decodeArg(aop, x)
-			if arg == nil { // cannot decode argument
+			if arg == nil {
 				continue Search
 			}
 			args[j] = arg
@@ -231,7 +226,7 @@ func decodeArg(aop instArg, x uint32) Arg {
 	case arg_R_rotate:
 		Rm := Reg(x & (1<<4 - 1))
 		typ, count := decodeShift(x)
-		// ROR #0 here means ROR #0, but decodeShift rewrites to RRX #1.
+
 		if typ == RotateRightExt {
 			return Reg(Rm)
 		}
@@ -320,11 +315,11 @@ func decodeArg(aop instArg, x uint32) Arg {
 		v := x & (1<<8 - 1)
 		rot := (x >> 8) & (1<<4 - 1) * 2
 		if rot > 0 && v&3 == 0 {
-			// could rotate less
+
 			return ImmAlt{uint8(v), uint8(rot)}
 		}
 		if rot >= 24 && ((v<<(32-rot))&0xFF)>>(32-rot) == v {
-			// could wrap around to rot==0.
+
 			return ImmAlt{uint8(v), uint8(rot)}
 		}
 		return Imm(v>>rot | v<<(32-rot))
@@ -414,23 +409,19 @@ func decodeArg(aop instArg, x uint32) Arg {
 		return Mem{Base: Rn, Mode: AddrOffset}
 
 	case arg_mem_R_pm_R_postindex:
-		// Treat [<Rn>],+/-<Rm> like [<Rn>,+/-<Rm>{,<shift>}]{!}
-		// by forcing shift bits to <<0 and P=0, W=0 (postindex=true).
+
 		return decodeArg(arg_mem_R_pm_R_shift_imm_W, x&^((1<<7-1)<<5|1<<24|1<<21))
 
 	case arg_mem_R_pm_R_W:
-		// Treat [<Rn>,+/-<Rm>]{!} like [<Rn>,+/-<Rm>{,<shift>}]{!}
-		// by forcing shift bits to <<0.
+
 		return decodeArg(arg_mem_R_pm_R_shift_imm_W, x&^((1<<7-1)<<5))
 
 	case arg_mem_R_pm_R_shift_imm_offset:
-		// Treat [<Rn>],+/-<Rm>{,<shift>} like [<Rn>,+/-<Rm>{,<shift>}]{!}
-		// by forcing P=1, W=0 (index=false, wback=false).
+
 		return decodeArg(arg_mem_R_pm_R_shift_imm_W, x&^(1<<21)|1<<24)
 
 	case arg_mem_R_pm_R_shift_imm_postindex:
-		// Treat [<Rn>],+/-<Rm>{,<shift>} like [<Rn>,+/-<Rm>{,<shift>}]{!}
-		// by forcing P=0, W=0 (postindex=true).
+
 		return decodeArg(arg_mem_R_pm_R_shift_imm_W, x&^(1<<24|1<<21))
 
 	case arg_mem_R_pm_R_shift_imm_W:
@@ -451,13 +442,11 @@ func decodeArg(aop instArg, x uint32) Arg {
 		return Mem{Base: Rn, Mode: mode, Sign: sign, Index: Rm, Shift: typ, Count: count}
 
 	case arg_mem_R_pm_imm12_offset:
-		// Treat [<Rn>,#+/-<imm12>] like [<Rn>{,#+/-<imm12>}]{!}
-		// by forcing P=1, W=0 (index=false, wback=false).
+
 		return decodeArg(arg_mem_R_pm_imm12_W, x&^(1<<21)|1<<24)
 
 	case arg_mem_R_pm_imm12_postindex:
-		// Treat [<Rn>],#+/-<imm12> like [<Rn>{,#+/-<imm12>}]{!}
-		// by forcing P=0, W=0 (postindex=true).
+
 		return decodeArg(arg_mem_R_pm_imm12_W, x&^(1<<24|1<<21))
 
 	case arg_mem_R_pm_imm12_W:
@@ -477,8 +466,7 @@ func decodeArg(aop instArg, x uint32) Arg {
 		return Mem{Base: Rn, Mode: mode, Offset: int16(sign) * imm}
 
 	case arg_mem_R_pm_imm8_postindex:
-		// Treat [<Rn>],#+/-<imm8> like [<Rn>{,#+/-<imm8>}]{!}
-		// by forcing P=0, W=0 (postindex=true).
+
 		return decodeArg(arg_mem_R_pm_imm8_W, x&^(1<<24|1<<21))
 
 	case arg_mem_R_pm_imm8_W:

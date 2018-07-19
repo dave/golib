@@ -1,7 +1,3 @@
-// Copyright 2014 The Go Authors.  All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
 // Package x86asm implements decoding of x86 machine code.
 package x86asm
 
@@ -138,10 +134,6 @@ type Arg interface {
 	String() string
 	isArg()
 }
-
-// Note that the implements of Arg that follow are all sized
-// so that on a 64-bit machine the data can be inlined in
-// the interface value instead of requiring an allocation.
 
 // A Reg is a single register.
 // The zero Reg value has no name but indicates ``no register.''
@@ -464,8 +456,6 @@ func isSegment(p Prefix) bool {
 	}
 	return false
 }
-
-// The Op definitions and string list are in tables.go.
 
 var prefixNames = map[Prefix]string{
 	PrefixCS:       "CS",

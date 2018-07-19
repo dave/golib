@@ -1,15 +1,3 @@
-// Copyright 2016 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
-// This file implements scanner, a lexical tokenizer for
-// Go source. After initialization, consecutive calls of
-// next advance the scanner one token at a time.
-//
-// This file, source.go, and tokens.go are self-contained
-// (go tool compile scanner.go source.go tokens.go compiles)
-// and thus could be made into its own package.
-
 package syntax
 
 import (
@@ -67,22 +55,21 @@ func (s *scanner) init(src io.Reader, errh func(line, col uint, msg string), mod
 // //-style comments are only recognized if they are at the beginning
 // of a line.
 //
-func (s *scanner) next() {
+func (s *scanner) next(psess *PackageSession) {
 	nlsemi := s.nlsemi
 	s.nlsemi = false
 
 redo:
-	// skip white space
+
 	c := s.getr()
 	for c == ' ' || c == '\t' || c == '\n' && !nlsemi || c == '\r' {
 		c = s.getr()
 	}
 
-	// token start
 	s.line, s.col = s.source.line0, s.source.col0
 
 	if isLetter(c) || c >= utf8.RuneSelf && s.isIdentRune(c, true) {
-		s.ident()
+		s.ident(psess)
 		return
 	}
 
@@ -185,7 +172,7 @@ redo:
 
 	case '*':
 		s.op, s.prec = Mul, precMul
-		// don't goto assignop - want _Star token
+
 		if s.getr() == '=' {
 			s.tok = _AssignOp
 			break
@@ -202,8 +189,7 @@ redo:
 		if c == '*' {
 			s.fullComment()
 			if s.source.line > s.line && nlsemi {
-				// A multi-line comment acts like a newline;
-				// it translates to a ';' if nlsemi is set.
+
 				s.lit = "newline"
 				s.tok = _Semi
 				break
@@ -327,16 +313,14 @@ func isDigit(c rune) bool {
 	return '0' <= c && c <= '9'
 }
 
-func (s *scanner) ident() {
+func (s *scanner) ident(psess *PackageSession) {
 	s.startLit()
 
-	// accelerate common case (7bit ASCII)
 	c := s.getr()
 	for isLetter(c) || isDigit(c) {
 		c = s.getr()
 	}
 
-	// general case
 	if c >= utf8.RuneSelf {
 		for s.isIdentRune(c, false) {
 			c = s.getr()
@@ -346,9 +330,8 @@ func (s *scanner) ident() {
 
 	lit := s.stopLit()
 
-	// possibly a keyword
 	if len(lit) >= 2 {
-		if tok := keywordMap[hash(lit)]; tok != 0 && tokStrFast(tok) == string(lit) {
+		if tok := psess.keywordMap[psess.hash(lit)]; tok != 0 && psess.tokStrFast(tok) == string(lit) {
 			s.nlsemi = contains(1<<_Break|1<<_Continue|1<<_Fallthrough|1<<_Return, tok)
 			s.tok = tok
 			return
@@ -362,14 +345,14 @@ func (s *scanner) ident() {
 
 // tokStrFast is a faster version of token.String, which assumes that tok
 // is one of the valid tokens - and can thus skip bounds checks.
-func tokStrFast(tok token) string {
-	return _token_name[_token_index[tok-1]:_token_index[tok]]
+func (psess *PackageSession) tokStrFast(tok token) string {
+	return _token_name[psess._token_index[tok-1]:psess._token_index[tok]]
 }
 
 func (s *scanner) isIdentRune(c rune, first bool) bool {
 	switch {
 	case unicode.IsLetter(c) || c == '_':
-		// ok
+
 	case unicode.IsDigit(c):
 		if first {
 			s.error(fmt.Sprintf("identifier cannot begin with digit %#U", c))
@@ -384,20 +367,21 @@ func (s *scanner) isIdentRune(c rune, first bool) bool {
 
 // hash is a perfect hash function for keywords.
 // It assumes that s has at least length 2.
-func hash(s []byte) uint {
-	return (uint(s[0])<<4 ^ uint(s[1]) + uint(len(s))) & uint(len(keywordMap)-1)
+func (psess *PackageSession) hash(s []byte) uint {
+	return (uint(s[0])<<4 ^ uint(s[1]) + uint(len(s))) & uint(len(psess.keywordMap)-1)
 }
 
-var keywordMap [1 << 6]token // size must be power of two
+// size must be power of two
 
-func init() {
-	// populate keywordMap
+func (psess *PackageSession) init() {
+
 	for tok := _Break; tok <= _Var; tok++ {
-		h := hash([]byte(tok.String()))
-		if keywordMap[h] != 0 {
+		h := psess.hash([]byte(tok.String(psess)))
+		if psess.keywordMap[h] != 0 {
 			panic("imperfect hash")
 		}
-		keywordMap[h] = tok
+		psess.
+			keywordMap[h] = tok
 	}
 }
 
@@ -405,11 +389,11 @@ func (s *scanner) number(c rune) {
 	s.startLit()
 
 	if c != '.' {
-		s.kind = IntLit // until proven otherwise
+		s.kind = IntLit
 		if c == '0' {
 			c = s.getr()
 			if c == 'x' || c == 'X' {
-				// hex
+
 				c = s.getr()
 				hasDigit := false
 				for isDigit(c) || 'a' <= c && c <= 'f' || 'A' <= c && c <= 'F' {
@@ -422,7 +406,6 @@ func (s *scanner) number(c rune) {
 				goto done
 			}
 
-			// decimal 0, octal, or float
 			has8or9 := false
 			for isDigit(c) {
 				if c > '7' {
@@ -431,7 +414,7 @@ func (s *scanner) number(c rune) {
 				c = s.getr()
 			}
 			if c != '.' && c != 'e' && c != 'E' && c != 'i' {
-				// octal
+
 				if has8or9 {
 					s.error("malformed octal constant")
 				}
@@ -439,14 +422,13 @@ func (s *scanner) number(c rune) {
 			}
 
 		} else {
-			// decimal or float
+
 			for isDigit(c) {
 				c = s.getr()
 			}
 		}
 	}
 
-	// float
 	if c == '.' {
 		s.kind = FloatLit
 		c = s.getr()
@@ -455,7 +437,6 @@ func (s *scanner) number(c rune) {
 		}
 	}
 
-	// exponent
 	if c == 'e' || c == 'E' {
 		s.kind = FloatLit
 		c = s.getr()
@@ -470,7 +451,6 @@ func (s *scanner) number(c rune) {
 		}
 	}
 
-	// complex
 	if c == 'i' {
 		s.kind = ImagLit
 		s.getr()
@@ -486,7 +466,7 @@ done:
 func (s *scanner) rune() {
 	s.startLit()
 
-	ok := true // only report errors if we're ok so far
+	ok := true
 	n := 0
 	for ; ; n++ {
 		r := s.getr()
@@ -500,7 +480,7 @@ func (s *scanner) rune() {
 			continue
 		}
 		if r == '\n' {
-			s.ungetr() // assume newline is not part of literal
+			s.ungetr()
 			if ok {
 				s.error("newline in character literal")
 				ok = false
@@ -543,7 +523,7 @@ func (s *scanner) stdString() {
 			continue
 		}
 		if r == '\n' {
-			s.ungetr() // assume newline is not part of literal
+			s.ungetr()
 			s.error("newline in string")
 			break
 		}
@@ -572,9 +552,6 @@ func (s *scanner) rawString() {
 			break
 		}
 	}
-	// We leave CRs in the string since they are part of the
-	// literal (even though they are not part of the literal
-	// value).
 
 	s.nlsemi = true
 	s.lit = string(s.stopLit())
@@ -589,7 +566,7 @@ func (s *scanner) comment(text string) {
 func (s *scanner) skipLine(r rune) {
 	for r >= 0 {
 		if r == '\n' {
-			s.ungetr() // don't consume '\n' - needed for nlsemi logic
+			s.ungetr()
 			break
 		}
 		r = s.getr()
@@ -606,13 +583,11 @@ func (s *scanner) lineComment() {
 		return
 	}
 
-	// directives must start at the beginning of the line (s.col == colbase)
 	if s.mode&directives == 0 || s.col != colbase || (r != 'g' && r != 'l') {
 		s.skipLine(r)
 		return
 	}
 
-	// recognize go: or line directives
 	prefix := "go:"
 	if r == 'l' {
 		prefix = "line "
@@ -625,7 +600,6 @@ func (s *scanner) lineComment() {
 		r = s.getr()
 	}
 
-	// directive text
 	s.startLit()
 	s.skipLine(r)
 	s.comment("//" + prefix + string(s.stopLit()))
@@ -653,7 +627,7 @@ func (s *scanner) fullComment() {
 		if s.skipComment(r) {
 			s.comment("/*" + string(s.stopLit()))
 		} else {
-			s.killLit() // not a complete comment - ignore
+			s.killLit()
 		}
 		return
 	}
@@ -673,12 +647,11 @@ func (s *scanner) fullComment() {
 		r = s.getr()
 	}
 
-	// directive text
 	s.startLit()
 	if s.skipComment(r) {
 		s.comment("/*" + prefix + string(s.stopLit()))
 	} else {
-		s.killLit() // not a complete comment - ignore
+		s.killLit()
 	}
 }
 
@@ -703,7 +676,7 @@ func (s *scanner) escape(quote rune) bool {
 		n, base, max = 8, 16, unicode.MaxRune
 	default:
 		if c < 0 {
-			return true // complain in caller about EOF
+			return true
 		}
 		s.error("unknown escape sequence")
 		return false
@@ -722,7 +695,7 @@ func (s *scanner) escape(quote rune) bool {
 		}
 		if d >= base {
 			if c < 0 {
-				return true // complain in caller about EOF
+				return true
 			}
 			kind := "hex"
 			if base == 8 {
@@ -732,7 +705,7 @@ func (s *scanner) escape(quote rune) bool {
 			s.ungetr()
 			return false
 		}
-		// d < base
+
 		x = x*base + d
 		c = s.getr()
 	}
@@ -743,7 +716,7 @@ func (s *scanner) escape(quote rune) bool {
 		return false
 	}
 
-	if x > max || 0xD800 <= x && x < 0xE000 /* surrogate range */ {
+	if x > max || 0xD800 <= x && x < 0xE000 {
 		s.error("escape sequence is invalid Unicode code point")
 		return false
 	}

@@ -1,10 +1,3 @@
-// Copyright 2016 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
-// This file implements the compressed encoding of source
-// positions using a lookup table.
-
 package src
 
 // XPos is a more compact representation of Pos.
@@ -14,7 +7,6 @@ type XPos struct {
 }
 
 // NoXPos is a valid unknown position.
-var NoXPos XPos
 
 // IsKnown reports whether the position p is known.
 // XPos.IsKnown() matches Pos.IsKnown() for corresponding
@@ -92,8 +84,7 @@ type PosTable struct {
 func (t *PosTable) XPos(pos Pos) XPos {
 	m := t.indexMap
 	if m == nil {
-		// Create new list and map and populate with nil
-		// base so that NoPos always gets index 0.
+
 		t.baseList = append(t.baseList, nil)
 		m = map[*PosBase]int{nil: 0}
 		t.indexMap = m

@@ -1,7 +1,3 @@
-// Copyright 2016 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
 package gc
 
 import (
@@ -79,52 +75,51 @@ func (t *Timings) Write(w io.Writer, prefix string) {
 		// accumulated time between Stop/Start timestamps
 		var unaccounted time.Duration
 
-		// process Start/Stop timestamps
-		pt := &t.list[0] // previous timestamp
+		pt := &t.list[0]
 		tot := t.list[len(t.list)-1].time.Sub(pt.time)
 		for i := 1; i < len(t.list); i++ {
-			qt := &t.list[i] // current timestamp
+			qt := &t.list[i]
 			dt := qt.time.Sub(pt.time)
 
 			var label string
 			var events []*event
 			if pt.start {
-				// previous phase started
+
 				label = pt.label
 				events = t.events[i-1]
 				if qt.start {
-					// start implicitly ended previous phase; nothing to do
+
 				} else {
-					// stop ended previous phase; append stop labels, if any
+
 					if qt.label != "" {
 						label += ":" + qt.label
 					}
-					// events associated with stop replace prior events
+
 					if e := t.events[i]; e != nil {
 						events = e
 					}
 				}
 			} else {
-				// previous phase stopped
+
 				if qt.start {
-					// between a stopped and started phase; unaccounted time
+
 					unaccounted += dt
 				} else {
-					// previous stop implicitly started current phase
+
 					label = qt.label
 					events = t.events[i]
 				}
 			}
 			if label != "" {
-				// add phase to existing group, or start a new group
+
 				l := commonPrefix(group.label, label)
 				if group.size == 1 && l != "" || group.size > 1 && l == group.label {
-					// add to existing group
+
 					group.label = l
 					group.tot += dt
 					group.size++
 				} else {
-					// start a new group
+
 					if group.size > 1 {
 						lines.add(prefix+group.label+"subtotal", 1, group.tot, tot, nil)
 					}
@@ -133,7 +128,6 @@ func (t *Timings) Write(w io.Writer, prefix string) {
 					group.size = 1
 				}
 
-				// write phase
 				lines.add(prefix+label, 1, dt, tot, events)
 			}
 
@@ -197,7 +191,7 @@ func (lines lines) write(w io.Writer) {
 				}
 			} else {
 				widths = append(widths, len(col))
-				number = append(number, isnumber(col)) // first line determines column contents
+				number = append(number, isnumber(col))
 			}
 		}
 	}
@@ -211,12 +205,11 @@ func (lines lines) write(w io.Writer) {
 		}
 	}
 
-	// print lines taking column widths and contents into account
 	for _, line := range lines {
 		for i, col := range line {
 			format := "%-*s"
 			if number[i] {
-				format = "%*s" // numbers are right-aligned
+				format = "%*s"
 			}
 			fmt.Fprintf(w, format, widths[i], col)
 		}
@@ -227,7 +220,7 @@ func (lines lines) write(w io.Writer) {
 func isnumber(s string) bool {
 	for _, ch := range s {
 		if ch <= ' ' {
-			continue // ignore leading whitespace
+			continue
 		}
 		return '0' <= ch && ch <= '9' || ch == '.' || ch == '-' || ch == '+'
 	}

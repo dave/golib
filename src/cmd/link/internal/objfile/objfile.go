@@ -1,7 +1,3 @@
-// Copyright 2013 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
 // Package objfile reads Go object files for the Go linker, cmd/link.
 //
 // This package is similar to cmd/internal/objfile which also reads
@@ -11,11 +7,11 @@ package objfile
 import (
 	"bufio"
 	"bytes"
-	"cmd/internal/bio"
-	"cmd/internal/dwarf"
-	"cmd/internal/objabi"
-	"cmd/internal/sys"
-	"cmd/link/internal/sym"
+	"github.com/dave/golib/src/cmd/internal/bio"
+	"github.com/dave/golib/src/cmd/internal/dwarf"
+	"github.com/dave/golib/src/cmd/internal/objabi"
+	"github.com/dave/golib/src/cmd/internal/sys"
+	"github.com/dave/golib/src/cmd/link/internal/sym"
 	"io"
 	"log"
 	"strconv"
@@ -26,8 +22,6 @@ const (
 	startmagic = "\x00\x00go19ld"
 	endmagic   = "\xff\xffgo19ld"
 )
-
-var emptyPkg = []byte(`"".`)
 
 // objReader reads Go object files.
 type objReader struct {
@@ -55,7 +49,7 @@ type objReader struct {
 
 // Load loads an object file f into library lib.
 // The symbols loaded are added to syms.
-func Load(arch *sys.Arch, syms *sym.Symbols, f *bio.Reader, lib *sym.Library, length int64, pn string) {
+func (psess *PackageSession) Load(arch *sys.Arch, syms *sym.Symbols, f *bio.Reader, lib *sym.Library, length int64, pn string) {
 	start := f.Offset()
 	r := &objReader{
 		rd:              f.Reader,
@@ -66,27 +60,27 @@ func Load(arch *sys.Arch, syms *sym.Symbols, f *bio.Reader, lib *sym.Library, le
 		dupSym:          &sym.Symbol{Name: ".dup"},
 		localSymVersion: syms.IncVersion(),
 	}
-	r.loadObjFile()
+	r.loadObjFile(psess)
 	if f.Offset() != start+length {
 		log.Fatalf("%s: unexpected end at %d, want %d", pn, f.Offset(), start+length)
 	}
 }
 
-func (r *objReader) loadObjFile() {
-	// Magic header
+func (r *objReader) loadObjFile(psess *
+// Magic header
+PackageSession) {
+
 	var buf [8]uint8
 	r.readFull(buf[:])
 	if string(buf[:]) != startmagic {
 		log.Fatalf("%s: invalid file start %x %x %x %x %x %x %x %x", r.pn, buf[0], buf[1], buf[2], buf[3], buf[4], buf[5], buf[6], buf[7])
 	}
 
-	// Version
 	c, err := r.rd.ReadByte()
 	if err != nil || c != 1 {
 		log.Fatalf("%s: invalid file version number %d", r.pn, c)
 	}
 
-	// Autolib
 	for {
 		lib := r.readString()
 		if lib == "" {
@@ -95,8 +89,7 @@ func (r *objReader) loadObjFile() {
 		r.lib.ImportStrings = append(r.lib.ImportStrings, lib)
 	}
 
-	// Symbol references
-	r.refs = []*sym.Symbol{nil} // zeroth ref is nil
+	r.refs = []*sym.Symbol{nil}
 	for {
 		c, err := r.rd.Peek(1)
 		if err != nil {
@@ -106,16 +99,13 @@ func (r *objReader) loadObjFile() {
 			r.rd.ReadByte()
 			break
 		}
-		r.readRef()
+		r.readRef(psess)
 	}
 
-	// Lengths
 	r.readSlices()
 
-	// Data section
 	r.readFull(r.data)
 
-	// Defined symbols
 	for {
 		c, err := r.rd.Peek(1)
 		if err != nil {
@@ -124,10 +114,9 @@ func (r *objReader) loadObjFile() {
 		if c[0] == 0xff {
 			break
 		}
-		r.readSym()
+		r.readSym(psess)
 	}
 
-	// Magic footer
 	buf = [8]uint8{}
 	r.readFull(buf[:])
 	if string(buf[:]) != endmagic {
@@ -154,7 +143,7 @@ func (r *objReader) readSlices() {
 // Symbols are prefixed so their content doesn't get confused with the magic footer.
 const symPrefix = 0xfe
 
-func (r *objReader) readSym() {
+func (r *objReader) readSym(psess *PackageSession) {
 	var c byte
 	var err error
 	if c, err = r.rd.ReadByte(); c != symPrefix || err != nil {
@@ -163,7 +152,7 @@ func (r *objReader) readSym() {
 	if c, err = r.rd.ReadByte(); err != nil {
 		log.Fatalln("error reading input: ", err)
 	}
-	t := sym.AbiSymKindToSymKind[c]
+	t := psess.sym.AbiSymKindToSymKind[c]
 	s := r.readSymIndex()
 	flags := r.readInt()
 	dupok := flags&1 != 0
@@ -224,7 +213,7 @@ overwrite:
 	if typ != nil {
 		s.Gotype = typ
 	}
-	if isdup && typ != nil { // if bss sym defined multiple times, take type from any one def
+	if isdup && typ != nil {
 		dup.Gotype = typ
 	}
 	s.P = data
@@ -326,8 +315,7 @@ overwrite:
 			s.Attr |= sym.AttrOnList
 			r.lib.Textp = append(r.lib.Textp, s)
 		} else {
-			// there may ba a dup in another package
-			// put into a temp list and add to text later
+
 			if !isdup {
 				r.lib.DupTextSyms = append(r.lib.DupTextSyms, s)
 			} else {
@@ -336,13 +324,12 @@ overwrite:
 		}
 	}
 	if s.Type == sym.SDWARFINFO {
-		r.patchDWARFName(s)
+		r.patchDWARFName(psess, s)
 	}
 }
 
-func (r *objReader) patchDWARFName(s *sym.Symbol) {
-	// This is kind of ugly. Really the package name should not
-	// even be included here.
+func (r *objReader) patchDWARFName(psess *PackageSession, s *sym.Symbol) {
+
 	if s.Size < 1 || s.P[0] != dwarf.DW_ABRV_FUNCTION {
 		return
 	}
@@ -350,12 +337,12 @@ func (r *objReader) patchDWARFName(s *sym.Symbol) {
 	if e == -1 {
 		return
 	}
-	p := bytes.Index(s.P[:e], emptyPkg)
+	p := bytes.Index(s.P[:e], psess.emptyPkg)
 	if p == -1 {
 		return
 	}
 	pkgprefix := []byte(objabi.PathToPrefix(r.lib.Pkg) + ".")
-	patched := bytes.Replace(s.P[:e], emptyPkg, pkgprefix, -1)
+	patched := bytes.Replace(s.P[:e], psess.emptyPkg, pkgprefix, -1)
 
 	s.P = append(patched, s.P[e:]...)
 	delta := int64(len(s.P)) - s.Size
@@ -375,11 +362,11 @@ func (r *objReader) readFull(b []byte) {
 	}
 }
 
-func (r *objReader) readRef() {
+func (r *objReader) readRef(psess *PackageSession) {
 	if c, err := r.rd.ReadByte(); c != symPrefix || err != nil {
 		log.Fatalf("readSym out of sync")
 	}
-	name := r.readSymName()
+	name := r.readSymName(psess)
 	v := r.readInt()
 	if v != 0 && v != 1 {
 		log.Fatalf("invalid symbol version for %q: %d", name, v)
@@ -486,7 +473,7 @@ func (r *objReader) readData() []byte {
 }
 
 // readSymName reads a symbol name, replacing all "". with pkg.
-func (r *objReader) readSymName() string {
+func (r *objReader) readSymName(psess *PackageSession) string {
 	pkg := objabi.PathToPrefix(r.lib.Pkg)
 	n := r.readInt()
 	if n == 0 {
@@ -498,8 +485,7 @@ func (r *objReader) readSymName() string {
 	}
 	origName, err := r.rd.Peek(n)
 	if err == bufio.ErrBufferFull {
-		// Long symbol names are rare but exist. One source is type
-		// symbols for types with long string forms. See #15104.
+
 		origName = make([]byte, n)
 		r.readFull(origName)
 	} else if err != nil {
@@ -507,22 +493,20 @@ func (r *objReader) readSymName() string {
 	}
 	adjName := r.rdBuf[:0]
 	for {
-		i := bytes.Index(origName, emptyPkg)
+		i := bytes.Index(origName, psess.emptyPkg)
 		if i == -1 {
 			s := string(append(adjName, origName...))
-			// Read past the peeked origName, now that we're done with it,
-			// using the rfBuf (also no longer used) as the scratch space.
-			// TODO: use bufio.Reader.Discard if available instead?
+
 			if err == nil {
 				r.readFull(r.rdBuf[:n])
 			}
-			r.rdBuf = adjName[:0] // in case 2*n wasn't enough
+			r.rdBuf = adjName[:0]
 			return s
 		}
 		adjName = append(adjName, origName[:i]...)
 		adjName = append(adjName, pkg...)
 		adjName = append(adjName, '.')
-		origName = origName[i+len(emptyPkg):]
+		origName = origName[i+len(psess.emptyPkg):]
 	}
 }
 

@@ -1,7 +1,3 @@
-// Copyright 2015 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
 package ssa
 
 // phielim eliminates redundant phi values from f.
@@ -55,8 +51,7 @@ func phielimValue(v *Value) bool {
 	}
 
 	if w == nil {
-		// v references only itself. It must be in
-		// a dead code loop. Don't bother modifying it.
+
 		return false
 	}
 	v.Op = OpCopy

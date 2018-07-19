@@ -1,7 +1,3 @@
-// Copyright 2018 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
 package syntax
 
 import "fmt"
@@ -23,9 +19,6 @@ type Pos struct {
 // MakePos returns a new Pos for the given PosBase, line and column.
 func MakePos(base *PosBase, line, col uint) Pos { return Pos{base, sat32(line), sat32(col)} }
 
-// TODO(gri) IsKnown makes an assumption about linebase < 1.
-//           Maybe we should check for Base() != nil instead.
-
 func (pos Pos) IsKnown() bool  { return pos.line > 0 }
 func (pos Pos) Base() *PosBase { return pos.base }
 func (pos Pos) Line() uint     { return uint(pos.line) }
@@ -36,7 +29,7 @@ func (pos Pos) RelFilename() string { return pos.base.Filename() }
 func (pos Pos) RelLine() uint {
 	b := pos.base
 	if b.Line() == 0 {
-		// base line is unknown => relative line is unknown
+
 		return 0
 	}
 	return b.Line() + (pos.Line() - b.Pos().Line())
@@ -45,14 +38,11 @@ func (pos Pos) RelLine() uint {
 func (pos Pos) RelCol() uint {
 	b := pos.base
 	if b.Col() == 0 {
-		// base column is unknown => relative column is unknown
-		// (the current specification for line directives requires
-		// this to apply until the next PosBase/line directive,
-		// not just until the new newline)
+
 		return 0
 	}
 	if pos.Line() == b.Pos().Line() {
-		// pos on same line as pos base => column is relative to pos base
+
 		return b.Col() + (pos.Col() - b.Pos().Col())
 	}
 	return pos.Col()

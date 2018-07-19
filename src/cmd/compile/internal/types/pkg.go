@@ -1,19 +1,13 @@
-// Copyright 2017 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
 package types
 
 import (
-	"cmd/internal/obj"
-	"cmd/internal/objabi"
 	"fmt"
+	"github.com/dave/golib/src/cmd/internal/obj"
+	"github.com/dave/golib/src/cmd/internal/objabi"
 	"sort"
-	"sync"
 )
 
 // pkgMap maps a package path to a package.
-var pkgMap = make(map[string]*Pkg)
 
 // MaxPkgHeight is a height greater than any likely package height.
 const MaxPkgHeight = 1e9
@@ -38,8 +32,8 @@ type Pkg struct {
 // NewPkg returns a new Pkg for the given package path and name.
 // Unless name is the empty string, if the package exists already,
 // the existing package name and the provided name must match.
-func NewPkg(path, name string) *Pkg {
-	if p := pkgMap[path]; p != nil {
+func (psess *PackageSession) NewPkg(path, name string) *Pkg {
+	if p := psess.pkgMap[path]; p != nil {
 		if name != "" && p.Name != name {
 			panic(fmt.Sprintf("conflicting package names %s and %s for path %q", p.Name, name, path))
 		}
@@ -51,16 +45,17 @@ func NewPkg(path, name string) *Pkg {
 	p.Name = name
 	p.Prefix = objabi.PathToPrefix(path)
 	p.Syms = make(map[string]*Sym)
-	pkgMap[path] = p
+	psess.
+		pkgMap[path] = p
 
 	return p
 }
 
 // ImportedPkgList returns the list of directly imported packages.
 // The list is sorted by package path.
-func ImportedPkgList() []*Pkg {
+func (psess *PackageSession) ImportedPkgList() []*Pkg {
 	var list []*Pkg
-	for _, p := range pkgMap {
+	for _, p := range psess.pkgMap {
 		if p.Direct {
 			list = append(list, p)
 		}
@@ -75,22 +70,16 @@ func (a byPath) Len() int           { return len(a) }
 func (a byPath) Less(i, j int) bool { return a[i].Path < a[j].Path }
 func (a byPath) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
 
-var nopkg = &Pkg{
-	Syms: make(map[string]*Sym),
-}
-
-func (pkg *Pkg) Lookup(name string) *Sym {
-	s, _ := pkg.LookupOK(name)
+func (pkg *Pkg) Lookup(psess *PackageSession, name string) *Sym {
+	s, _ := pkg.LookupOK(psess, name)
 	return s
 }
 
-var InitSyms []*Sym
-
 // LookupOK looks up name in pkg and reports whether it previously existed.
-func (pkg *Pkg) LookupOK(name string) (s *Sym, existed bool) {
-	// TODO(gri) remove this check in favor of specialized lookup
+func (pkg *Pkg) LookupOK(psess *PackageSession, name string) (s *Sym, existed bool) {
+
 	if pkg == nil {
-		pkg = nopkg
+		pkg = psess.nopkg
 	}
 	if s := pkg.Syms[name]; s != nil {
 		return s, true
@@ -101,45 +90,48 @@ func (pkg *Pkg) LookupOK(name string) (s *Sym, existed bool) {
 		Pkg:  pkg,
 	}
 	if name == "init" {
-		InitSyms = append(InitSyms, s)
+		psess.
+			InitSyms = append(psess.InitSyms, s)
 	}
 	pkg.Syms[name] = s
 	return s, false
 }
 
-func (pkg *Pkg) LookupBytes(name []byte) *Sym {
-	// TODO(gri) remove this check in favor of specialized lookup
+func (pkg *Pkg) LookupBytes(psess *PackageSession, name []byte) *Sym {
+
 	if pkg == nil {
-		pkg = nopkg
+		pkg = psess.nopkg
 	}
 	if s := pkg.Syms[string(name)]; s != nil {
 		return s
 	}
-	str := InternString(name)
-	return pkg.Lookup(str)
+	str := psess.InternString(name)
+	return pkg.Lookup(psess, str)
 }
 
-var (
-	internedStringsmu sync.Mutex // protects internedStrings
-	internedStrings   = map[string]string{}
-)
+// protects internedStrings
 
-func InternString(b []byte) string {
-	internedStringsmu.Lock()
-	s, ok := internedStrings[string(b)] // string(b) here doesn't allocate
+func (psess *PackageSession) InternString(b []byte) string {
+	psess.
+		internedStringsmu.Lock()
+	s, ok := psess.internedStrings[string(b)]
 	if !ok {
 		s = string(b)
-		internedStrings[s] = s
+		psess.
+			internedStrings[s] = s
 	}
-	internedStringsmu.Unlock()
+	psess.
+		internedStringsmu.Unlock()
 	return s
 }
 
 // CleanroomDo invokes f in an environment with with no preexisting packages.
 // For testing of import/export only.
-func CleanroomDo(f func()) {
-	saved := pkgMap
-	pkgMap = make(map[string]*Pkg)
+func (psess *PackageSession) CleanroomDo(f func()) {
+	saved := psess.pkgMap
+	psess.
+		pkgMap = make(map[string]*Pkg)
 	f()
-	pkgMap = saved
+	psess.
+		pkgMap = saved
 }

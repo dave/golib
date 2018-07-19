@@ -1,12 +1,8 @@
-// Copyright 2013 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
 package obj
 
 import (
-	"cmd/internal/objabi"
 	"fmt"
+	"github.com/dave/golib/src/cmd/internal/objabi"
 	"strings"
 )
 
@@ -19,7 +15,7 @@ type Plist struct {
 // It is used to provide access to cached/bulk-allocated Progs to the assemblers.
 type ProgAlloc func() *Prog
 
-func Flushplist(ctxt *Link, plist *Plist, newprog ProgAlloc, myimportpath string) {
+func (psess *PackageSession) Flushplist(ctxt *Link, plist *Plist, newprog ProgAlloc, myimportpath string) {
 	// Build list of symbols, and assign instructions to lists.
 	var curtext *LSym
 	var etext *Prog
@@ -40,7 +36,7 @@ func Flushplist(ctxt *Link, plist *Plist, newprog ProgAlloc, myimportpath string
 		case ATEXT:
 			s := p.From.Sym
 			if s == nil {
-				// func _() { }
+
 				curtext = nil
 				continue
 			}
@@ -50,8 +46,8 @@ func Flushplist(ctxt *Link, plist *Plist, newprog ProgAlloc, myimportpath string
 			continue
 
 		case AFUNCDATA:
-			// Rewrite reference to go_args_stackmap(SB) to the Go-provided declaration information.
-			if curtext == nil { // func _() {}
+
+			if curtext == nil {
 				continue
 			}
 			if p.To.Sym.Name == "go_args_stackmap" {
@@ -75,7 +71,6 @@ func Flushplist(ctxt *Link, plist *Plist, newprog ProgAlloc, myimportpath string
 		newprog = ctxt.NewProg
 	}
 
-	// Add reference to Go arguments for C or assembly functions without them.
 	for _, s := range text {
 		if !strings.HasPrefix(s.Name, "\"\".") {
 			continue
@@ -99,20 +94,20 @@ func Flushplist(ctxt *Link, plist *Plist, newprog ProgAlloc, myimportpath string
 		}
 	}
 
-	// Turn functions into machine code images.
 	for _, s := range text {
 		mkfwd(s)
 		linkpatch(ctxt, s, newprog)
 		ctxt.Arch.Preprocess(ctxt, s, newprog)
 		ctxt.Arch.Assemble(ctxt, s, newprog)
-		linkpcln(ctxt, s)
-		ctxt.populateDWARF(plist.Curfn, s, myimportpath)
+		psess.
+			linkpcln(ctxt, s)
+		ctxt.populateDWARF(psess, plist.Curfn, s, myimportpath)
 	}
 }
 
 func (ctxt *Link) InitTextSym(s *LSym, flag int) {
 	if s == nil {
-		// func _() { }
+
 		return
 	}
 	if s.Func != nil {
@@ -135,7 +130,6 @@ func (ctxt *Link) InitTextSym(s *LSym, flag int) {
 	s.Type = objabi.STEXT
 	ctxt.Text = append(ctxt.Text, s)
 
-	// Set up DWARF entries for s.
 	info, loc, ranges, _, isstmt := ctxt.dwarfSym(s)
 	info.Type = objabi.SDWARFINFO
 	info.Set(AttrDuplicateOK, s.DuplicateOK())
@@ -151,8 +145,6 @@ func (ctxt *Link) InitTextSym(s *LSym, flag int) {
 	isstmt.Set(AttrDuplicateOK, s.DuplicateOK())
 	ctxt.Data = append(ctxt.Data, isstmt)
 
-	// Set up the function's gcargs and gclocals.
-	// They will be filled in later if needed.
 	gcargs := &s.Func.GCArgs
 	gcargs.Set(AttrDuplicateOK, true)
 	gcargs.Type = objabi.SRODATA
@@ -204,9 +196,8 @@ func (ctxt *Link) EmitEntryLiveness(s *LSym, p *Prog, newprog ProgAlloc) *Prog {
 	pcdata.From.Type = TYPE_CONST
 	pcdata.From.Offset = objabi.PCDATA_StackMapIndex
 	pcdata.To.Type = TYPE_CONST
-	pcdata.To.Offset = -1 // pcdata starts at -1 at function entry
+	pcdata.To.Offset = -1
 
-	// Same, with register map.
 	pcdata = Appendp(pcdata, newprog)
 	pcdata.Pos = s.Func.Text.Pos
 	pcdata.As = APCDATA

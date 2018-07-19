@@ -1,7 +1,3 @@
-// Copyright 2014 The Go Authors.  All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
 package x86asm
 
 import (
@@ -39,11 +35,10 @@ func GoSyntax(inst Inst, pc uint64, symname SymLookup) string {
 		}
 
 		switch {
-		// Don't show prefixes implied by the instruction text.
+
 		case p&0xFF00 == PrefixImplicit:
 			continue
-		// Only REP and REPN are recognized repeaters. Plan 9 syntax
-		// treats them as separate opcodes.
+
 		case p&0xFF == PrefixREP:
 			rep = "REP; "
 		case p&0xFF == PrefixREPN:
@@ -56,7 +51,7 @@ func GoSyntax(inst Inst, pc uint64, symname SymLookup) string {
 	prefix := ""
 	switch last & 0xFF {
 	case 0, 0x66, 0x67:
-		// ignore
+
 	default:
 		prefix += last.String() + " "
 	}
@@ -94,11 +89,7 @@ func plan9Arg(inst *Inst, pc uint64, symname func(uint64) (string, uint64), arg 
 		if pc == 0 {
 			break
 		}
-		// If the absolute address is the start of a symbol, use the name.
-		// Otherwise use the raw address, so that things like relative
-		// jumps show up as JMP 0x123 instead of JMP f+10(SB).
-		// It is usually easier to search for 0x123 than to do the mental
-		// arithmetic to find f+10.
+
 		addr := pc + uint64(inst.Len) + uint64(a)
 		if s, base := symname(addr); s != "" && addr == base {
 			return fmt.Sprintf("%s(SB)", s)

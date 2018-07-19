@@ -1,22 +1,12 @@
-// Copyright 2016 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
 package gc
 
 import (
-	"cmd/compile/internal/ssa"
-	"cmd/compile/internal/types"
-	"cmd/internal/src"
 	"container/heap"
 	"fmt"
+	"github.com/dave/golib/src/cmd/compile/internal/ssa"
+	"github.com/dave/golib/src/cmd/compile/internal/types"
+	"github.com/dave/golib/src/cmd/internal/src"
 )
-
-// This file contains the algorithm to place phi nodes in a function.
-// For small functions, we use Braun, Buchwald, Hack, Leißa, Mallon, and Zwinkau.
-// https://pp.info.uni-karlsruhe.de/uploads/publikationen/braun13cc.pdf
-// For large functions, we use Sreedhar & Gao: A Linear Time Algorithm for Placing Φ-Nodes.
-// http://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.8.1979&rep=rep1&type=pdf
 
 const smallBlocks = 500
 
@@ -29,14 +19,14 @@ const debugPhi = false
 // Phi values are inserted, and all FwdRefs are changed to a Copy
 // of the appropriate phi or definition.
 // TODO: make this part of cmd/compile/internal/ssa somehow?
-func (s *state) insertPhis() {
+func (s *state) insertPhis(psess *PackageSession) {
 	if len(s.f.Blocks) <= smallBlocks {
 		sps := simplePhiState{s: s, f: s.f, defvars: s.defvars}
 		sps.insertPhis()
 		return
 	}
 	ps := phiState{s: s, f: s.f, defvars: s.defvars}
-	ps.insertPhis()
+	ps.insertPhis(psess)
 }
 
 type phiState struct {
@@ -62,14 +52,11 @@ type phiState struct {
 	placeholder *ssa.Value // dummy value to use as a "not set yet" placeholder.
 }
 
-func (s *phiState) insertPhis() {
+func (s *phiState) insertPhis(psess *PackageSession) {
 	if debugPhi {
-		fmt.Println(s.f.String())
+		fmt.Println(s.f.String(psess.ssa))
 	}
 
-	// Find all the variables for which we need to match up reads & writes.
-	// This step prunes any basic-block-only variables from consideration.
-	// Generate a numbering for these variables.
 	s.varnum = map[*Node]int32{}
 	var vars []*Node
 	var vartypes []*types.Type
@@ -80,7 +67,6 @@ func (s *phiState) insertPhis() {
 			}
 			var_ := v.Aux.(*Node)
 
-			// Optimization: look back 1 block for the definition.
 			if len(b.Preds) == 1 {
 				c := b.Preds[0].Block()
 				if w := s.defvars[c.ID][var_]; w != nil {
@@ -107,18 +93,15 @@ func (s *phiState) insertPhis() {
 		return
 	}
 
-	// Find all definitions of the variables we need to process.
-	// defs[n] contains all the blocks in which variable number n is assigned.
 	defs := make([][]*ssa.Block, len(vartypes))
 	for _, b := range s.f.Blocks {
-		for var_ := range s.defvars[b.ID] { // TODO: encode defvars some other way (explicit ops)? make defvars[n] a slice instead of a map.
+		for var_ := range s.defvars[b.ID] {
 			if n, ok := s.varnum[var_]; ok {
 				defs[n] = append(defs[n], b)
 			}
 		}
 	}
 
-	// Make dominator tree.
 	s.idom = s.f.Idom()
 	s.tree = make([]domBlock, s.f.NumBlocks())
 	for _, b := range s.f.Blocks {
@@ -128,9 +111,7 @@ func (s *phiState) insertPhis() {
 			s.tree[p.ID].firstChild = b
 		}
 	}
-	// Compute levels in dominator tree.
-	// With parent pointers we can do a depth-first walk without
-	// any auxiliary storage.
+
 	s.level = make([]int32, s.f.NumBlocks())
 	b := s.f.Entry
 levels:
@@ -157,23 +138,19 @@ levels:
 		}
 	}
 
-	// Allocate scratch locations.
 	s.priq.level = s.level
 	s.q = make([]*ssa.Block, 0, s.f.NumBlocks())
 	s.queued = newSparseSet(s.f.NumBlocks())
 	s.hasPhi = newSparseSet(s.f.NumBlocks())
 	s.hasDef = newSparseSet(s.f.NumBlocks())
-	s.placeholder = s.s.entryNewValue0(ssa.OpUnknown, types.TypeInvalid)
+	s.placeholder = s.s.entryNewValue0(psess, ssa.OpUnknown, psess.types.TypeInvalid)
 
-	// Generate phi ops for each variable.
 	for n := range vartypes {
 		s.insertVarPhis(n, vars[n], defs[n], vartypes[n])
 	}
 
-	// Resolve FwdRefs to the correct write or phi.
 	s.resolveFwdRefs()
 
-	// Erase variable numbers stored in AuxInt fields of phi ops. They are no longer needed.
 	for _, b := range s.f.Blocks {
 		for _, v := range b.Values {
 			if v.Op == ssa.OpPhi {
@@ -193,7 +170,6 @@ func (s *phiState) insertVarPhis(n int, var_ *Node, defs []*ssa.Block, typ *type
 	hasDef := s.hasDef
 	hasDef.clear()
 
-	// Add defining blocks to priority queue.
 	for _, b := range defs {
 		priq.a = append(priq.a, b)
 		hasDef.add(b.ID)
@@ -203,16 +179,12 @@ func (s *phiState) insertVarPhis(n int, var_ *Node, defs []*ssa.Block, typ *type
 	}
 	heap.Init(priq)
 
-	// Visit blocks defining variable n, from deepest to shallowest.
 	for len(priq.a) > 0 {
 		currentRoot := heap.Pop(priq).(*ssa.Block)
 		if debugPhi {
 			fmt.Printf("currentRoot %s\n", currentRoot)
 		}
-		// Walk subtree below definition.
-		// Skip subtrees we've done in previous iterations.
-		// Find edges exiting tree dominated by definition (the dominance frontier).
-		// Insert phis at target blocks.
+
 		if queued.contains(currentRoot.ID) {
 			s.s.Fatalf("root already in queue")
 		}
@@ -228,34 +200,32 @@ func (s *phiState) insertVarPhis(n int, var_ *Node, defs []*ssa.Block, typ *type
 			currentRootLevel := s.level[currentRoot.ID]
 			for _, e := range b.Succs {
 				c := e.Block()
-				// TODO: if the variable is dead at c, skip it.
+
 				if s.level[c.ID] > currentRootLevel {
-					// a D-edge, or an edge whose target is in currentRoot's subtree.
+
 					continue
 				}
 				if hasPhi.contains(c.ID) {
 					continue
 				}
-				// Add a phi to block c for variable n.
+
 				hasPhi.add(c.ID)
-				v := c.NewValue0I(currentRoot.Pos, ssa.OpPhi, typ, int64(n)) // TODO: line number right?
-				// Note: we store the variable number in the phi's AuxInt field. Used temporarily by phi building.
+				v := c.NewValue0I(currentRoot.Pos, ssa.OpPhi, typ, int64(n))
+
 				s.s.addNamedValue(var_, v)
 				for range c.Preds {
-					v.AddArg(s.placeholder) // Actual args will be filled in by resolveFwdRefs.
+					v.AddArg(s.placeholder)
 				}
 				if debugPhi {
 					fmt.Printf("new phi for var%d in %s: %s\n", n, c, v)
 				}
 				if !hasDef.contains(c.ID) {
-					// There's now a new definition of this variable in block c.
-					// Add it to the priority queue to explore.
+
 					heap.Push(priq, c)
 					hasDef.add(c.ID)
 				}
 			}
 
-			// Visit children if they have not been visited yet.
 			for c := s.tree[b.ID].firstChild; c != nil; c = s.tree[c.ID].sibling {
 				if !queued.contains(c.ID) {
 					q = append(q, c)
@@ -268,10 +238,7 @@ func (s *phiState) insertVarPhis(n int, var_ *Node, defs []*ssa.Block, typ *type
 
 // resolveFwdRefs links all FwdRef uses up to their nearest dominating definition.
 func (s *phiState) resolveFwdRefs() {
-	// Do a depth-first walk of the dominator tree, keeping track
-	// of the most-recently-seen value for each variable.
 
-	// Map from variable ID to SSA value at the current point of the walk.
 	values := make([]*ssa.Value, len(s.varnum))
 	for i := range values {
 		values[i] = s.placeholder
@@ -284,8 +251,6 @@ func (s *phiState) resolveFwdRefs() {
 		// variable/value pair to reinstate on exit
 		n int32 // variable ID
 		v *ssa.Value
-
-		// Note: only one of b or n,v will be set.
 	}
 	var stk []stackEntry
 
@@ -296,24 +261,22 @@ func (s *phiState) resolveFwdRefs() {
 
 		b := work.b
 		if b == nil {
-			// On exit from a block, this case will undo any assignments done below.
+
 			values[work.n] = work.v
 			continue
 		}
 
-		// Process phis as new defs. They come before FwdRefs in this block.
 		for _, v := range b.Values {
 			if v.Op != ssa.OpPhi {
 				continue
 			}
 			n := int32(v.AuxInt)
-			// Remember the old assignment so we can undo it when we exit b.
+
 			stk = append(stk, stackEntry{n: n, v: values[n]})
-			// Record the new assignment.
+
 			values[n] = v
 		}
 
-		// Replace a FwdRef op with the current incoming value for its variable.
 		for _, v := range b.Values {
 			if v.Op != ssa.OpFwdRef {
 				continue
@@ -324,37 +287,32 @@ func (s *phiState) resolveFwdRefs() {
 			v.AddArg(values[n])
 		}
 
-		// Establish values for variables defined in b.
 		for var_, v := range s.defvars[b.ID] {
 			n, ok := s.varnum[var_]
 			if !ok {
-				// some variable not live across a basic block boundary.
+
 				continue
 			}
-			// Remember the old assignment so we can undo it when we exit b.
+
 			stk = append(stk, stackEntry{n: n, v: values[n]})
-			// Record the new assignment.
+
 			values[n] = v
 		}
 
-		// Replace phi args in successors with the current incoming value.
 		for _, e := range b.Succs {
 			c, i := e.Block(), e.Index()
 			for j := len(c.Values) - 1; j >= 0; j-- {
 				v := c.Values[j]
 				if v.Op != ssa.OpPhi {
-					break // All phis will be at the end of the block during phi building.
+					break
 				}
-				// Only set arguments that have been resolved.
-				// For very wide CFGs, this significantly speeds up phi resolution.
-				// See golang.org/issue/8225.
+
 				if w := values[v.AuxInt]; w.Op != ssa.OpUnknown {
 					v.SetArg(i, w)
 				}
 			}
 		}
 
-		// Walk children in dominator tree.
 		for c := s.tree[b.ID].firstChild; c != nil; c = s.tree[c.ID].sibling {
 			stk = append(stk, stackEntry{b: c})
 		}
@@ -393,11 +351,6 @@ func (h *blockHeap) Pop() interface{} {
 func (h *blockHeap) Less(i, j int) bool {
 	return h.level[h.a[i].ID] > h.level[h.a[j].ID]
 }
-
-// TODO: stop walking the iterated domininance frontier when
-// the variable is dead. Maybe detect that by checking if the
-// node we're on is reverse dominated by all the reads?
-// Reverse dominated by the highest common successor of all the reads?
 
 // copy of ../ssa/sparseset.go
 // TODO: move this file to ../ssa, then use sparseSet there.
@@ -442,7 +395,6 @@ type simplePhiState struct {
 func (s *simplePhiState) insertPhis() {
 	s.reachable = ssa.ReachableBlocks(s.f)
 
-	// Find FwdRef ops.
 	for _, b := range s.f.Blocks {
 		for _, v := range b.Values {
 			if v.Op != ssa.OpFwdRef {
@@ -451,7 +403,7 @@ func (s *simplePhiState) insertPhis() {
 			s.fwdrefs = append(s.fwdrefs, v)
 			var_ := v.Aux.(*Node)
 			if _, ok := s.defvars[b.ID][var_]; !ok {
-				s.defvars[b.ID][var_] = v // treat FwdDefs as definitions.
+				s.defvars[b.ID][var_] = v
 			}
 		}
 	}
@@ -465,17 +417,16 @@ loop:
 		b := v.Block
 		var_ := v.Aux.(*Node)
 		if b == s.f.Entry {
-			// No variable should be live at entry.
+
 			s.s.Fatalf("Value live at entry. It shouldn't be. func %s, node %v, value %v", s.f.Name, var_, v)
 		}
 		if !s.reachable[b.ID] {
-			// This block is dead.
-			// It doesn't matter what we use here as long as it is well-formed.
+
 			v.Op = ssa.OpUnknown
 			v.Aux = nil
 			continue
 		}
-		// Find variable value on each predecessor.
+
 		args = args[:0]
 		for _, e := range b.Preds {
 			args = append(args, s.lookupVarOutgoing(e.Block(), v.Type, var_, v.Pos))
@@ -486,24 +437,24 @@ loop:
 		var w *ssa.Value
 		for _, a := range args {
 			if a == v {
-				continue // self-reference
+				continue
 			}
 			if a == w {
-				continue // already have this witness
+				continue
 			}
 			if w != nil {
-				// two witnesses, need a phi value
+
 				v.Op = ssa.OpPhi
 				v.AddArgs(args...)
 				v.Aux = nil
 				continue loop
 			}
-			w = a // save witness
+			w = a
 		}
 		if w == nil {
 			s.s.Fatalf("no witness for reachable phi %s", v)
 		}
-		// One witness. Make v a copy of w.
+
 		v.Op = ssa.OpCopy
 		v.Aux = nil
 		v.AddArg(w)
@@ -516,20 +467,17 @@ func (s *simplePhiState) lookupVarOutgoing(b *ssa.Block, t *types.Type, var_ *No
 		if v := s.defvars[b.ID][var_]; v != nil {
 			return v
 		}
-		// The variable is not defined by b and we haven't looked it up yet.
-		// If b has exactly one predecessor, loop to look it up there.
-		// Otherwise, give up and insert a new FwdRef and resolve it later.
+
 		if len(b.Preds) != 1 {
 			break
 		}
 		b = b.Preds[0].Block()
 		if !s.reachable[b.ID] {
-			// This is rare; it happens with oddly interleaved infinite loops in dead code.
-			// See issue 19783.
+
 			break
 		}
 	}
-	// Generate a FwdRef for the variable and return that.
+
 	v := b.NewValue0A(line, ssa.OpFwdRef, t, var_)
 	s.defvars[b.ID][var_] = v
 	s.s.addNamedValue(var_, v)

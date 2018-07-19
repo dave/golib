@@ -1,16 +1,3 @@
-// Copyright 2013 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
-// NOTE: There are *three* independent implementations of this object
-// file format in the Go source tree:
-//
-//	- cmd/internal/goobj/read.go (used by cmd/addr2line, cmd/nm, cmd/objdump, cmd/pprof)
-//	- cmd/internal/obj/objfile.go (used by cmd/asm and cmd/compile)
-//	- cmd/link/internal/objfile.go (used by cmd/link)
-//
-// When changing the object file format, remember to change all three.
-
 // Originally, Go object files were Plan 9 object files, but no longer.
 // Now they are more like standard object files, in that each symbol is defined
 // by an associated memory image (bytes) and a list of relocations to apply

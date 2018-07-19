@@ -1,10 +1,4 @@
-// Copyright 2016 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
 // +build ignore
-
-// Generate builtin.go from builtin/runtime.go.
 
 package main
 
@@ -35,7 +29,7 @@ func main() {
 	fmt.Fprintln(&b)
 	fmt.Fprintln(&b, "package gc")
 	fmt.Fprintln(&b)
-	fmt.Fprintln(&b, `import "cmd/compile/internal/types"`)
+	fmt.Fprintln(&b, "import \"github.com/dave/golib/src/cmd/compile/internal/types\"")
 
 	mkbuiltin(&b, "runtime")
 

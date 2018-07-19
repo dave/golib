@@ -1,15 +1,8 @@
-// Copyright 2015 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
-// TODO: live at start of block instead?
-
 package ssa
 
 import (
-	"cmd/compile/internal/types"
-	"cmd/internal/src"
 	"fmt"
+	"github.com/dave/golib/src/cmd/compile/internal/types"
 )
 
 type stackAllocState struct {
@@ -27,21 +20,21 @@ type stackAllocState struct {
 	slots     []int
 	used      []bool
 
-	nArgSlot, // Number of Values sourced to arg slot
-	nNotNeed, // Number of Values not needing a stack slot
-	nNamedSlot, // Number of Values using a named stack slot
-	nReuse, // Number of values reusing a stack slot
-	nAuto, // Number of autos allocated for stack slots.
+	nArgSlot,
+	nNotNeed,
+	nNamedSlot,
+	nReuse,
+	nAuto,
 	nSelfInterfere int32 // Number of self-interferences
 }
 
-func newStackAllocState(f *Func) *stackAllocState {
+func (psess *PackageSession) newStackAllocState(f *Func) *stackAllocState {
 	s := f.Cache.stackAllocState
 	if s == nil {
 		return new(stackAllocState)
 	}
 	if s.f != nil {
-		f.fe.Fatalf(src.NoXPos, "newStackAllocState called without previous free")
+		f.fe.Fatalf(psess.src.NoXPos, "newStackAllocState called without previous free")
 	}
 	return s
 }
@@ -78,16 +71,16 @@ type stackValState struct {
 // stackalloc allocates storage in the stack frame for
 // all Values that did not get a register.
 // Returns a map from block ID to the stack values live at the end of that block.
-func stackalloc(f *Func, spillLive [][]ID) [][]ID {
+func (psess *PackageSession) stackalloc(f *Func, spillLive [][]ID) [][]ID {
 	if f.pass.debug > stackDebug {
 		fmt.Println("before stackalloc")
-		fmt.Println(f.String())
+		fmt.Println(f.String(psess))
 	}
-	s := newStackAllocState(f)
-	s.init(f, spillLive)
+	s := psess.newStackAllocState(f)
+	s.init(psess, f, spillLive)
 	defer putStackAllocState(s)
 
-	s.stackalloc()
+	s.stackalloc(psess)
 	if f.pass.stats > 0 {
 		f.LogStat("stack_alloc_stats",
 			s.nArgSlot, "arg_slots", s.nNotNeed, "slot_not_needed",
@@ -98,10 +91,9 @@ func stackalloc(f *Func, spillLive [][]ID) [][]ID {
 	return s.live
 }
 
-func (s *stackAllocState) init(f *Func, spillLive [][]ID) {
+func (s *stackAllocState) init(psess *PackageSession, f *Func, spillLive [][]ID) {
 	s.f = f
 
-	// Initialize value information.
 	if n := f.NumValues(); cap(s.values) >= n {
 		s.values = s.values[:n]
 	} else {
@@ -110,7 +102,7 @@ func (s *stackAllocState) init(f *Func, spillLive [][]ID) {
 	for _, b := range f.Blocks {
 		for _, v := range b.Values {
 			s.values[v.ID].typ = v.Type
-			s.values[v.ID].needSlot = !v.Type.IsMemory() && !v.Type.IsVoid() && !v.Type.IsFlags() && f.getHome(v.ID) == nil && !v.rematerializeable() && !v.OnWasmStack
+			s.values[v.ID].needSlot = !v.Type.IsMemory(psess.types) && !v.Type.IsVoid(psess.types) && !v.Type.IsFlags(psess.types) && f.getHome(v.ID) == nil && !v.rematerializeable(psess) && !v.OnWasmStack
 			s.values[v.ID].isArg = v.Op == OpArg
 			if f.pass.debug > stackDebug && s.values[v.ID].needSlot {
 				fmt.Printf("%s needs a stack slot\n", v)
@@ -121,19 +113,14 @@ func (s *stackAllocState) init(f *Func, spillLive [][]ID) {
 		}
 	}
 
-	// Compute liveness info for values needing a slot.
-	s.computeLive(spillLive)
+	s.computeLive(psess, spillLive)
 
-	// Build interference graph among values needing a slot.
-	s.buildInterferenceGraph()
+	s.buildInterferenceGraph(psess)
 }
 
-func (s *stackAllocState) stackalloc() {
+func (s *stackAllocState) stackalloc(psess *PackageSession) {
 	f := s.f
 
-	// Build map from values to their names, if any.
-	// A value may be associated with more than one name (e.g. after
-	// the assignment i=j). This step picks one name per value arbitrarily.
 	if n := f.NumValues(); cap(s.names) >= n {
 		s.names = s.names[:n]
 	} else {
@@ -141,14 +128,12 @@ func (s *stackAllocState) stackalloc() {
 	}
 	names := s.names
 	for _, name := range f.Names {
-		// Note: not "range f.NamedValues" above, because
-		// that would be nondeterministic.
+
 		for _, v := range f.NamedValues[name] {
 			names[v.ID] = name
 		}
 	}
 
-	// Allocate args to their assigned locations.
 	for _, v := range f.Entry.Values {
 		if v.Op != OpArg {
 			continue
@@ -160,15 +145,8 @@ func (s *stackAllocState) stackalloc() {
 		f.setHome(v, loc)
 	}
 
-	// For each type, we keep track of all the stack slots we
-	// have allocated for that type.
-	// TODO: share slots among equivalent types. We would need to
-	// only share among types with the same GC signature. See the
-	// type.Equal calls below for where this matters.
 	locations := map[*types.Type][]LocalSlot{}
 
-	// Each time we assign a stack slot to a value v, we remember
-	// the slot we used via an index into locations[v.Type].
 	slots := s.slots
 	if n := f.NumValues(); cap(slots) >= n {
 		slots = slots[:n]
@@ -196,7 +174,7 @@ func (s *stackAllocState) stackalloc() {
 			}
 			if v.Op == OpArg {
 				s.nArgSlot++
-				continue // already picked
+				continue
 			}
 
 			// If this is a named value, try to use the name as
@@ -207,12 +185,11 @@ func (s *stackAllocState) stackalloc() {
 			} else {
 				name = names[v.ID]
 			}
-			if name.N != nil && v.Type.Compare(name.Type) == types.CMPeq {
+			if name.N != nil && v.Type.Compare(psess.types, name.Type) == types.CMPeq {
 				for _, id := range s.interfere[v.ID] {
 					h := f.getHome(id)
 					if h != nil && h.(LocalSlot).N == name.N && h.(LocalSlot).Off == name.Off {
-						// A variable can interfere with itself.
-						// It is rare, but but it can happen.
+
 						s.nSelfInterfere++
 						goto noname
 					}
@@ -226,9 +203,9 @@ func (s *stackAllocState) stackalloc() {
 			}
 
 		noname:
-			// Set of stack slots we could reuse.
+
 			locs := locations[v.Type]
-			// Mark all positions in locs used by interfering values.
+
 			for i := 0; i < len(locs); i++ {
 				used[i] = false
 			}
@@ -246,13 +223,13 @@ func (s *stackAllocState) stackalloc() {
 					break
 				}
 			}
-			// If there is no unused stack slot, allocate a new one.
+
 			if i == len(locs) {
 				s.nAuto++
 				locs = append(locs, LocalSlot{N: f.fe.Auto(v.Pos, v.Type), Type: v.Type, Off: 0})
 				locations[v.Type] = locs
 			}
-			// Use the stack variable at that index for v.
+
 			loc := locs[i]
 			if f.pass.debug > stackDebug {
 				fmt.Printf("stackalloc %s to %s\n", v, loc)
@@ -268,7 +245,7 @@ func (s *stackAllocState) stackalloc() {
 // TODO: this could be quadratic if lots of variables are live across lots of
 // basic blocks. Figure out a way to make this function (or, more precisely, the user
 // of this function) require only linear size & time.
-func (s *stackAllocState) computeLive(spillLive [][]ID) {
+func (s *stackAllocState) computeLive(psess *PackageSession, spillLive [][]ID) {
 	s.live = make([][]ID, s.f.NumBlocks())
 	var phis []*Value
 	live := s.f.newSparseSet(s.f.NumValues())
@@ -276,27 +253,21 @@ func (s *stackAllocState) computeLive(spillLive [][]ID) {
 	t := s.f.newSparseSet(s.f.NumValues())
 	defer s.f.retSparseSet(t)
 
-	// Instead of iterating over f.Blocks, iterate over their postordering.
-	// Liveness information flows backward, so starting at the end
-	// increases the probability that we will stabilize quickly.
 	po := s.f.postorder()
 	for {
 		changed := false
 		for _, b := range po {
-			// Start with known live values at the end of the block
+
 			live.clear()
 			live.addAll(s.live[b.ID])
 
-			// Propagate backwards to the start of the block
 			phis = phis[:0]
 			for i := len(b.Values) - 1; i >= 0; i-- {
 				v := b.Values[i]
 				live.remove(v.ID)
 				if v.Op == OpPhi {
-					// Save phi for later.
-					// Note: its args might need a stack slot even though
-					// the phi itself doesn't. So don't use needSlot.
-					if !v.Type.IsMemory() && !v.Type.IsVoid() {
+
+					if !v.Type.IsMemory(psess.types) && !v.Type.IsVoid(psess.types) {
 						phis = append(phis, v)
 					}
 					continue
@@ -308,8 +279,6 @@ func (s *stackAllocState) computeLive(spillLive [][]ID) {
 				}
 			}
 
-			// for each predecessor of b, expand its list of live-at-end values
-			// invariant: s contains the values live at the start of b (excluding phi inputs)
 			for i, e := range b.Preds {
 				p := e.b
 				t.clear()
@@ -322,14 +291,14 @@ func (s *stackAllocState) computeLive(spillLive [][]ID) {
 						t.add(a.ID)
 					}
 					if spill := s.values[a.ID].spill; spill != nil {
-						//TODO: remove?  Subsumed by SpillUse?
+
 						t.add(spill.ID)
 					}
 				}
 				if t.size() == len(s.live[p.ID]) {
 					continue
 				}
-				// grow p's live set
+
 				s.live[p.ID] = append(s.live[p.ID][:0], t.contents()...)
 				changed = true
 			}
@@ -360,7 +329,7 @@ func (f *Func) setHome(v *Value, loc Location) {
 	f.RegAlloc[v.ID] = loc
 }
 
-func (s *stackAllocState) buildInterferenceGraph() {
+func (s *stackAllocState) buildInterferenceGraph(psess *PackageSession) {
 	f := s.f
 	if n := f.NumValues(); cap(s.interfere) >= n {
 		s.interfere = s.interfere[:n]
@@ -370,8 +339,7 @@ func (s *stackAllocState) buildInterferenceGraph() {
 	live := f.newSparseSet(f.NumValues())
 	defer f.retSparseSet(live)
 	for _, b := range f.Blocks {
-		// Propagate liveness backwards to the start of the block.
-		// Two values interfere if one is defined while the other is live.
+
 		live.clear()
 		live.addAll(s.live[b.ID])
 		for i := len(b.Values) - 1; i >= 0; i-- {
@@ -379,9 +347,8 @@ func (s *stackAllocState) buildInterferenceGraph() {
 			if s.values[v.ID].needSlot {
 				live.remove(v.ID)
 				for _, id := range live.contents() {
-					// Note: args can have different types and still interfere
-					// (with each other or with other values). See issue 23522.
-					if s.values[v.ID].typ.Compare(s.values[id].typ) == types.CMPeq || v.Op == OpArg || s.values[id].isArg {
+
+					if s.values[v.ID].typ.Compare(psess.types, s.values[id].typ) == types.CMPeq || v.Op == OpArg || s.values[id].isArg {
 						s.interfere[v.ID] = append(s.interfere[v.ID], id)
 						s.interfere[id] = append(s.interfere[id], v.ID)
 					}
@@ -393,12 +360,7 @@ func (s *stackAllocState) buildInterferenceGraph() {
 				}
 			}
 			if v.Op == OpArg && s.values[v.ID].needSlot {
-				// OpArg is an input argument which is pre-spilled.
-				// We add back v.ID here because we want this value
-				// to appear live even before this point. Being live
-				// all the way to the start of the entry block prevents other
-				// values from being allocated to the same slot and clobbering
-				// the input value before we have a chance to load it.
+
 				live.add(v.ID)
 			}
 		}

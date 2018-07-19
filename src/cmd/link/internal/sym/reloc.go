@@ -1,13 +1,9 @@
-// Copyright 2017 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
 package sym
 
 import (
-	"cmd/internal/objabi"
-	"cmd/internal/sys"
 	"debug/elf"
+	"github.com/dave/golib/src/cmd/internal/objabi"
+	"github.com/dave/golib/src/cmd/internal/sys"
 )
 
 // Reloc is a relocation.
@@ -52,26 +48,12 @@ const (
 	RV_TYPE_MASK      RelocVariant = RV_CHECK_OVERFLOW - 1
 )
 
-func RelocName(arch *sys.Arch, r objabi.RelocType) string {
-	// We didn't have some relocation types at Go1.4.
-	// Uncomment code when we include those in bootstrap code.
+func (psess *PackageSession) RelocName(arch *sys.Arch, r objabi.RelocType) string {
 
 	switch {
-	case r >= 512: // Mach-O
-		// nr := (r - 512)>>1
-		// switch ctxt.Arch.Family {
-		// case sys.AMD64:
-		// 	return macho.RelocTypeX86_64(nr).String()
-		// case sys.ARM:
-		// 	return macho.RelocTypeARM(nr).String()
-		// case sys.ARM64:
-		// 	return macho.RelocTypeARM64(nr).String()
-		// case sys.I386:
-		// 	return macho.RelocTypeGeneric(nr).String()
-		// default:
-		// 	panic("unreachable")
-		// }
-	case r >= 256: // ELF
+	case r >= 512:
+
+	case r >= 256:
 		nr := r - 256
 		switch arch.Family {
 		case sys.AMD64:
@@ -83,20 +65,22 @@ func RelocName(arch *sys.Arch, r objabi.RelocType) string {
 		case sys.I386:
 			return elf.R_386(nr).String()
 		case sys.MIPS, sys.MIPS64:
-			// return elf.R_MIPS(nr).String()
+
 		case sys.PPC64:
-			// return elf.R_PPC64(nr).String()
+
 		case sys.S390X:
-			// return elf.R_390(nr).String()
+
 		default:
 			panic("unreachable")
 		}
 	}
 
-	return r.String()
+	return r.String(psess.
+
+		// RelocByOff implements sort.Interface for sorting relocations by offset.
+		objabi)
 }
 
-// RelocByOff implements sort.Interface for sorting relocations by offset.
 type RelocByOff []Reloc
 
 func (x RelocByOff) Len() int { return len(x) }

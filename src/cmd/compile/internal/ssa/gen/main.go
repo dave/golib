@@ -1,7 +1,3 @@
-// Copyright 2015 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
 // +build ignore
 
 // The gen command generates Go code (in the parent directory) for all
@@ -101,7 +97,7 @@ func genOp() {
 	fmt.Fprintln(w, "package ssa")
 
 	fmt.Fprintln(w, "import (")
-	fmt.Fprintln(w, "\"cmd/internal/obj\"")
+	fmt.Fprintln(w, "\"github.com/dave/golib/src/cmd/internal/obj\"")
 	for _, a := range archs {
 		if a.pkg != "" {
 			fmt.Fprintf(w, "%q\n", a.pkg)
@@ -109,7 +105,6 @@ func genOp() {
 	}
 	fmt.Fprintln(w, ")")
 
-	// generate Block* declarations
 	fmt.Fprintln(w, "const (")
 	fmt.Fprintln(w, "BlockInvalid BlockKind = iota")
 	for _, a := range archs {
@@ -120,7 +115,6 @@ func genOp() {
 	}
 	fmt.Fprintln(w, ")")
 
-	// generate block kind string method
 	fmt.Fprintln(w, "var blockString = [...]string{")
 	fmt.Fprintln(w, "BlockInvalid:\"BlockInvalid\",")
 	for _, a := range archs {
@@ -132,9 +126,8 @@ func genOp() {
 	fmt.Fprintln(w, "}")
 	fmt.Fprintln(w, "func (k BlockKind) String() string {return blockString[k]}")
 
-	// generate Op* declarations
 	fmt.Fprintln(w, "const (")
-	fmt.Fprintln(w, "OpInvalid Op = iota") // make sure OpInvalid is 0.
+	fmt.Fprintln(w, "OpInvalid Op = iota")
 	for _, a := range archs {
 		fmt.Fprintln(w)
 		for _, v := range a.ops {
@@ -146,7 +139,6 @@ func genOp() {
 	}
 	fmt.Fprintln(w, ")")
 
-	// generate OpInfo table
 	fmt.Fprintln(w, "var opcodeTable = [...]opInfo{")
 	fmt.Fprintln(w, " { name: \"OpInvalid\" },")
 	for _, a := range archs {
@@ -160,7 +152,6 @@ func genOp() {
 			fmt.Fprintln(w, "{")
 			fmt.Fprintf(w, "name:\"%s\",\n", v.name)
 
-			// flags
 			if v.aux != "" {
 				fmt.Fprintf(w, "auxType: aux%s,\n", v.aux)
 			}
@@ -180,8 +171,7 @@ func genOp() {
 			}
 			if v.resultInArg0 {
 				fmt.Fprintln(w, "resultInArg0: true,")
-				// OpConvert's register mask is selected dynamically,
-				// so don't try to check it in the static table.
+
 				if v.name != "Convert" && v.reg.inputs[0] != v.reg.outputs[0] {
 					log.Fatalf("%s: input[0] and output[0] must use the same registers for %s", a.name, v.name)
 				}
@@ -233,8 +223,8 @@ func genOp() {
 			}
 			if a.name == "generic" {
 				fmt.Fprintln(w, "generic:true,")
-				fmt.Fprintln(w, "},") // close op
-				// generic ops have no reg info or asm
+				fmt.Fprintln(w, "},")
+
 				continue
 			}
 			if v.asm != "" {
@@ -265,7 +255,6 @@ func genOp() {
 				fmt.Fprintf(w, "clobbers: %d,%s\n", v.reg.clobbers, a.regMaskComment(v.reg.clobbers))
 			}
 
-			// reg outputs
 			s = s[:0]
 			for i, r := range v.reg.outputs {
 				s = append(s, intPair{countRegs(r), i})
@@ -279,15 +268,14 @@ func genOp() {
 				}
 				fmt.Fprintln(w, "},")
 			}
-			fmt.Fprintln(w, "},") // close reg info
-			fmt.Fprintln(w, "},") // close op
+			fmt.Fprintln(w, "},")
+			fmt.Fprintln(w, "},")
 		}
 	}
 	fmt.Fprintln(w, "}")
 
 	fmt.Fprintln(w, "func (o Op) Asm() obj.As {return opcodeTable[o].asm}")
 
-	// generate op string method
 	fmt.Fprintln(w, "func (o Op) String() string {return opcodeTable[o].name }")
 
 	fmt.Fprintln(w, "func (o Op) UsesScratch() bool { return opcodeTable[o].usesScratch }")
@@ -295,7 +283,6 @@ func genOp() {
 	fmt.Fprintln(w, "func (o Op) SymEffect() SymEffect { return opcodeTable[o].symEffect }")
 	fmt.Fprintln(w, "func (o Op) IsCall() bool { return opcodeTable[o].call }")
 
-	// generate registers
 	for _, a := range archs {
 		if a.generic {
 			continue
@@ -303,11 +290,11 @@ func genOp() {
 		fmt.Fprintf(w, "var registers%s = [...]Register {\n", a.name)
 		var gcRegN int
 		for i, r := range a.regnames {
-			pkg := a.pkg[len("cmd/internal/obj/"):]
+			pkg := a.pkg[len("github.com/dave/golib/src/cmd/internal/obj/"):]
 			var objname string // name in cmd/internal/obj/$ARCH
 			switch r {
 			case "SB":
-				// SB isn't a real register.  cmd/internal/obj expects 0 in this case.
+
 				objname = "0"
 			case "SP":
 				objname = pkg + ".REGSP"
@@ -316,8 +303,7 @@ func genOp() {
 			default:
 				objname = pkg + ".REG_" + r
 			}
-			// Assign a GC register map index to registers
-			// that may contain pointers.
+
 			gcRegIdx := -1
 			if a.gpregmask&(1<<uint(i)) != 0 {
 				gcRegIdx = gcRegN
@@ -326,7 +312,7 @@ func genOp() {
 			fmt.Fprintf(w, "  {%d, %s, %d, \"%s\"},\n", i, objname, gcRegIdx, r)
 		}
 		if gcRegN > 32 {
-			// Won't fit in a uint32 mask.
+
 			log.Fatalf("too many GC registers (%d > 32) on %s", gcRegN, a.name)
 		}
 		fmt.Fprintln(w, "}")
@@ -337,7 +323,6 @@ func genOp() {
 		fmt.Fprintf(w, "var linkReg%s = int8(%d)\n", a.name, a.linkreg)
 	}
 
-	// gofmt result
 	b := w.Bytes()
 	var err error
 	b, err = format.Source(b)
@@ -351,8 +336,6 @@ func genOp() {
 		log.Fatalf("can't write output: %v\n", err)
 	}
 
-	// Check that the arch genfile handles all the arch-specific opcodes.
-	// This is very much a hack, but it is better than nothing.
 	for _, a := range archs {
 		if a.genfile == "" {
 			continue

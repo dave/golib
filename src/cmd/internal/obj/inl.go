@@ -1,10 +1,6 @@
-// Copyright 2017 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
 package obj
 
-import "cmd/internal/src"
+import "github.com/dave/golib/src/cmd/internal/src"
 
 // InlTree is a collection of inlined calls. The Parent field of an
 // InlinedCall is the index of another InlinedCall in InlTree.

@@ -1,7 +1,3 @@
-// Copyright 2016 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
 package ssa
 
 // phiopt eliminates boolean Phis based on the previous if.
@@ -23,11 +19,11 @@ package ssa
 //   x = (OpPhi (ConstBool [true]) (ConstBool [false]))
 //
 // In this case we can replace x with a copy of b.
-func phiopt(f *Func) {
+func (psess *PackageSession) phiopt(f *Func) {
 	sdom := f.sdom()
 	for _, b := range f.Blocks {
 		if len(b.Preds) != 2 || len(b.Values) == 0 {
-			// TODO: handle more than 2 predecessors, e.g. a || b || c.
+
 			continue
 		}
 
@@ -45,7 +41,6 @@ func phiopt(f *Func) {
 		if b1 != b0 {
 			continue
 		}
-		// b0 is the if block giving the boolean value.
 
 		// reverse is the predecessor from which the truth value comes.
 		var reverse int
@@ -62,19 +57,15 @@ func phiopt(f *Func) {
 				continue
 			}
 
-			// Look for conversions from bool to 0/1.
 			if v.Type.IsInteger() {
-				phioptint(v, b0, reverse)
+				psess.
+					phioptint(v, b0, reverse)
 			}
 
 			if !v.Type.IsBoolean() {
 				continue
 			}
 
-			// Replaces
-			//   if a { x = true } else { x = false } with x = a
-			// and
-			//   if a { x = false } else { x = true } with x = !a
 			if v.Args[0].Op == OpConstBool && v.Args[1].Op == OpConstBool {
 				if v.Args[reverse].AuxInt != v.Args[1-reverse].AuxInt {
 					ops := [2]Op{OpNot, OpCopy}
@@ -87,11 +78,6 @@ func phiopt(f *Func) {
 				}
 			}
 
-			// Replaces
-			//   if a { x = true } else { x = value } with x = a || value.
-			// Requires that value dominates x, meaning that regardless of a,
-			// value is always computed. This guarantees that the side effects
-			// of value are not seen if a is false.
 			if v.Args[reverse].Op == OpConstBool && v.Args[reverse].AuxInt == 1 {
 				if tmp := v.Args[1-reverse]; sdom.isAncestorEq(tmp.Block, b) {
 					v.reset(OpOrB)
@@ -103,11 +89,6 @@ func phiopt(f *Func) {
 				}
 			}
 
-			// Replaces
-			//   if a { x = value } else { x = false } with x = a && value.
-			// Requires that value dominates x, meaning that regardless of a,
-			// value is always computed. This guarantees that the side effects
-			// of value are not seen if a is false.
 			if v.Args[1-reverse].Op == OpConstBool && v.Args[1-reverse].AuxInt == 0 {
 				if tmp := v.Args[reverse]; sdom.isAncestorEq(tmp.Block, b) {
 					v.reset(OpAndB)
@@ -122,7 +103,7 @@ func phiopt(f *Func) {
 	}
 }
 
-func phioptint(v *Value, b0 *Block, reverse int) {
+func (psess *PackageSession) phioptint(v *Value, b0 *Block, reverse int) {
 	a0 := v.Args[0]
 	a1 := v.Args[1]
 	if a0.Op != a1.Op {
@@ -148,7 +129,7 @@ func phioptint(v *Value, b0 *Block, reverse int) {
 		negate = !negate
 	}
 
-	switch v.Type.Size() {
+	switch v.Type.Size(psess.types) {
 	case 1:
 		v.reset(OpCopy)
 	case 2:
@@ -158,7 +139,7 @@ func phioptint(v *Value, b0 *Block, reverse int) {
 	case 8:
 		v.reset(OpZeroExt8to64)
 	default:
-		v.Fatalf("bad int size %d", v.Type.Size())
+		v.Fatalf("bad int size %d", v.Type.Size(psess.types))
 	}
 
 	a := b0.Control
@@ -169,6 +150,6 @@ func phioptint(v *Value, b0 *Block, reverse int) {
 
 	f := b0.Func
 	if f.pass.debug > 0 {
-		f.Warnl(v.Block.Pos, "converted OpPhi bool -> int%d", v.Type.Size()*8)
+		f.Warnl(v.Block.Pos, "converted OpPhi bool -> int%d", v.Type.Size(psess.types)*8)
 	}
 }

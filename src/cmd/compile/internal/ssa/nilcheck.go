@@ -1,25 +1,14 @@
-// Copyright 2015 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
 package ssa
 
 import (
-	"cmd/internal/src"
+	"github.com/dave/golib/src/cmd/internal/src"
 )
 
 // nilcheckelim eliminates unnecessary nil checks.
 // runs on machine-independent code.
-func nilcheckelim(f *Func) {
-	// A nil check is redundant if the same nil check was successful in a
-	// dominating block. The efficacy of this pass depends heavily on the
-	// efficacy of the cse pass.
-	sdom := f.sdom()
+func (psess *PackageSession) nilcheckelim(f *Func) {
 
-	// TODO: Eliminate more nil checks.
-	// We can recursively remove any chain of fixed offset calculations,
-	// i.e. struct fields and array elements, even with non-constant
-	// indices: x is non-nil iff x.a.b[i].c is.
+	sdom := f.sdom()
 
 	type walkState int
 	const (
@@ -36,17 +25,11 @@ func nilcheckelim(f *Func) {
 	work := make([]bp, 0, 256)
 	work = append(work, bp{block: f.Entry})
 
-	// map from value ID to bool indicating if value is known to be non-nil
-	// in the current dominator path being walked. This slice is updated by
-	// walkStates to maintain the known non-nil values.
 	nonNilValues := make([]bool, f.NumValues())
 
-	// make an initial pass identifying any non-nil values
 	for _, b := range f.Blocks {
 		for _, v := range b.Values {
-			// a value resulting from taking the address of a
-			// value, or a value constructed from an offset of a
-			// non-nil ptr (OpAddPtr) implies it is non-nil
+
 			if v.Op == OpAddr || v.Op == OpAddPtr {
 				nonNilValues[v.ID] = true
 			}
@@ -57,8 +40,7 @@ func nilcheckelim(f *Func) {
 		changed = false
 		for _, b := range f.Blocks {
 			for _, v := range b.Values {
-				// phis whose arguments are all non-nil
-				// are non-nil
+
 				if v.Op == OpPhi {
 					argsNonNil := true
 					for _, a := range v.Args {
@@ -78,12 +60,10 @@ func nilcheckelim(f *Func) {
 		}
 	}
 
-	// allocate auxiliary date structures for computing store order
 	sset := f.newSparseSet(f.NumValues())
 	defer f.retSparseSet(sset)
 	storeNumber := make([]int32, f.NumValues())
 
-	// perform a depth first walk of the dominee tree
 	for len(work) > 0 {
 		node := work[len(work)-1]
 		work = work[:len(work)-1]
@@ -92,7 +72,6 @@ func nilcheckelim(f *Func) {
 		case Work:
 			b := node.block
 
-			// First, see if we're dominated by an explicit nil check.
 			if len(b.Preds) == 1 {
 				p := b.Preds[0].b
 				if p.Kind == BlockIf && p.Control.Op == OpIsNonNil && p.Succs[0].b == b {
@@ -104,13 +83,11 @@ func nilcheckelim(f *Func) {
 				}
 			}
 
-			// Next, order values in the current block w.r.t. stores.
-			b.Values = storeOrder(b.Values, sset, storeNumber)
+			b.Values = psess.storeOrder(b.Values, sset, storeNumber)
 
-			pendingLines := f.cachedLineStarts // Holds statement boundaries that need to be moved to a new value/block
+			pendingLines := f.cachedLineStarts
 			pendingLines.clear()
 
-			// Next, process values in the block.
 			i := 0
 			for _, v := range b.Values {
 				b.Values[i] = v
@@ -119,36 +96,33 @@ func nilcheckelim(f *Func) {
 				case OpIsNonNil:
 					ptr := v.Args[0]
 					if nonNilValues[ptr.ID] {
-						if v.Pos.IsStmt() == src.PosIsStmt { // Boolean true is a terrible statement boundary.
-							pendingLines.add(v.Pos.Line())
+						if v.Pos.IsStmt() == src.PosIsStmt {
+							pendingLines.add(psess, v.Pos.Line())
 							v.Pos = v.Pos.WithNotStmt()
 						}
-						// This is a redundant explicit nil check.
+
 						v.reset(OpConstBool)
-						v.AuxInt = 1 // true
+						v.AuxInt = 1
 					}
 				case OpNilCheck:
 					ptr := v.Args[0]
 					if nonNilValues[ptr.ID] {
-						// This is a redundant implicit nil check.
-						// Logging in the style of the former compiler -- and omit line 1,
-						// which is usually in generated code.
+
 						if f.fe.Debug_checknil() && v.Pos.Line() > 1 {
 							f.Warnl(v.Pos, "removed nil check")
 						}
-						if v.Pos.IsStmt() == src.PosIsStmt { // About to lose a statement boundary
-							pendingLines.add(v.Pos.Line())
+						if v.Pos.IsStmt() == src.PosIsStmt {
+							pendingLines.add(psess, v.Pos.Line())
 						}
 						v.reset(OpUnknown)
-						f.freeValue(v)
+						f.freeValue(psess, v)
 						i--
 						continue
 					}
-					// Record the fact that we know ptr is non nil, and remember to
-					// undo that information when this dominator subtree is done.
+
 					nonNilValues[ptr.ID] = true
 					work = append(work, bp{op: ClearPtr, ptr: ptr})
-					fallthrough // a non-eliminated nil check might be a good place for a statement boundary.
+					fallthrough
 				default:
 					if pendingLines.contains(v.Pos.Line()) && v.Pos.IsStmt() != src.PosNotStmt {
 						v.Pos = v.Pos.WithIsStmt()
@@ -165,7 +139,6 @@ func nilcheckelim(f *Func) {
 			}
 			b.Values = b.Values[:i]
 
-			// Add all dominated blocks to the work list.
 			for w := sdom[node.block.ID].child; w != nil; w = sdom[w.ID].sibling {
 				work = append(work, bp{op: Work, block: w})
 			}
@@ -184,55 +157,52 @@ const minZeroPage = 4096
 
 // nilcheckelim2 eliminates unnecessary nil checks.
 // Runs after lowering and scheduling.
-func nilcheckelim2(f *Func) {
+func (psess *PackageSession) nilcheckelim2(f *Func) {
 	unnecessary := f.newSparseSet(f.NumValues())
 	defer f.retSparseSet(unnecessary)
 
-	pendingLines := f.cachedLineStarts // Holds statement boundaries that need to be moved to a new value/block
+	pendingLines := f.cachedLineStarts
 
 	for _, b := range f.Blocks {
-		// Walk the block backwards. Find instructions that will fault if their
-		// input pointer is nil. Remove nil checks on those pointers, as the
-		// faulting instruction effectively does the nil check for free.
+
 		unnecessary.clear()
 		pendingLines.clear()
-		// Optimization: keep track of removed nilcheck with smallest index
+
 		firstToRemove := len(b.Values)
 		for i := len(b.Values) - 1; i >= 0; i-- {
 			v := b.Values[i]
-			if opcodeTable[v.Op].nilCheck && unnecessary.contains(v.Args[0].ID) {
+			if psess.opcodeTable[v.Op].nilCheck && unnecessary.contains(v.Args[0].ID) {
 				if f.fe.Debug_checknil() && v.Pos.Line() > 1 {
 					f.Warnl(v.Pos, "removed nil check")
 				}
 				if v.Pos.IsStmt() == src.PosIsStmt {
-					pendingLines.add(v.Pos.Line())
+					pendingLines.add(psess, v.Pos.Line())
 				}
 				v.reset(OpUnknown)
 				firstToRemove = i
 				continue
 			}
-			if v.Type.IsMemory() || v.Type.IsTuple() && v.Type.FieldType(1).IsMemory() {
+			if v.Type.IsMemory(psess.types) || v.Type.IsTuple() && v.Type.FieldType(psess.types, 1).IsMemory(psess.types) {
 				if v.Op == OpVarDef || v.Op == OpVarKill || v.Op == OpVarLive {
-					// These ops don't really change memory.
+
 					continue
 				}
-				// This op changes memory.  Any faulting instruction after v that
-				// we've recorded in the unnecessary map is now obsolete.
+
 				unnecessary.clear()
 			}
 
 			// Find any pointers that this op is guaranteed to fault on if nil.
 			var ptrstore [2]*Value
 			ptrs := ptrstore[:0]
-			if opcodeTable[v.Op].faultOnNilArg0 {
+			if psess.opcodeTable[v.Op].faultOnNilArg0 {
 				ptrs = append(ptrs, v.Args[0])
 			}
-			if opcodeTable[v.Op].faultOnNilArg1 {
+			if psess.opcodeTable[v.Op].faultOnNilArg1 {
 				ptrs = append(ptrs, v.Args[1])
 			}
 			for _, ptr := range ptrs {
-				// Check to make sure the offset is small.
-				switch opcodeTable[v.Op].auxType {
+
+				switch psess.opcodeTable[v.Op].auxType {
 				case auxSymOff:
 					if v.Aux != nil || v.AuxInt < 0 || v.AuxInt >= minZeroPage {
 						continue
@@ -243,21 +213,19 @@ func nilcheckelim2(f *Func) {
 						continue
 					}
 				case auxInt32:
-					// Mips uses this auxType for atomic add constant. It does not affect the effective address.
+
 				case auxInt64:
-					// ARM uses this auxType for duffcopy/duffzero/alignment info.
-					// It does not affect the effective address.
+
 				case auxNone:
-					// offset is zero.
+
 				default:
-					v.Fatalf("can't handle aux %s (type %d) yet\n", v.auxString(), int(opcodeTable[v.Op].auxType))
+					v.Fatalf("can't handle aux %s (type %d) yet\n", v.auxString(psess), int(psess.opcodeTable[v.Op].auxType))
 				}
-				// This instruction is guaranteed to fault if ptr is nil.
-				// Any previous nil check op is unnecessary.
+
 				unnecessary.add(ptr.ID)
 			}
 		}
-		// Remove values we've clobbered with OpUnknown.
+
 		i := firstToRemove
 		for j := i; j < len(b.Values); j++ {
 			v := b.Values[j]
@@ -280,7 +248,5 @@ func nilcheckelim2(f *Func) {
 		}
 		b.Values = b.Values[:i]
 
-		// TODO: if b.Kind == BlockPlain, start the analysis in the subsequent block to find
-		// more unnecessary nil checks.  Would fix test/nilptr3_ssa.go:157.
 	}
 }

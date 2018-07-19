@@ -1,37 +1,6 @@
-// cmd/9c/9.out.h from Vita Nuova.
-//
-//	Copyright © 1994-1999 Lucent Technologies Inc.  All rights reserved.
-//	Portions Copyright © 1995-1997 C H Forsyth (forsyth@terzarima.net)
-//	Portions Copyright © 1997-1999 Vita Nuova Limited
-//	Portions Copyright © 2000-2008 Vita Nuova Holdings Limited (www.vitanuova.com)
-//	Portions Copyright © 2004,2006 Bruce Ellis
-//	Portions Copyright © 2005-2007 C H Forsyth (forsyth@terzarima.net)
-//	Revisions Copyright © 2000-2008 Lucent Technologies Inc. and others
-//	Portions Copyright © 2009 The Go Authors. All rights reserved.
-//
-// Permission is hereby granted, free of charge, to any person obtaining a copy
-// of this software and associated documentation files (the "Software"), to deal
-// in the Software without restriction, including without limitation the rights
-// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-// copies of the Software, and to permit persons to whom the Software is
-// furnished to do so, subject to the following conditions:
-//
-// The above copyright notice and this permission notice shall be included in
-// all copies or substantial portions of the Software.
-//
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL THE
-// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-// THE SOFTWARE.
-
 package ppc64
 
-import "cmd/internal/obj"
-
-//go:generate go run ../stringer.go -i $GOFILE -o anames.go -p ppc64
+import "github.com/dave/golib/src/cmd/internal/obj"
 
 /*
  * powerpc 64
@@ -257,13 +226,13 @@ const (
 
 // OpenPOWER ABI for Linux Supplement Power Architecture 64-Bit ELF V2 ABI
 // https://openpowerfoundation.org/?resource_lib=64-bit-elf-v2-abi-specification-power-architecture
-var PPC64DWARFRegisters = map[int16]int16{}
 
-func init() {
-	// f assigns dwarfregister[from:to] = (base):(to-from+base)
+func (psess *PackageSession) init() {
+
 	f := func(from, to, base int16) {
 		for r := int16(from); r <= to; r++ {
-			PPC64DWARFRegisters[r] = r - from + base
+			psess.
+				PPC64DWARFRegisters[r] = r - from + base
 		}
 	}
 	f(REG_R0, REG_R31, 0)
@@ -271,11 +240,14 @@ func init() {
 	f(REG_V0, REG_V31, 77)
 	f(REG_CR0, REG_CR7, 68)
 
-	f(REG_VS0, REG_VS31, 32)  // overlaps F0-F31
-	f(REG_VS32, REG_VS63, 77) // overlaps V0-V31
-	PPC64DWARFRegisters[REG_LR] = 65
-	PPC64DWARFRegisters[REG_CTR] = 66
-	PPC64DWARFRegisters[REG_XER] = 76
+	f(REG_VS0, REG_VS31, 32)
+	f(REG_VS32, REG_VS63, 77)
+	psess.
+		PPC64DWARFRegisters[REG_LR] = 65
+	psess.
+		PPC64DWARFRegisters[REG_CTR] = 66
+	psess.
+		PPC64DWARFRegisters[REG_XER] = 76
 }
 
 /*
@@ -306,14 +278,6 @@ const (
 	NOSCHED = 1 << 9
 )
 
-// Values for use in branch instruction BC
-// BC B0,BI,label
-// BO is type of branch + likely bits described below
-// BI is CR value + branch type
-// ex: BEQ CR2,label is BC 12,10,label
-//   12 = BO_BCR
-//   10 = BI_CR2 + BI_EQ
-
 const (
 	BI_CR0 = 0
 	BI_CR1 = 4
@@ -329,11 +293,6 @@ const (
 	BI_OVF = 3
 )
 
-// Values for the BO field.  Add the branch type to
-// the likely bits, if a likely setting is known.
-// If branch likely or unlikely is not known, don't set it.
-// e.g. branch on cr+likely = 15
-
 const (
 	BO_BCTR     = 16 // branch on ctr value
 	BO_BCR      = 12 // branch on cr value
@@ -342,8 +301,6 @@ const (
 	BO_UNLIKELY = 2  // value for unlikely
 	BO_LIKELY   = 3  // value for likely
 )
-
-// Bit settings from the CR
 
 const (
 	C_COND_LT = iota // 0 result is negative
@@ -653,8 +610,6 @@ const (
 	AFSQRTCC
 	AFSQRTS
 	AFSQRTSCC
-
-	/* 64-bit */
 
 	ACNTLZD
 	ACNTLZDCC

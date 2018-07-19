@@ -4,10 +4,10 @@
 package ssa
 
 import (
-	"cmd/internal/dwarf"
-	"cmd/internal/obj"
 	"encoding/hex"
 	"fmt"
+	"github.com/dave/golib/src/cmd/internal/dwarf"
+	"github.com/dave/golib/src/cmd/internal/obj"
 	"math/bits"
 	"sort"
 	"strings"
@@ -138,18 +138,6 @@ func (loc VarLoc) absent() bool {
 	return loc.Registers == 0 && !loc.onStack()
 }
 
-var BlockStart = &Value{
-	ID:  -10000,
-	Op:  OpInvalid,
-	Aux: "BlockStart",
-}
-
-var BlockEnd = &Value{
-	ID:  -20000,
-	Op:  OpInvalid,
-	Aux: "BlockEnd",
-}
-
 // RegisterSet is a bitmap of registers, indexed by Register.num.
 type RegisterSet uint64
 
@@ -193,19 +181,17 @@ type debugState struct {
 }
 
 func (state *debugState) initializeCache(f *Func, numVars, numSlots int) {
-	// One blockDebug per block. Initialized in allocBlock.
+
 	if cap(state.blockDebug) < f.NumBlocks() {
 		state.blockDebug = make([]BlockDebug, f.NumBlocks())
 	} else {
-		// This local variable, and the ones like it below, enable compiler
-		// optimizations. Don't inline them.
+
 		b := state.blockDebug[:f.NumBlocks()]
 		for i := range b {
 			b[i] = BlockDebug{}
 		}
 	}
 
-	// A list of slots per Value. Reuse the previous child slices.
 	if cap(state.valueNames) < f.NumValues() {
 		old := state.valueNames
 		state.valueNames = make([][]SlotID, f.NumValues())
@@ -216,7 +202,6 @@ func (state *debugState) initializeCache(f *Func, numVars, numSlots int) {
 		vn[i] = vn[i][:0]
 	}
 
-	// Slot and register contents for currentState. Cleared by reset().
 	if cap(state.currentState.slots) < numSlots {
 		state.currentState.slots = make([]VarLoc, numSlots)
 	} else {
@@ -228,17 +213,14 @@ func (state *debugState) initializeCache(f *Func, numVars, numSlots int) {
 		state.currentState.registers = state.currentState.registers[:len(state.registers)]
 	}
 
-	// Used many times by mergePredecessors.
 	if cap(state.liveCount) < numSlots {
 		state.liveCount = make([]int, numSlots)
 	} else {
 		state.liveCount = state.liveCount[:numSlots]
 	}
 
-	// A relatively small slice, but used many times as the return from processValue.
 	state.changedVars = newSparseSet(numVars)
 
-	// A pending entry per user variable, with space to track each of its pieces.
 	numPieces := 0
 	for i := range state.varSlots {
 		numPieces += len(state.varSlots[i])
@@ -325,7 +307,7 @@ func (s *debugState) stateString(state stateAtPC) string {
 // BuildFuncDebug returns debug information for f.
 // f must be fully processed, so that each Value is where it will be when
 // machine code is emitted.
-func BuildFuncDebug(ctxt *obj.Link, f *Func, loggingEnabled bool, stackOffset func(LocalSlot) int32) *FuncDebug {
+func (psess *PackageSession) BuildFuncDebug(ctxt *obj.Link, f *Func, loggingEnabled bool, stackOffset func(LocalSlot) int32) *FuncDebug {
 	if f.RegAlloc == nil {
 		f.Fatalf("BuildFuncDebug on func %v that has not been fully processed", f)
 	}
@@ -348,9 +330,6 @@ func BuildFuncDebug(ctxt *obj.Link, f *Func, loggingEnabled bool, stackOffset fu
 		}
 	}
 
-	// Recompose any decomposed variables, and establish the canonical
-	// IDs for each var and slot by filling out state.vars and state.slots.
-
 	state.slots = state.slots[:0]
 	state.vars = state.vars[:0]
 	for i, slot := range f.Names {
@@ -369,8 +348,6 @@ func BuildFuncDebug(ctxt *obj.Link, f *Func, loggingEnabled bool, stackOffset fu
 		state.varParts[topSlot.N] = append(state.varParts[topSlot.N], SlotID(i))
 	}
 
-	// Recreate the LocalSlot for each stack-only variable.
-	// This would probably be better as an output from stackframe.
 	for _, b := range f.Blocks {
 		for _, v := range b.Values {
 			if v.Op == OpVarDef || v.Op == OpVarKill {
@@ -389,7 +366,6 @@ func BuildFuncDebug(ctxt *obj.Link, f *Func, loggingEnabled bool, stackOffset fu
 		}
 	}
 
-	// Fill in the var<->slot mappings.
 	if cap(state.varSlots) < len(state.vars) {
 		state.varSlots = make([][]SlotID, len(state.vars))
 	} else {
@@ -428,8 +404,8 @@ func BuildFuncDebug(ctxt *obj.Link, f *Func, loggingEnabled bool, stackOffset fu
 		}
 	}
 
-	blockLocs := state.liveness()
-	state.buildLocationLists(blockLocs)
+	blockLocs := state.liveness(psess)
+	state.buildLocationLists(psess, blockLocs)
 
 	return &FuncDebug{
 		Slots:         state.slots,
@@ -441,24 +417,19 @@ func BuildFuncDebug(ctxt *obj.Link, f *Func, loggingEnabled bool, stackOffset fu
 
 // liveness walks the function in control flow order, calculating the start
 // and end state of each block.
-func (state *debugState) liveness() []*BlockDebug {
+func (state *debugState) liveness(psess *PackageSession) []*BlockDebug {
 	blockLocs := make([]*BlockDebug, state.f.NumBlocks())
 
-	// Reverse postorder: visit a block after as many as possible of its
-	// predecessors have been visited.
 	po := state.f.Postorder()
 	for i := len(po) - 1; i >= 0; i-- {
 		b := po[i]
 
-		// Build the starting state for the block from the final
-		// state of its predecessors.
 		startState, startValid := state.mergePredecessors(b, blockLocs)
 		changed := false
 		if state.loggingEnabled {
 			state.logf("Processing %v, initial state:\n%v", b, state.stateString(state.currentState))
 		}
 
-		// Update locs/registers with the effects of each Value.
 		for _, v := range b.Values {
 			slots := state.valueNames[v.ID]
 
@@ -479,15 +450,14 @@ func (state *debugState) liveness() []*BlockDebug {
 					}
 				}
 			}
-			// Update valueNames with the source so that later steps
-			// don't need special handling.
+
 			if source != nil {
 				slots = append(slots, state.valueNames[source.ID]...)
 				state.valueNames[v.ID] = slots
 			}
 
 			reg, _ := state.f.getHome(v.ID).(*Register)
-			c := state.processValue(v, slots, reg)
+			c := state.processValue(psess, v, slots, reg)
 			changed = changed || c
 		}
 
@@ -527,8 +497,7 @@ func (state *debugState) mergePredecessors(b *Block, blockLocs []*BlockDebug) ([
 	}
 
 	if state.loggingEnabled {
-		// The logf below would cause preds to be heap-allocated if
-		// it were passed directly.
+
 		preds2 := make([]*Block, len(preds))
 		copy(preds2, preds)
 		state.logf("Merging %v into %v\n", preds2, b)
@@ -571,9 +540,6 @@ func (state *debugState) mergePredecessors(b *Block, blockLocs []*BlockDebug) ([
 		}
 	}
 
-	// Check if the final state is the same as the first predecessor's
-	// final state, and reuse it if so. In principle it could match any,
-	// but it's probably not worth checking more than the first.
 	unchanged := true
 	for _, predSlot := range p0 {
 		if state.liveCount[predSlot.slot] != len(preds) ||
@@ -595,18 +561,15 @@ func (state *debugState) mergePredecessors(b *Block, blockLocs []*BlockDebug) ([
 		state.currentState.registers[reg] = state.currentState.registers[reg][:0]
 	}
 
-	// A slot is live if it was seen in all predecessors, and they all had
-	// some storage in common.
 	for _, predSlot := range p0 {
 		slotLoc := slotLocs[predSlot.slot]
 
 		if state.liveCount[predSlot.slot] != len(preds) {
-			// Seen in only some predecessors. Clear it out.
+
 			slotLocs[predSlot.slot] = VarLoc{}
 			continue
 		}
 
-		// Present in all predecessors.
 		mask := uint64(slotLoc.Registers)
 		for {
 			if mask == 0 {
@@ -625,7 +588,7 @@ func (state *debugState) mergePredecessors(b *Block, blockLocs []*BlockDebug) ([
 // the names in vSlots and homed in vReg.  "v" becomes visible after execution of
 // the instructions evaluating it. It returns which VarIDs were modified by the
 // Value's execution.
-func (state *debugState) processValue(v *Value, vSlots []SlotID, vReg *Register) bool {
+func (state *debugState) processValue(psess *PackageSession, v *Value, vSlots []SlotID, vReg *Register) bool {
 	locs := state.currentState
 	changed := false
 	setSlot := func(slot SlotID, loc VarLoc) {
@@ -634,10 +597,7 @@ func (state *debugState) processValue(v *Value, vSlots []SlotID, vReg *Register)
 		state.currentState.slots[slot] = loc
 	}
 
-	// Handle any register clobbering. Call operations, for example,
-	// clobber all registers even though they don't explicitly write to
-	// them.
-	clobbers := uint64(opcodeTable[v.Op].reg.clobbers)
+	clobbers := uint64(psess.opcodeTable[v.Op].reg.clobbers)
 	for {
 		if clobbers == 0 {
 			break
@@ -809,8 +769,7 @@ func canMerge(pending, new VarLoc) bool {
 // firstReg returns the first register in set that is present.
 func firstReg(set RegisterSet) uint8 {
 	if set == 0 {
-		// This is wrong, but there seem to be some situations where we
-		// produce locations with no storage.
+
 		return 0
 	}
 	return uint8(bits.TrailingZeros64(uint64(set)))
@@ -821,9 +780,8 @@ func firstReg(set RegisterSet) uint8 {
 // The returned location lists are not fully complete. They are in terms of
 // SSA values rather than PCs, and have no base address/end entries. They will
 // be finished by PutLocationList.
-func (state *debugState) buildLocationLists(blockLocs []*BlockDebug) {
-	// Run through the function in program text order, building up location
-	// lists as we go. The heavy lifting has mostly already been done.
+func (state *debugState) buildLocationLists(psess *PackageSession, blockLocs []*BlockDebug) {
+
 	for _, b := range state.f.Blocks {
 		if !blockLocs[b.ID].relevant {
 			continue
@@ -835,9 +793,9 @@ func (state *debugState) buildLocationLists(blockLocs []*BlockDebug) {
 		for _, v := range b.Values {
 			slots := state.valueNames[v.ID]
 			reg, _ := state.f.getHome(v.ID).(*Register)
-			changed := state.processValue(v, slots, reg)
+			changed := state.processValue(psess, v, slots, reg)
 
-			if opcodeTable[v.Op].zeroWidth {
+			if psess.opcodeTable[v.Op].zeroWidth {
 				if changed {
 					zeroWidthPending = true
 				}
@@ -850,7 +808,7 @@ func (state *debugState) buildLocationLists(blockLocs []*BlockDebug) {
 
 			zeroWidthPending = false
 			for _, varID := range state.changedVars.contents() {
-				state.updateVar(VarID(varID), v, state.currentState.slots)
+				state.updateVar(psess, VarID(varID), v, state.currentState.slots)
 			}
 			state.changedVars.clear()
 		}
@@ -861,9 +819,8 @@ func (state *debugState) buildLocationLists(blockLocs []*BlockDebug) {
 		state.logf("location lists:\n")
 	}
 
-	// Flush any leftover entries live at the end of the last block.
 	for varID := range state.lists {
-		state.writePendingEntry(VarID(varID), state.f.Blocks[len(state.f.Blocks)-1].ID, BlockEnd.ID)
+		state.writePendingEntry(psess, VarID(varID), state.f.Blocks[len(state.f.Blocks)-1].ID, psess.BlockEnd.ID)
 		list := state.lists[varID]
 		if state.loggingEnabled {
 			if len(list) == 0 {
@@ -877,8 +834,8 @@ func (state *debugState) buildLocationLists(blockLocs []*BlockDebug) {
 
 // updateVar updates the pending location list entry for varID to
 // reflect the new locations in curLoc, caused by v.
-func (state *debugState) updateVar(varID VarID, v *Value, curLoc []VarLoc) {
-	// Assemble the location list entry with whatever's live.
+func (state *debugState) updateVar(psess *PackageSession, varID VarID, v *Value, curLoc []VarLoc) {
+
 	empty := true
 	for _, slotID := range state.varSlots[varID] {
 		if !curLoc[slotID].absent() {
@@ -888,12 +845,11 @@ func (state *debugState) updateVar(varID VarID, v *Value, curLoc []VarLoc) {
 	}
 	pending := &state.pendingEntries[varID]
 	if empty {
-		state.writePendingEntry(varID, v.Block.ID, v.ID)
+		state.writePendingEntry(psess, varID, v.Block.ID, v.ID)
 		pending.clear()
 		return
 	}
 
-	// Extend the previous entry if possible.
 	if pending.present {
 		merge := true
 		for i, slotID := range state.varSlots[varID] {
@@ -907,7 +863,7 @@ func (state *debugState) updateVar(varID VarID, v *Value, curLoc []VarLoc) {
 		}
 	}
 
-	state.writePendingEntry(varID, v.Block.ID, v.ID)
+	state.writePendingEntry(psess, varID, v.Block.ID, v.ID)
 	pending.present = true
 	pending.startBlock = v.Block.ID
 	pending.startValue = v.ID
@@ -920,26 +876,22 @@ func (state *debugState) updateVar(varID VarID, v *Value, curLoc []VarLoc) {
 
 // writePendingEntry writes out the pending entry for varID, if any,
 // terminated at endBlock/Value.
-func (state *debugState) writePendingEntry(varID VarID, endBlock, endValue ID) {
+func (state *debugState) writePendingEntry(psess *PackageSession, varID VarID, endBlock, endValue ID) {
 	pending := state.pendingEntries[varID]
 	if !pending.present {
 		return
 	}
 
-	// Pack the start/end coordinates into the start/end addresses
-	// of the entry, for decoding by PutLocationList.
 	start, startOK := encodeValue(state.ctxt, pending.startBlock, pending.startValue)
 	end, endOK := encodeValue(state.ctxt, endBlock, endValue)
 	if !startOK || !endOK {
-		// If someone writes a function that uses >65K values,
-		// they get incomplete debug info on 32-bit platforms.
+
 		return
 	}
 	list := state.lists[varID]
 	list = appendPtr(state.ctxt, list, start)
 	list = appendPtr(state.ctxt, list, end)
-	// Where to write the length of the location description once
-	// we know how big it is.
+
 	sizeIdx := len(list)
 	list = list[:len(list)+2]
 
@@ -976,7 +928,7 @@ func (state *debugState) writePendingEntry(varID VarID, endBlock, endValue ID) {
 
 		if len(state.varSlots[varID]) > 1 {
 			list = append(list, dwarf.DW_OP_piece)
-			list = dwarf.AppendUleb128(list, uint64(slot.Type.Size()))
+			list = dwarf.AppendUleb128(list, uint64(slot.Type.Size(psess.types)))
 		}
 	}
 	state.ctxt.Arch.ByteOrder.PutUint16(list[sizeIdx:], uint16(len(list)-sizeIdx-2))
@@ -986,15 +938,11 @@ func (state *debugState) writePendingEntry(varID VarID, endBlock, endValue ID) {
 // PutLocationList adds list (a location list in its intermediate representation) to listSym.
 func (debugInfo *FuncDebug) PutLocationList(list []byte, ctxt *obj.Link, listSym, startPC *obj.LSym) {
 	getPC := debugInfo.GetPC
-	// Re-read list, translating its address from block/value ID to PC.
+
 	for i := 0; i < len(list); {
 		begin := getPC(decodeValue(ctxt, readPtr(ctxt, list[i:])))
 		end := getPC(decodeValue(ctxt, readPtr(ctxt, list[i+ctxt.Arch.PtrSize:])))
 
-		// Horrible hack. If a range contains only zero-width
-		// instructions, e.g. an Arg, and it's at the beginning of the
-		// function, this would be indistinguishable from an
-		// end entry. Fudge it.
 		if begin == 0 && end == 0 {
 			end = 1
 		}
@@ -1005,12 +953,11 @@ func (debugInfo *FuncDebug) PutLocationList(list []byte, ctxt *obj.Link, listSym
 		i += 2 + int(ctxt.Arch.ByteOrder.Uint16(list[i:]))
 	}
 
-	// Base address entry.
 	listSym.WriteInt(ctxt, listSym.Size, ctxt.Arch.PtrSize, ^0)
 	listSym.WriteAddr(ctxt, listSym.Size, ctxt.Arch.PtrSize, startPC, 0)
-	// Location list contents, now with real PCs.
+
 	listSym.WriteBytes(ctxt, listSym.Size, list)
-	// End entry.
+
 	listSym.WriteInt(ctxt, listSym.Size, ctxt.Arch.PtrSize, 0)
 	listSym.WriteInt(ctxt, listSym.Size, ctxt.Arch.PtrSize, 0)
 }
@@ -1020,7 +967,7 @@ func (debugInfo *FuncDebug) PutLocationList(list []byte, ctxt *obj.Link, listSym
 func encodeValue(ctxt *obj.Link, b, v ID) (uint64, bool) {
 	if ctxt.Arch.PtrSize == 8 {
 		result := uint64(b)<<32 | uint64(uint32(v))
-		//ctxt.Logf("b %#x (%d) v %#x (%d) -> %#x\n", b, b, v, v, result)
+
 		return result, true
 	}
 	if ctxt.Arch.PtrSize != 4 {
@@ -1036,7 +983,7 @@ func encodeValue(ctxt *obj.Link, b, v ID) (uint64, bool) {
 func decodeValue(ctxt *obj.Link, word uint64) (ID, ID) {
 	if ctxt.Arch.PtrSize == 8 {
 		b, v := ID(word>>32), ID(word)
-		//ctxt.Logf("%#x -> b %#x (%d) v %#x (%d)\n", word, b, b, v, v)
+
 		return b, v
 	}
 	if ctxt.Arch.PtrSize != 4 {

@@ -1,13 +1,9 @@
-// Copyright 2016 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
 package ld
 
 import (
-	"cmd/internal/objabi"
-	"cmd/internal/sys"
 	"fmt"
+	"github.com/dave/golib/src/cmd/internal/objabi"
+	"github.com/dave/golib/src/cmd/internal/sys"
 	"log"
 )
 
@@ -27,9 +23,9 @@ const (
 	BuildModePlugin
 )
 
-func (mode *BuildMode) Set(s string) error {
+func (mode *BuildMode) Set(psess *PackageSession, s string) error {
 	badmode := func() error {
-		return fmt.Errorf("buildmode %s not supported on %s/%s", s, objabi.GOOS, objabi.GOARCH)
+		return fmt.Errorf("buildmode %s not supported on %s/%s", s, psess.objabi.GOOS, psess.objabi.GOARCH)
 	}
 	switch s {
 	default:
@@ -37,10 +33,10 @@ func (mode *BuildMode) Set(s string) error {
 	case "exe":
 		*mode = BuildModeExe
 	case "pie":
-		switch objabi.GOOS {
+		switch psess.objabi.GOOS {
 		case "android", "linux":
 		case "darwin", "freebsd":
-			switch objabi.GOARCH {
+			switch psess.objabi.GOARCH {
 			case "amd64":
 			default:
 				return badmode()
@@ -50,16 +46,16 @@ func (mode *BuildMode) Set(s string) error {
 		}
 		*mode = BuildModePIE
 	case "c-archive":
-		switch objabi.GOOS {
+		switch psess.objabi.GOOS {
 		case "darwin", "linux":
 		case "freebsd":
-			switch objabi.GOARCH {
+			switch psess.objabi.GOARCH {
 			case "amd64":
 			default:
 				return badmode()
 			}
 		case "windows":
-			switch objabi.GOARCH {
+			switch psess.objabi.GOARCH {
 			case "amd64", "386":
 			default:
 				return badmode()
@@ -69,16 +65,16 @@ func (mode *BuildMode) Set(s string) error {
 		}
 		*mode = BuildModeCArchive
 	case "c-shared":
-		switch objabi.GOARCH {
+		switch psess.objabi.GOARCH {
 		case "386", "amd64", "arm", "arm64", "ppc64le", "s390x":
 		default:
 			return badmode()
 		}
 		*mode = BuildModeCShared
 	case "shared":
-		switch objabi.GOOS {
+		switch psess.objabi.GOOS {
 		case "linux":
-			switch objabi.GOARCH {
+			switch psess.objabi.GOARCH {
 			case "386", "amd64", "arm", "arm64", "ppc64le", "s390x":
 			default:
 				return badmode()
@@ -88,15 +84,15 @@ func (mode *BuildMode) Set(s string) error {
 		}
 		*mode = BuildModeShared
 	case "plugin":
-		switch objabi.GOOS {
+		switch psess.objabi.GOOS {
 		case "linux":
-			switch objabi.GOARCH {
+			switch psess.objabi.GOARCH {
 			case "386", "amd64", "arm", "arm64", "s390x", "ppc64le":
 			default:
 				return badmode()
 			}
 		case "darwin":
-			switch objabi.GOARCH {
+			switch psess.objabi.GOARCH {
 			case "amd64":
 			default:
 				return badmode()
@@ -112,7 +108,7 @@ func (mode *BuildMode) Set(s string) error {
 func (mode *BuildMode) String() string {
 	switch *mode {
 	case BuildModeUnset:
-		return "" // avoid showing a default in usage message
+		return ""
 	case BuildModeExe:
 		return "exe"
 	case BuildModePIE:
@@ -166,7 +162,7 @@ func (mode *LinkMode) String() string {
 
 // mustLinkExternal reports whether the program being linked requires
 // the external linker be used to complete the link.
-func mustLinkExternal(ctxt *Link) (res bool, reason string) {
+func (psess *PackageSession) mustLinkExternal(ctxt *Link) (res bool, reason string) {
 	if ctxt.Debugvlog > 1 {
 		defer func() {
 			if res {
@@ -175,7 +171,7 @@ func mustLinkExternal(ctxt *Link) (res bool, reason string) {
 		}()
 	}
 
-	switch objabi.GOOS {
+	switch psess.objabi.GOOS {
 	case "android":
 		return true, "android"
 	case "darwin":
@@ -184,36 +180,28 @@ func mustLinkExternal(ctxt *Link) (res bool, reason string) {
 		}
 	}
 
-	if *flagMsan {
+	if *psess.flagMsan {
 		return true, "msan"
 	}
 
-	// Internally linking cgo is incomplete on some architectures.
-	// https://golang.org/issue/10373
-	// https://golang.org/issue/14449
-	// https://golang.org/issue/21961
-	if iscgo && ctxt.Arch.InFamily(sys.ARM64, sys.MIPS64, sys.MIPS, sys.PPC64) {
-		return true, objabi.GOARCH + " does not support internal cgo"
+	if psess.iscgo && ctxt.Arch.InFamily(sys.ARM64, sys.MIPS64, sys.MIPS, sys.PPC64) {
+		return true, psess.objabi.GOARCH + " does not support internal cgo"
 	}
 
-	// When the race flag is set, the LLVM tsan relocatable file is linked
-	// into the final binary, which means external linking is required because
-	// internal linking does not support it.
-	if *flagRace && ctxt.Arch.InFamily(sys.PPC64) {
+	if *psess.flagRace && ctxt.Arch.InFamily(sys.PPC64) {
 		return true, "race on ppc64le"
 	}
 
-	// Some build modes require work the internal linker cannot do (yet).
 	switch ctxt.BuildMode {
 	case BuildModeCArchive:
 		return true, "buildmode=c-archive"
 	case BuildModeCShared:
 		return true, "buildmode=c-shared"
 	case BuildModePIE:
-		switch objabi.GOOS + "/" + objabi.GOARCH {
+		switch psess.objabi.GOOS + "/" + psess.objabi.GOARCH {
 		case "linux/amd64":
 		default:
-			// Internal linking does not support TLS_IE.
+
 			return true, "buildmode=pie"
 		}
 	case BuildModePlugin:
@@ -233,45 +221,47 @@ func mustLinkExternal(ctxt *Link) (res bool, reason string) {
 // It is called after flags are processed and inputs are processed,
 // so the ctxt.LinkMode variable has an initial value from the -linkmode
 // flag and the iscgo externalobj variables are set.
-func determineLinkMode(ctxt *Link) {
+func (psess *PackageSession) determineLinkMode(ctxt *Link) {
 	switch ctxt.LinkMode {
 	case LinkAuto:
-		// The environment variable GO_EXTLINK_ENABLED controls the
-		// default value of -linkmode. If it is not set when the
-		// linker is called we take the value it was set to when
-		// cmd/link was compiled. (See make.bash.)
+
 		switch objabi.Getgoextlinkenabled() {
 		case "0":
-			if needed, reason := mustLinkExternal(ctxt); needed {
-				Exitf("internal linking requested via GO_EXTLINK_ENABLED, but external linking required: %s", reason)
+			if needed, reason := psess.mustLinkExternal(ctxt); needed {
+				psess.
+					Exitf("internal linking requested via GO_EXTLINK_ENABLED, but external linking required: %s", reason)
 			}
 			ctxt.LinkMode = LinkInternal
 		case "1":
-			if objabi.GOARCH == "ppc64" {
-				Exitf("external linking requested via GO_EXTLINK_ENABLED but not supported for linux/ppc64")
+			if psess.objabi.GOARCH == "ppc64" {
+				psess.
+					Exitf("external linking requested via GO_EXTLINK_ENABLED but not supported for linux/ppc64")
 			}
 			ctxt.LinkMode = LinkExternal
 		default:
-			if needed, _ := mustLinkExternal(ctxt); needed {
+			if needed, _ := psess.mustLinkExternal(ctxt); needed {
 				ctxt.LinkMode = LinkExternal
-			} else if iscgo && externalobj {
+			} else if psess.iscgo && psess.externalobj {
 				ctxt.LinkMode = LinkExternal
 			} else if ctxt.BuildMode == BuildModePIE {
-				ctxt.LinkMode = LinkExternal // https://golang.org/issue/18968
+				ctxt.LinkMode = LinkExternal
 			} else {
 				ctxt.LinkMode = LinkInternal
 			}
-			if objabi.GOARCH == "ppc64" && ctxt.LinkMode == LinkExternal {
-				Exitf("external linking is not supported for linux/ppc64")
+			if psess.objabi.GOARCH == "ppc64" && ctxt.LinkMode == LinkExternal {
+				psess.
+					Exitf("external linking is not supported for linux/ppc64")
 			}
 		}
 	case LinkInternal:
-		if needed, reason := mustLinkExternal(ctxt); needed {
-			Exitf("internal linking requested but external linking required: %s", reason)
+		if needed, reason := psess.mustLinkExternal(ctxt); needed {
+			psess.
+				Exitf("internal linking requested but external linking required: %s", reason)
 		}
 	case LinkExternal:
-		if objabi.GOARCH == "ppc64" {
-			Exitf("external linking not supported for linux/ppc64")
+		if psess.objabi.GOARCH == "ppc64" {
+			psess.
+				Exitf("external linking not supported for linux/ppc64")
 		}
 	}
 }

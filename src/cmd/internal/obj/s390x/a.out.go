@@ -1,37 +1,6 @@
-// Based on cmd/internal/obj/ppc64/a.out.go.
-//
-//	Copyright © 1994-1999 Lucent Technologies Inc.  All rights reserved.
-//	Portions Copyright © 1995-1997 C H Forsyth (forsyth@terzarima.net)
-//	Portions Copyright © 1997-1999 Vita Nuova Limited
-//	Portions Copyright © 2000-2008 Vita Nuova Holdings Limited (www.vitanuova.com)
-//	Portions Copyright © 2004,2006 Bruce Ellis
-//	Portions Copyright © 2005-2007 C H Forsyth (forsyth@terzarima.net)
-//	Revisions Copyright © 2000-2008 Lucent Technologies Inc. and others
-//	Portions Copyright © 2009 The Go Authors. All rights reserved.
-//
-// Permission is hereby granted, free of charge, to any person obtaining a copy
-// of this software and associated documentation files (the "Software"), to deal
-// in the Software without restriction, including without limitation the rights
-// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-// copies of the Software, and to permit persons to whom the Software is
-// furnished to do so, subject to the following conditions:
-//
-// The above copyright notice and this permission notice shall be included in
-// all copies or substantial portions of the Software.
-//
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL THE
-// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-// THE SOFTWARE.
-
 package s390x
 
-import "cmd/internal/obj"
-
-//go:generate go run ../stringer.go -i $GOFILE -o anames.go -p s390x
+import "github.com/dave/golib/src/cmd/internal/obj"
 
 const (
 	NSNAME = 8
@@ -151,13 +120,13 @@ const (
 
 // LINUX for zSeries ELF Application Binary Interface Supplement
 // https://refspecs.linuxfoundation.org/ELF/zSeries/lzsabi0_zSeries/x1472.html
-var S390XDWARFRegisters = map[int16]int16{}
 
-func init() {
-	// f assigns dwarfregisters[from:to by step] = (base):((to-from)/step+base)
+func (psess *PackageSession) init() {
+
 	f := func(from, step, to, base int16) {
 		for r := int16(from); r <= to; r += step {
-			S390XDWARFRegisters[r] = (r-from)/step + base
+			psess.
+				S390XDWARFRegisters[r] = (r-from)/step + base
 		}
 	}
 	f(REG_R0, 1, REG_R15, 0)
@@ -167,8 +136,8 @@ func init() {
 	f(REG_F8, 2, REG_F14, 24)
 	f(REG_F9, 2, REG_F15, 28)
 
-	f(REG_V0, 2, REG_V6, 16) // V0:15 aliased to F0:15
-	f(REG_V1, 2, REG_V7, 20) // TODO what about V16:31?
+	f(REG_V0, 2, REG_V6, 16)
+	f(REG_V1, 2, REG_V7, 20)
 	f(REG_V8, 2, REG_V14, 24)
 	f(REG_V9, 2, REG_V15, 28)
 
@@ -188,7 +157,7 @@ const (
 	BRANCH
 )
 
-const ( // comments from func aclass in asmz.go
+const (
 	C_NONE     = iota
 	C_REG      // general-purpose register (64-bit)
 	C_FREG     // floating-point register (64-bit)

@@ -1,9 +1,3 @@
-// Copyright 2016 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
-// This file implements the encoding of source positions.
-
 package src
 
 import (
@@ -30,7 +24,6 @@ type Pos struct {
 }
 
 // NoPos is a valid unknown position.
-var NoPos Pos
 
 // MakePos creates a new Pos value with the given base, and (file-absolute)
 // line and column.
@@ -47,15 +40,15 @@ func (p Pos) IsKnown() bool {
 
 // Before reports whether the position p comes before q in the source.
 // For positions in different files, ordering is by filename.
-func (p Pos) Before(q Pos) bool {
-	n, m := p.Filename(), q.Filename()
+func (p Pos) Before(psess *PackageSession, q Pos) bool {
+	n, m := p.Filename(psess), q.Filename(psess)
 	return n < m || n == m && p.lico < q.lico
 }
 
 // After reports whether the position p comes after q in the source.
 // For positions in different files, ordering is by filename.
-func (p Pos) After(q Pos) bool {
-	n, m := p.Filename(), q.Filename()
+func (p Pos) After(psess *PackageSession, q Pos) bool {
+	n, m := p.Filename(psess), q.Filename(psess)
 	return n > m || n == m && p.lico > q.lico
 }
 
@@ -74,7 +67,7 @@ func (p Pos) LineNumberHTML() string {
 }
 
 // Filename returns the name of the actual file containing this position.
-func (p Pos) Filename() string { return p.base.Pos().RelFilename() }
+func (p Pos) Filename(psess *PackageSession) string { return p.base.Pos(psess).RelFilename() }
 
 // Base returns the position base.
 func (p Pos) Base() *PosBase { return p.base }
@@ -86,28 +79,25 @@ func (p *Pos) SetBase(base *PosBase) { p.base = base }
 func (p Pos) RelFilename() string { return p.base.Filename() }
 
 // RelLine returns the line number relative to the position's base.
-func (p Pos) RelLine() uint {
+func (p Pos) RelLine(psess *PackageSession) uint {
 	b := p.base
 	if b.Line() == 0 {
-		// base line is unknown => relative line is unknown
+
 		return 0
 	}
-	return b.Line() + (p.Line() - b.Pos().Line())
+	return b.Line() + (p.Line() - b.Pos(psess).Line())
 }
 
 // RelCol returns the column number relative to the position's base.
-func (p Pos) RelCol() uint {
+func (p Pos) RelCol(psess *PackageSession) uint {
 	b := p.base
 	if b.Col() == 0 {
-		// base column is unknown => relative column is unknown
-		// (the current specification for line directives requires
-		// this to apply until the next PosBase/line directive,
-		// not just until the new newline)
+
 		return 0
 	}
-	if p.Line() == b.Pos().Line() {
-		// p on same line as p's base => column is relative to p's base
-		return b.Col() + (p.Col() - b.Pos().Col())
+	if p.Line() == b.Pos(psess).Line() {
+
+		return b.Col() + (p.Col() - b.Pos(psess).Col())
 	}
 	return p.Col()
 }
@@ -119,8 +109,8 @@ func (p Pos) AbsFilename() string { return p.base.AbsFilename() }
 // prefixed by FileSymPrefix to make it appropriate for use as a linker symbol.
 func (p Pos) SymFilename() string { return p.base.SymFilename() }
 
-func (p Pos) String() string {
-	return p.Format(true, true)
+func (p Pos) String(psess *PackageSession) string {
+	return p.Format(psess, true, true)
 }
 
 // Format formats a position as "filename:line" or "filename:line:column",
@@ -128,27 +118,19 @@ func (p Pos) String() string {
 // For positions relative to line directives, the original position is
 // shown as well, as in "filename:line[origfile:origline:origcolumn] if
 // showOrig is set.
-func (p Pos) Format(showCol, showOrig bool) string {
+func (p Pos) Format(psess *PackageSession, showCol, showOrig bool) string {
 	if !p.IsKnown() {
 		return "<unknown line number>"
 	}
 
-	if b := p.base; b == b.Pos().base {
-		// base is file base (incl. nil)
-		return format(p.Filename(), p.Line(), p.Col(), showCol)
+	if b := p.base; b == b.Pos(psess).base {
+
+		return format(p.Filename(psess), p.Line(), p.Col(), showCol)
 	}
 
-	// base is relative
-	// Print the column only for the original position since the
-	// relative position's column information may be bogus (it's
-	// typically generated code and we can't say much about the
-	// original source at that point but for the file:line info
-	// that's provided via a line directive).
-	// TODO(gri) This may not be true if we have an inlining base.
-	// We may want to differentiate at some point.
-	s := format(p.RelFilename(), p.RelLine(), p.RelCol(), showCol)
+	s := format(p.RelFilename(), p.RelLine(psess), p.RelCol(psess), showCol)
 	if showOrig {
-		s += "[" + format(p.Filename(), p.Line(), p.Col(), showCol) + "]"
+		s += "[" + format(p.Filename(psess), p.Line(), p.Col(), showCol) + "]"
 	}
 	return s
 }
@@ -157,15 +139,12 @@ func (p Pos) Format(showCol, showOrig bool) string {
 // is false or col == 0) or "filename:line:column" (showCol is true and col != 0).
 func format(filename string, line, col uint, showCol bool) string {
 	s := filename + ":" + strconv.FormatUint(uint64(line), 10)
-	// col == 0 and col == colMax are interpreted as unknown column values
+
 	if showCol && 0 < col && col < colMax {
 		s += ":" + strconv.FormatUint(uint64(col), 10)
 	}
 	return s
 }
-
-// ----------------------------------------------------------------------------
-// PosBase
 
 // A PosBase encodes a filename and base position.
 // Typically, each file and line directive introduce a PosBase.
@@ -218,15 +197,13 @@ func NewInliningBase(old *PosBase, inlTreeIndex int) *PosBase {
 	return base
 }
 
-var noPos Pos
-
 // Pos returns the position at which base is located.
 // If b == nil, the result is the zero position.
-func (b *PosBase) Pos() *Pos {
+func (b *PosBase) Pos(psess *PackageSession) *Pos {
 	if b != nil {
 		return &b.pos
 	}
-	return &noPos
+	return &psess.noPos
 }
 
 // Filename returns the filename recorded with the base.
@@ -286,9 +263,6 @@ func (b *PosBase) InliningIndex() int {
 	}
 	return -1
 }
-
-// ----------------------------------------------------------------------------
-// lico
 
 // A lico is a compact encoding of a LIne and COlumn number.
 type lico uint32
@@ -357,14 +331,14 @@ const (
 
 func makeLico(line, col uint) lico {
 	if line > lineMax {
-		// cannot represent line, use max. line so we have some information
+
 		line = lineMax
 	}
 	if col > colMax {
-		// cannot represent column, use max. column so we have some information
+
 		col = colMax
 	}
-	// default is not-sure-if-statement
+
 	return lico(line<<lineShift | col<<colShift)
 }
 
@@ -401,7 +375,7 @@ func (x lico) withXlogue(xlogue PosXlogue) lico {
 		if xlogue == 0 {
 			return x
 		}
-		// Normalize 0 to "not a statement"
+
 		x = lico(PosNotStmt << isStmtShift)
 	}
 	return lico(uint(x) & ^uint(xlogueMax<<xlogueShift) | (uint(xlogue) << xlogueShift))
@@ -425,7 +399,7 @@ func (x lico) lineNumberHTML() string {
 	}
 	style, pfx := "b", "+"
 	if x.IsStmt() == PosNotStmt {
-		style = "s" // /strike not supported in HTML5
+		style = "s"
 		pfx = ""
 	}
 	return fmt.Sprintf("<%s>%s%d</%s>", style, pfx, x.Line(), style)

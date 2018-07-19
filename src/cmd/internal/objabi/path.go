@@ -1,7 +1,3 @@
-// Copyright 2017 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
 package objabi
 
 import "strings"
@@ -13,7 +9,7 @@ import "strings"
 // little as possible.
 func PathToPrefix(s string) string {
 	slash := strings.LastIndex(s, "/")
-	// check for chars that need escaping
+
 	n := 0
 	for r := 0; r < len(s); r++ {
 		if c := s[r]; c <= ' ' || (c == '.' && r > slash) || c == '%' || c == '"' || c >= 0x7F {
@@ -21,7 +17,6 @@ func PathToPrefix(s string) string {
 		}
 	}
 
-	// quick exit
 	if n == 0 {
 		return s
 	}

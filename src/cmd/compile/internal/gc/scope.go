@@ -1,24 +1,20 @@
-// Copyright 2017 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
 package gc
 
 import (
-	"cmd/internal/dwarf"
-	"cmd/internal/obj"
-	"cmd/internal/src"
+	"github.com/dave/golib/src/cmd/internal/dwarf"
+	"github.com/dave/golib/src/cmd/internal/obj"
+	"github.com/dave/golib/src/cmd/internal/src"
 	"sort"
 )
 
 // See golang.org/issue/20390.
-func xposBefore(p, q src.XPos) bool {
-	return Ctxt.PosTable.Pos(p).Before(Ctxt.PosTable.Pos(q))
+func (psess *PackageSession) xposBefore(p, q src.XPos) bool {
+	return psess.Ctxt.PosTable.Pos(p).Before(psess.src, psess.Ctxt.PosTable.Pos(q))
 }
 
-func findScope(marks []Mark, pos src.XPos) ScopeID {
+func (psess *PackageSession) findScope(marks []Mark, pos src.XPos) ScopeID {
 	i := sort.Search(len(marks), func(i int) bool {
-		return xposBefore(pos, marks[i].Pos)
+		return psess.xposBefore(pos, marks[i].Pos)
 	})
 	if i == 0 {
 		return 0
@@ -26,15 +22,16 @@ func findScope(marks []Mark, pos src.XPos) ScopeID {
 	return marks[i-1].Scope
 }
 
-func assembleScopes(fnsym *obj.LSym, fn *Node, dwarfVars []*dwarf.Var, varScopes []ScopeID) []dwarf.Scope {
-	// Initialize the DWARF scope tree based on lexical scopes.
+func (psess *PackageSession) assembleScopes(fnsym *obj.LSym, fn *Node, dwarfVars []*dwarf.Var, varScopes []ScopeID) []dwarf.Scope {
+
 	dwarfScopes := make([]dwarf.Scope, 1+len(fn.Func.Parents))
 	for i, parent := range fn.Func.Parents {
 		dwarfScopes[i+1].Parent = int32(parent)
 	}
 
 	scopeVariables(dwarfVars, varScopes, dwarfScopes)
-	scopePCs(fnsym, fn.Func.Marks, dwarfScopes)
+	psess.
+		scopePCs(fnsym, fn.Func.Marks, dwarfScopes)
 	return compactScopes(dwarfScopes)
 }
 
@@ -64,9 +61,8 @@ type scopedPCs struct {
 }
 
 // scopePCs assigns PC ranges to their scopes.
-func scopePCs(fnsym *obj.LSym, marks []Mark, dwarfScopes []dwarf.Scope) {
-	// If there aren't any child scopes (in particular, when scope
-	// tracking is disabled), we can skip a whole lot of work.
+func (psess *PackageSession) scopePCs(fnsym *obj.LSym, marks []Mark, dwarfScopes []dwarf.Scope) {
+
 	if len(marks) == 0 {
 		return
 	}
@@ -87,12 +83,10 @@ func scopePCs(fnsym *obj.LSym, marks []Mark, dwarfScopes []dwarf.Scope) {
 		pcs = append(pcs, scopedPCs{start: p0.Pc, end: fnsym.Size, pos: p0.Pos})
 	}
 
-	// Assign scopes to each chunk of instructions.
 	for i := range pcs {
-		pcs[i].scope = findScope(marks, pcs[i].pos)
+		pcs[i].scope = psess.findScope(marks, pcs[i].pos)
 	}
 
-	// Create sorted PC ranges for each DWARF scope.
 	for _, pc := range pcs {
 		r := &dwarfScopes[pc.scope].Ranges
 		if i := len(*r); i > 0 && (*r)[i-1].End == pc.start {
@@ -104,7 +98,7 @@ func scopePCs(fnsym *obj.LSym, marks []Mark, dwarfScopes []dwarf.Scope) {
 }
 
 func compactScopes(dwarfScopes []dwarf.Scope) []dwarf.Scope {
-	// Reverse pass to propagate PC ranges to parent scopes.
+
 	for i := len(dwarfScopes) - 1; i > 0; i-- {
 		s := &dwarfScopes[i]
 		dwarfScopes[s.Parent].UnifyRanges(s)

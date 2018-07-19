@@ -1,7 +1,3 @@
-// Copyright 2015 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
 // Package gcprog implements an encoder for packed GC pointer bitmaps,
 // known as GC programs.
 //
@@ -103,13 +99,7 @@ func (w *Writer) Ptr(index int64) {
 // use a Repeat to describe c elements of n bits each,
 // compared to just emitting c copies of the n-bit description.
 func (w *Writer) ShouldRepeat(n, c int64) bool {
-	// Should we lay out the bits directly instead of
-	// encoding them as a repetition? Certainly if count==1,
-	// since there's nothing to repeat, but also if the total
-	// size of the plain pointer bits for the type will fit in
-	// 4 or fewer bytes, since using a repetition will require
-	// flushing the current bits plus at least one byte for
-	// the repeat size and one for the repeat count.
+
 	return c > 1 && c*n > 4*8
 }
 
@@ -177,8 +167,7 @@ func (w *Writer) Append(prog []byte, n int64) {
 	if n1 != n {
 		panic("gcprog: wrong bit count in append")
 	}
-	// The last byte of the prog terminates the program.
-	// Don't emit that, or else our own program will end.
+
 	for i, x := range prog[:len(prog)-1] {
 		if w.debug != nil {
 			if i > 0 {

@@ -1,7 +1,3 @@
-// Copyright 2017 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
 package arm64asm
 
 import (
@@ -61,7 +57,7 @@ Search:
 				break
 			}
 			arg := decodeArg(aop, x)
-			if arg == nil { // Cannot decode argument
+			if arg == nil {
 				continue Search
 			}
 			args[j] = arg
@@ -681,19 +677,19 @@ func decodeArg(aop instArg, x uint32) Arg {
 		return Systemreg{uint8(op0), uint8(op1), uint8(CRn), uint8(CRm), uint8(op2)}
 
 	case arg_sysop_AT_SYS_CR_system:
-		//TODO: system instruction
+
 		return nil
 
 	case arg_sysop_DC_SYS_CR_system:
-		//TODO: system instruction
+
 		return nil
 
 	case arg_sysop_SYS_CR_system:
-		//TODO: system instruction
+
 		return nil
 
 	case arg_sysop_TLBI_SYS_CR_system:
-		//TODO: system instruction
+
 		return nil
 
 	case arg_Bt:
@@ -1478,7 +1474,7 @@ func decodeArg(aop instArg, x uint32) Arg {
 			return RegisterWithArrangement{V0 + Reg(Rd), Arrangement8H, 0}
 		} else if sz == 1 && Q == 0 {
 			return RegisterWithArrangement{V0 + Reg(Rd), Arrangement2S, 0}
-		} else /* sz == 1 && Q == 1 */ {
+		} else {
 			return RegisterWithArrangement{V0 + Reg(Rd), Arrangement4S, 0}
 		}
 
@@ -2234,7 +2230,7 @@ func decodeArg(aop instArg, x uint32) Arg {
 			return RegisterWithArrangement{V0 + Reg(Rn), Arrangement8H, 0}
 		} else if sz == 1 && Q == 0 {
 			return RegisterWithArrangement{V0 + Reg(Rn), Arrangement2S, 0}
-		} else /* sz == 1 && Q == 1 */ {
+		} else {
 			return RegisterWithArrangement{V0 + Reg(Rn), Arrangement4S, 0}
 		}
 
@@ -2284,7 +2280,7 @@ func decodeArg(aop instArg, x uint32) Arg {
 			return RegisterWithArrangement{V0 + Reg(Rt), Arrangement4S, 1}
 		} else if size == 3 && Q == 0 {
 			return RegisterWithArrangement{V0 + Reg(Rt), Arrangement1D, 1}
-		} else /* size == 3 && Q == 1 */ {
+		} else {
 			return RegisterWithArrangement{V0 + Reg(Rt), Arrangement2D, 1}
 		}
 
@@ -2334,7 +2330,7 @@ func decodeArg(aop instArg, x uint32) Arg {
 			return RegisterWithArrangement{V0 + Reg(Rt), Arrangement4S, 2}
 		} else if size == 3 && Q == 0 {
 			return RegisterWithArrangement{V0 + Reg(Rt), Arrangement1D, 2}
-		} else /* size == 3 && Q == 1 */ {
+		} else {
 			return RegisterWithArrangement{V0 + Reg(Rt), Arrangement2D, 2}
 		}
 
@@ -2405,7 +2401,7 @@ func decodeArg(aop instArg, x uint32) Arg {
 			return RegisterWithArrangement{V0 + Reg(Rt), Arrangement4S, 3}
 		} else if size == 3 && Q == 0 {
 			return RegisterWithArrangement{V0 + Reg(Rt), Arrangement1D, 3}
-		} else /* size == 3 && Q == 1 */ {
+		} else {
 			return RegisterWithArrangement{V0 + Reg(Rt), Arrangement2D, 3}
 		}
 
@@ -2476,7 +2472,7 @@ func decodeArg(aop instArg, x uint32) Arg {
 			return RegisterWithArrangement{V0 + Reg(Rt), Arrangement4S, 4}
 		} else if size == 3 && Q == 0 {
 			return RegisterWithArrangement{V0 + Reg(Rt), Arrangement1D, 4}
-		} else /* size == 3 && Q == 1 */ {
+		} else {
 			return RegisterWithArrangement{V0 + Reg(Rt), Arrangement2D, 4}
 		}
 

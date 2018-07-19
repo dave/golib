@@ -1,11 +1,4 @@
-// Copyright 2016 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
 package syntax
-
-// ----------------------------------------------------------------------------
-// Nodes
 
 type Node interface {
 	// Pos() returns the position associated with the node as follows:
@@ -29,9 +22,6 @@ type node struct {
 func (n *node) Pos() Pos { return n.pos }
 func (*node) aNode()     {}
 
-// ----------------------------------------------------------------------------
-// Files
-
 // package PkgName; DeclList[0], DeclList[1], ...
 type File struct {
 	PkgName  *Name
@@ -39,9 +29,6 @@ type File struct {
 	Lines    uint
 	node
 }
-
-// ----------------------------------------------------------------------------
-// Declarations
 
 type (
 	Decl interface {
@@ -113,9 +100,6 @@ func (*decl) aDecl() {}
 type Group struct {
 	dummy int // not empty so we are guaranteed different Group instances
 }
-
-// ----------------------------------------------------------------------------
-// Expressions
 
 type (
 	Expr interface {
@@ -306,9 +290,6 @@ const (
 	RecvOnly
 )
 
-// ----------------------------------------------------------------------------
-// Statements
-
 type (
 	Stmt interface {
 		Node
@@ -443,9 +424,6 @@ type simpleStmt struct {
 }
 
 func (simpleStmt) aSimpleStmt() {}
-
-// ----------------------------------------------------------------------------
-// Comments
 
 // TODO(gri) Consider renaming to CommentPos, CommentPlacement, etc.
 //           Kind = Above doesn't make much sense.

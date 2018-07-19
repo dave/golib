@@ -1,12 +1,8 @@
-// Copyright 2016 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
 package ssa
 
 // trim removes blocks with no code in them.
 // These blocks were inserted to remove critical edges.
-func trim(f *Func) {
+func (psess *PackageSession) trim(f *Func) {
 	n := 0
 	for _, b := range f.Blocks {
 		if !trimmableBlock(b) {
@@ -15,8 +11,6 @@ func trim(f *Func) {
 			continue
 		}
 
-		// Splice b out of the graph. NOTE: `mergePhi` depends on the
-		// order, in which the predecessors edges are merged here.
 		p, i := b.Preds[0].b, b.Preds[0].i
 		s, j := b.Succs[0].b, b.Succs[0].i
 		ns := len(s.Preds)
@@ -29,16 +23,14 @@ func trim(f *Func) {
 			s.Preds = append(s.Preds, Edge{p, i})
 		}
 
-		// If `s` had more than one predecessor, update its phi-ops to
-		// account for the merge.
 		if ns > 1 {
 			for _, v := range s.Values {
 				if v.Op == OpPhi {
-					mergePhi(v, j, b)
+					psess.
+						mergePhi(v, j, b)
 				}
 			}
-			// Remove the phi-ops from `b` if they were merged into the
-			// phi-ops of `s`.
+
 			k := 0
 			for _, v := range b.Values {
 				if v.Op == OpPhi {
@@ -46,12 +38,7 @@ func trim(f *Func) {
 						v.resetArgs()
 						continue
 					}
-					// Pad the arguments of the remaining phi-ops so
-					// they match the new predecessor count of `s`.
-					// Since s did not have a Phi op corresponding to
-					// the phi op in b, the other edges coming into s
-					// must be loopback edges from s, so v is the right
-					// argument to v!
+
 					args := make([]*Value, len(v.Args))
 					copy(args, v.Args)
 					v.resetArgs()
@@ -72,7 +59,6 @@ func trim(f *Func) {
 			b.Values = b.Values[:k]
 		}
 
-		// Merge the blocks' values.
 		for _, v := range b.Values {
 			v.Block = s
 		}
@@ -122,26 +108,17 @@ func trimmableBlock(b *Block) bool {
 
 // mergePhi adjusts the number of `v`s arguments to account for merge
 // of `b`, which was `i`th predecessor of the `v`s block.
-func mergePhi(v *Value, i int, b *Block) {
+func (psess *PackageSession) mergePhi(v *Value, i int, b *Block) {
 	u := v.Args[i]
 	if u.Block == b {
 		if u.Op != OpPhi {
-			b.Func.Fatalf("value %s is not a phi operation", u.LongString())
+			b.Func.Fatalf("value %s is not a phi operation", u.LongString(psess))
 		}
-		// If the original block contained u = φ(u0, u1, ..., un) and
-		// the current phi is
-		//    v = φ(v0, v1, ..., u, ..., vk)
-		// then the merged phi is
-		//    v = φ(v0, v1, ..., u0, ..., vk, u1, ..., un)
+
 		v.SetArg(i, u.Args[0])
 		v.AddArgs(u.Args[1:]...)
 	} else {
-		// If the original block contained u = φ(u0, u1, ..., un) and
-		// the current phi is
-		//    v = φ(v0, v1, ...,  vi, ..., vk)
-		// i.e. it does not use a value from the predecessor block,
-		// then the merged phi is
-		//    v = φ(v0, v1, ..., vk, vi, vi, ...)
+
 		for j := 1; j < len(b.Preds); j++ {
 			v.AddArg(v.Args[i])
 		}

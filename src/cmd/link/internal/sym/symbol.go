@@ -1,14 +1,10 @@
-// Copyright 2017 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
 package sym
 
 import (
-	"cmd/internal/objabi"
-	"cmd/internal/sys"
 	"debug/elf"
 	"fmt"
+	"github.com/dave/golib/src/cmd/internal/objabi"
+	"github.com/dave/golib/src/cmd/internal/sys"
 	"log"
 )
 
@@ -55,8 +51,7 @@ func (s *Symbol) String() string {
 }
 
 func (s *Symbol) ElfsymForReloc() int32 {
-	// If putelfsym created a local version of this symbol, use that in all
-	// relocations.
+
 	if s.LocalElfsym != 0 {
 		return s.LocalElfsym
 	} else {
@@ -291,7 +286,6 @@ func SortSub(l *Symbol) *Symbol {
 	l1 = SortSub(l)
 	l2 = SortSub(l2)
 
-	/* set up lead element */
 	if l1.Value < l2.Value {
 		l = l1
 		l1 = l1.Sub

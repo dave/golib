@@ -1,7 +1,3 @@
-// Copyright 2017 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
 package arm64asm
 
 import (
@@ -38,7 +34,7 @@ func GoSyntax(inst Inst, pc uint64, symname func(uint64) (string, uint64), text 
 
 	switch inst.Op {
 	case LDR, LDRB, LDRH, LDRSB, LDRSH, LDRSW:
-		// Check for PC-relative load.
+
 		if offset, ok := inst.Args[1].(PCRel); ok {
 			addr := pc + uint64(offset)
 			if _, ok := inst.Args[0].(Reg); !ok {
@@ -50,7 +46,6 @@ func GoSyntax(inst Inst, pc uint64, symname func(uint64) (string, uint64), text 
 		}
 	}
 
-	// Move addressing mode into opcode suffix.
 	suffix := ""
 	switch inst.Op {
 	case LDR, LDRB, LDRH, LDRSB, LDRSH, LDRSW, STR, STRB, STRH, STUR, STURB, STURH, LD1, ST1:
@@ -58,7 +53,7 @@ func GoSyntax(inst Inst, pc uint64, symname func(uint64) (string, uint64), text 
 		case MemImmediate:
 			switch mem.Mode {
 			case AddrOffset:
-				// no suffix
+
 			case AddrPreIndex:
 				suffix = ".W"
 			case AddrPostIndex, AddrPostReg:
@@ -71,7 +66,7 @@ func GoSyntax(inst Inst, pc uint64, symname func(uint64) (string, uint64), text 
 		case MemImmediate:
 			switch mem.Mode {
 			case AddrOffset:
-				// no suffix
+
 			case AddrPreIndex:
 				suffix = ".W"
 			case AddrPostIndex:
@@ -406,14 +401,13 @@ func GoSyntax(inst Inst, pc uint64, symname func(uint64) (string, uint64), text 
 				op = fmt.Sprintf("V%s", op)
 			}
 			if rno >= 0 && rno <= int(WZR) {
-				// Add "w" to opcode suffix.
+
 				op += "W"
 			}
 		}
 		op = op + suffix
 	}
 
-	// conditional instructions, replace args.
 	if _, ok := inst.Args[3].(Cond); ok {
 		if _, ok := inst.Args[2].(Reg); ok {
 			args[1], args[2] = args[2], args[1]
@@ -421,7 +415,7 @@ func GoSyntax(inst Inst, pc uint64, symname func(uint64) (string, uint64), text 
 			args[0], args[2] = args[2], args[0]
 		}
 	}
-	// Reverse args, placing dest last.
+
 	for i, j := 0, len(args)-1; i < j; i, j = i+1, j-1 {
 		args[i], args[j] = args[j], args[i]
 	}
@@ -435,37 +429,7 @@ func GoSyntax(inst Inst, pc uint64, symname func(uint64) (string, uint64), text 
 
 // No need add "W" to opcode suffix.
 // Opcode must be inserted in ascending order.
-var noSuffixOpSet = strings.Fields(`
-AESD
-AESE
-AESIMC
-AESMC
-CRC32B
-CRC32CB
-CRC32CH
-CRC32CW
-CRC32CX
-CRC32H
-CRC32W
-CRC32X
-LDARB
-LDARH
-LDAXRB
-LDAXRH
-LDTRH
-LDXRB
-LDXRH
-SHA1C
-SHA1H
-SHA1M
-SHA1P
-SHA1SU0
-SHA1SU1
-SHA256H
-SHA256H2
-SHA256SU0
-SHA256SU1
-`)
+var noSuffixOpSet = strings.Fields("\nAESD\nAESE\nAESIMC\nAESMC\nCRC32B\nCRC32CB\nCRC32CH\nCRC32CW\nCRC32CX\nCRC32H\nCRC32W\nCRC32X\nLDARB\nLDARH\nLDAXRB\nLDAXRH\nLDTRH\nLDXRB\nLDXRH\nSHA1C\nSHA1H\nSHA1M\nSHA1P\nSHA1SU0\nSHA1SU1\nSHA256H\nSHA256H2\nSHA256SU0\nSHA256SU1\n")
 
 func plan9Arg(inst *Inst, pc uint64, symname func(uint64) (string, uint64), arg Arg) string {
 	switch a := arg.(type) {
@@ -494,15 +458,14 @@ func plan9Arg(inst *Inst, pc uint64, symname func(uint64) (string, uint64), arg 
 
 		if regenum >= uint16(B0) && regenum <= uint16(D31) {
 			if strings.HasPrefix(inst.Op.String(), "F") || strings.HasSuffix(inst.Op.String(), "CVTF") {
-				// FP registers are the same ones as SIMD registers
-				// Print Fn for scalar variant to align with assembler (e.g., FCVT, SCVTF, UCVTF, etc.)
+
 				return fmt.Sprintf("F%d", regno)
 			} else {
 				return fmt.Sprintf("V%d", regno)
 			}
 
 		} else if regenum >= uint16(Q0) && regenum <= uint16(Q31) {
-			// Print Vn to align with assembler (e.g., SHA256H)
+
 			return fmt.Sprintf("V%d", regno)
 		}
 
@@ -593,12 +556,7 @@ func plan9Arg(inst *Inst, pc uint64, symname func(uint64) (string, uint64), arg 
 		}
 
 		if a.Extend == lsl {
-			// a.Amount indicates the index shift amount, encoded in "S" field.
-			// a.ShiftMustBeZero is set true when the index shift amount must be 0,
-			// even if the a.Amount field is not 0.
-			// When a.ShiftMustBeZero is ture, GNU syntax prints #0 shift amount if
-			// "S" equals to 1, or does not print #0 shift amount if "S" equals to 0.
-			// Go syntax should never print a zero index shift amount.
+
 			if a.Amount != 0 && !a.ShiftMustBeZero {
 				index = fmt.Sprintf("(%s<<%d)", indexreg, a.Amount)
 			} else {
@@ -659,9 +617,9 @@ func plan9Arg(inst *Inst, pc uint64, symname func(uint64) (string, uint64), arg 
 		c := []rune(arrange)
 		switch len(c) {
 		case 3:
-			c[1], c[2] = c[2], c[1] // .8B -> .B8
+			c[1], c[2] = c[2], c[1]
 		case 4:
-			c[1], c[2], c[3] = c[3], c[1], c[2] // 16B -> B16
+			c[1], c[2], c[3] = c[3], c[1], c[2]
 		}
 		arrange = string(c)
 		result += arrange

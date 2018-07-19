@@ -1,17 +1,13 @@
-// Copyright 2014 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
 package objfile
 
 import (
 	"bufio"
 	"bytes"
-	"cmd/internal/src"
 	"container/list"
 	"debug/gosym"
 	"encoding/binary"
 	"fmt"
+	"github.com/dave/golib/src/cmd/internal/src"
 	"io"
 	"io/ioutil"
 	"os"
@@ -63,12 +59,11 @@ func (e *Entry) Disasm() (*Disasm, error) {
 		return nil, fmt.Errorf("unsupported architecture")
 	}
 
-	// Filter out section symbols, overwriting syms in place.
 	keep := syms[:0]
 	for _, sym := range syms {
 		switch sym.Name {
 		case "runtime.text", "text", "_text", "runtime.etext", "etext", "_etext":
-			// drop
+
 		default:
 			keep = append(keep, sym)
 		}
@@ -105,7 +100,7 @@ func (d *Disasm) lookup(addr uint64) (name string, base uint64) {
 // regardless of host operating system.
 func base(path string) string {
 	path = path[strings.LastIndex(path, "/")+1:]
-	path = path[strings.LastIndex(path, `\`)+1:]
+	path = path[strings.LastIndex(path, "\\")+1:]
 	return path
 }
 
@@ -138,12 +133,8 @@ func (fc *FileCache) Line(filename string, line int) ([]byte, error) {
 		return nil, nil
 	}
 
-	// Clean filenames returned by src.Pos.SymFilename()
-	// or src.PosBase.SymFilename() removing
-	// the leading src.FileSymPrefix.
 	filename = strings.TrimPrefix(filename, src.FileSymPrefix)
 
-	// Expand literal "$GOROOT" rewritten by obj.AbsFile()
 	filename = filepath.Clean(os.ExpandEnv(filename))
 
 	var cf *CachedFile
@@ -242,10 +233,10 @@ func (d *Disasm) Print(w io.Writer, filter *regexp.Regexp, start, end uint64, pr
 			}
 
 			if size%4 != 0 || d.goarch == "386" || d.goarch == "amd64" || d.goarch == "amd64p32" {
-				// Print instruction as bytes.
+
 				fmt.Fprintf(tw, "%x", code[i:i+size])
 			} else {
-				// Print instruction as 32-bit words.
+
 				for j := uint64(0); j < size; j += 4 {
 					if j > 0 {
 						fmt.Fprintf(tw, " ")

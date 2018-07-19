@@ -1,7 +1,3 @@
-// Copyright 2017 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
 package sym
 
 // Attribute is a set of common symbol attributes.
@@ -75,7 +71,6 @@ const (
 	// AttrContainer is set on text symbols that are present as the .Outer for some
 	// other symbol.
 	AttrContainer
-	// 17 attributes defined so far.
 )
 
 func (a Attribute) DuplicateOK() bool      { return a&AttrDuplicateOK != 0 }

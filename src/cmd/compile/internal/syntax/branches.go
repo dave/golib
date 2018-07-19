@@ -1,12 +1,6 @@
-// Copyright 2017 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
 package syntax
 
 import "fmt"
-
-// TODO(gri) consider making this part of the parser code
 
 // checkBranches checks correct use of labels and branch
 // statements (break, continue, goto) in a function body.
@@ -15,29 +9,24 @@ import "fmt"
 //    - bad labeled breaks and continues
 //    - invalid, unused, duplicate, and missing labels
 //    - gotos jumping over variable declarations and into blocks
-func checkBranches(body *BlockStmt, errh ErrorHandler) {
+func (psess *PackageSession) checkBranches(body *BlockStmt, errh ErrorHandler) {
 	if body == nil {
 		return
 	}
 
-	// scope of all labels in this body
 	ls := &labelScope{errh: errh}
-	fwdGotos := ls.blockBranches(nil, targets{}, nil, body.Pos(), body.List)
+	fwdGotos := ls.blockBranches(psess, nil, targets{}, nil, body.Pos(), body.List)
 
-	// If there are any forward gotos left, no matching label was
-	// found for them. Either those labels were never defined, or
-	// they are inside blocks and not reachable from the gotos.
 	for _, fwd := range fwdGotos {
 		name := fwd.Label.Value
 		if l := ls.labels[name]; l != nil {
-			l.used = true // avoid "defined and not used" error
+			l.used = true
 			ls.err(fwd.Label.Pos(), "goto %s jumps into block starting at %s", name, l.parent.start)
 		} else {
 			ls.err(fwd.Label.Pos(), "label %s not defined", name)
 		}
 	}
 
-	// spec: "It is illegal to define a label that is never used."
 	for _, l := range ls.labels {
 		if !l.used {
 			l := l.lstmt.Label
@@ -90,7 +79,7 @@ func (ls *labelScope) declare(b *block, s *LabeledStmt) *label {
 // if the label is not defined, or doesn't match a valid labeled statement.
 func (ls *labelScope) gotoTarget(b *block, name string) *LabeledStmt {
 	if l := ls.labels[name]; l != nil {
-		l.used = true // even if it's not a valid target
+		l.used = true
 		for ; b != nil; b = b.parent {
 			if l.parent == b {
 				return l.lstmt
@@ -100,20 +89,20 @@ func (ls *labelScope) gotoTarget(b *block, name string) *LabeledStmt {
 	return nil
 }
 
-var invalid = new(LabeledStmt) // singleton to signal invalid enclosing target
+// singleton to signal invalid enclosing target
 
 // enclosingTarget returns the innermost enclosing labeled statement matching
 // the given name. The result is nil if the label is not defined, and invalid
 // if the label is defined but doesn't label a valid labeled statement.
-func (ls *labelScope) enclosingTarget(b *block, name string) *LabeledStmt {
+func (ls *labelScope) enclosingTarget(psess *PackageSession, b *block, name string) *LabeledStmt {
 	if l := ls.labels[name]; l != nil {
-		l.used = true // even if it's not a valid target (see e.g., test/fixedbugs/bug136.go)
+		l.used = true
 		for ; b != nil; b = b.parent {
 			if l.lstmt == b.lstmt {
 				return l.lstmt
 			}
 		}
-		return invalid
+		return psess.invalid
 	}
 	return nil
 }
@@ -129,7 +118,7 @@ type targets struct {
 // list of unresolved (forward) gotos. parent is the immediately enclosing
 // block (or nil), ctxt provides information about the enclosing statements,
 // and lstmt is the labeled statement associated with this block, or nil.
-func (ls *labelScope) blockBranches(parent *block, ctxt targets, lstmt *LabeledStmt, start Pos, body []Stmt) []*BranchStmt {
+func (ls *labelScope) blockBranches(psess *PackageSession, parent *block, ctxt targets, lstmt *LabeledStmt, start Pos, body []Stmt) []*BranchStmt {
 	b := &block{parent: parent, start: start, lstmt: lstmt}
 
 	var varPos Pos
@@ -139,10 +128,7 @@ func (ls *labelScope) blockBranches(parent *block, ctxt targets, lstmt *LabeledS
 	recordVarDecl := func(pos Pos, name Expr) {
 		varPos = pos
 		varName = name
-		// Any existing forward goto jumping over the variable
-		// declaration is invalid. The goto may still jump out
-		// of the block and be ok, but we don't know that yet.
-		// Remember all forward gotos as potential bad gotos.
+
 		badGotos = append(badGotos[:0], fwdGotos...)
 	}
 
@@ -158,9 +144,8 @@ func (ls *labelScope) blockBranches(parent *block, ctxt targets, lstmt *LabeledS
 	}
 
 	innerBlock := func(ctxt targets, start Pos, body []Stmt) {
-		// Unresolved forward gotos from the inner block
-		// become forward gotos for the current block.
-		fwdGotos = append(fwdGotos, ls.blockBranches(b, ctxt, lstmt, start, body)...)
+
+		fwdGotos = append(fwdGotos, ls.blockBranches(psess, b, ctxt, lstmt, start, body)...)
 	}
 
 	for _, stmt := range body {
@@ -171,15 +156,15 @@ func (ls *labelScope) blockBranches(parent *block, ctxt targets, lstmt *LabeledS
 			for _, d := range s.DeclList {
 				if v, ok := d.(*VarDecl); ok {
 					recordVarDecl(v.Pos(), v.NameList[0])
-					break // the first VarDecl will do
+					break
 				}
 			}
 
 		case *LabeledStmt:
-			// declare non-blank label
+
 			if name := s.Label.Value; name != "_" {
 				l := ls.declare(b, s)
-				// resolve matching forward gotos
+
 				i := 0
 				for _, fwd := range fwdGotos {
 					if fwd.Label.Value == name {
@@ -189,11 +174,11 @@ func (ls *labelScope) blockBranches(parent *block, ctxt targets, lstmt *LabeledS
 							ls.err(
 								fwd.Label.Pos(),
 								"goto %s jumps over declaration of %s at %s",
-								name, String(varName), varPos,
+								name, psess.String(varName), varPos,
 							)
 						}
 					} else {
-						// no match - keep forward goto
+
 						fwdGotos[i] = fwd
 						i++
 					}
@@ -201,12 +186,12 @@ func (ls *labelScope) blockBranches(parent *block, ctxt targets, lstmt *LabeledS
 				fwdGotos = fwdGotos[:i]
 				lstmt = s
 			}
-			// process labeled statement
+
 			stmt = s.Stmt
 			goto L
 
 		case *BranchStmt:
-			// unlabeled branch statement
+
 			if s.Label == nil {
 				switch s.Tok {
 				case _Break:
@@ -222,23 +207,20 @@ func (ls *labelScope) blockBranches(parent *block, ctxt targets, lstmt *LabeledS
 						ls.err(s.Pos(), "continue is not in a loop")
 					}
 				case _Fallthrough:
-					// nothing to do
+
 				case _Goto:
-					fallthrough // should always have a label
+					fallthrough
 				default:
 					panic("invalid BranchStmt")
 				}
 				break
 			}
 
-			// labeled branch statement
 			name := s.Label.Value
 			switch s.Tok {
 			case _Break:
-				// spec: "If there is a label, it must be that of an enclosing
-				// "for", "switch", or "select" statement, and that is the one
-				// whose execution terminates."
-				if t := ls.enclosingTarget(b, name); t != nil {
+
+				if t := ls.enclosingTarget(psess, b, name); t != nil {
 					switch t := t.Stmt.(type) {
 					case *SwitchStmt, *SelectStmt, *ForStmt:
 						s.Target = t
@@ -250,9 +232,8 @@ func (ls *labelScope) blockBranches(parent *block, ctxt targets, lstmt *LabeledS
 				}
 
 			case _Continue:
-				// spec: "If there is a label, it must be that of an enclosing
-				// "for" statement, and that is the one whose execution advances."
-				if t := ls.enclosingTarget(b, name); t != nil {
+
+				if t := ls.enclosingTarget(psess, b, name); t != nil {
 					if t, ok := t.Stmt.(*ForStmt); ok {
 						s.Target = t
 					} else {
@@ -266,12 +247,12 @@ func (ls *labelScope) blockBranches(parent *block, ctxt targets, lstmt *LabeledS
 				if t := ls.gotoTarget(b, name); t != nil {
 					s.Target = t
 				} else {
-					// label may be declared later - add goto to forward gotos
+
 					fwdGotos = append(fwdGotos, s)
 				}
 
 			case _Fallthrough:
-				fallthrough // should never have a label
+				fallthrough
 			default:
 				panic("invalid BranchStmt")
 			}

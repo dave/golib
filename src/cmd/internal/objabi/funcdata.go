@@ -1,14 +1,4 @@
-// Copyright 2013 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
 package objabi
-
-// This file defines the IDs for PCDATA and FUNCDATA instructions
-// in Go binaries.
-//
-// These must agree with ../../../runtime/funcdata.h and
-// ../../../runtime/symtab.go.
 
 const (
 	PCDATA_StackMapIndex       = 0

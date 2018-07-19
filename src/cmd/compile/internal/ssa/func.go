@@ -1,14 +1,10 @@
-// Copyright 2015 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
 package ssa
 
 import (
-	"cmd/compile/internal/types"
-	"cmd/internal/src"
 	"crypto/sha1"
 	"fmt"
+	"github.com/dave/golib/src/cmd/compile/internal/types"
+	"github.com/dave/golib/src/cmd/internal/src"
 	"io"
 	"math"
 	"os"
@@ -199,7 +195,7 @@ func (f *Func) newValueNoBlock(op Op, t *types.Type, pos src.XPos) *Value {
 	}
 	v.Op = op
 	v.Type = t
-	v.Block = nil // caller must fix this.
+	v.Block = nil
 	if notStmtBoundary(op) {
 		pos = pos.WithNotStmt()
 	}
@@ -226,7 +222,7 @@ func (f *Func) LogStat(key string, args ...interface{}) {
 }
 
 // freeValue frees a value. It must no longer be referenced or have any args.
-func (f *Func) freeValue(v *Value) {
+func (f *Func) freeValue(psess *PackageSession, v *Value) {
 	if v.Block == nil {
 		f.Fatalf("trying to free an already freed value")
 	}
@@ -236,11 +232,10 @@ func (f *Func) freeValue(v *Value) {
 	if len(v.Args) != 0 {
 		f.Fatalf("value %s still has %d args", v, len(v.Args))
 	}
-	// Clear everything but ID (which we reuse).
+
 	id := v.ID
 
-	// Values with zero arguments and OpOffPtr values might be cached, so remove them there.
-	nArgs := opcodeTable[v.Op].argLen
+	nArgs := psess.opcodeTable[v.Op].argLen
 	if nArgs == 0 || v.Op == OpOffPtr {
 		vv := f.constants[v.AuxInt]
 		for i, cv := range vv {
@@ -288,7 +283,7 @@ func (f *Func) freeBlock(b *Block) {
 	if b.Func == nil {
 		f.Fatalf("trying to free an already freed block")
 	}
-	// Clear everything but ID (which we reuse).
+
 	id := b.ID
 	*b = Block{}
 	b.ID = id
@@ -315,9 +310,7 @@ func (b *Block) NewValue0I(pos src.XPos, op Op, t *types.Type, auxint int64) *Va
 // NewValue returns a new value in the block with no arguments and an aux value.
 func (b *Block) NewValue0A(pos src.XPos, op Op, t *types.Type, aux interface{}) *Value {
 	if _, ok := aux.(int64); ok {
-		// Disallow int64 aux values. They should be in the auxint field instead.
-		// Maybe we want to allow this at some point, but for now we disallow it
-		// to prevent errors like using NewValue1A instead of NewValue1I.
+
 		b.Fatalf("aux field has int64 type op=%s type=%s aux=%v", op, t, aux)
 	}
 	v := b.Func.newValue(op, t, b, pos)
@@ -471,24 +464,24 @@ func (b *Block) NewValue4(pos src.XPos, op Op, t *types.Type, arg0, arg1, arg2, 
 }
 
 // constVal returns a constant value for c.
-func (f *Func) constVal(op Op, t *types.Type, c int64, setAuxInt bool) *Value {
+func (f *Func) constVal(psess *PackageSession, op Op, t *types.Type, c int64, setAuxInt bool) *Value {
 	if f.constants == nil {
 		f.constants = make(map[int64][]*Value)
 	}
 	vv := f.constants[c]
 	for _, v := range vv {
-		if v.Op == op && v.Type.Compare(t) == types.CMPeq {
+		if v.Op == op && v.Type.Compare(psess.types, t) == types.CMPeq {
 			if setAuxInt && v.AuxInt != c {
-				panic(fmt.Sprintf("cached const %s should have AuxInt of %d", v.LongString(), c))
+				panic(fmt.Sprintf("cached const %s should have AuxInt of %d", v.LongString(psess), c))
 			}
 			return v
 		}
 	}
 	var v *Value
 	if setAuxInt {
-		v = f.Entry.NewValue0I(src.NoXPos, op, t, c)
+		v = f.Entry.NewValue0I(psess.src.NoXPos, op, t, c)
 	} else {
-		v = f.Entry.NewValue0(src.NoXPos, op, t)
+		v = f.Entry.NewValue0(psess.src.NoXPos, op, t)
 	}
 	f.constants[c] = append(vv, v)
 	return v
@@ -506,48 +499,48 @@ const (
 )
 
 // ConstInt returns an int constant representing its argument.
-func (f *Func) ConstBool(t *types.Type, c bool) *Value {
+func (f *Func) ConstBool(psess *PackageSession, t *types.Type, c bool) *Value {
 	i := int64(0)
 	if c {
 		i = 1
 	}
-	return f.constVal(OpConstBool, t, i, true)
+	return f.constVal(psess, OpConstBool, t, i, true)
 }
-func (f *Func) ConstInt8(t *types.Type, c int8) *Value {
-	return f.constVal(OpConst8, t, int64(c), true)
+func (f *Func) ConstInt8(psess *PackageSession, t *types.Type, c int8) *Value {
+	return f.constVal(psess, OpConst8, t, int64(c), true)
 }
-func (f *Func) ConstInt16(t *types.Type, c int16) *Value {
-	return f.constVal(OpConst16, t, int64(c), true)
+func (f *Func) ConstInt16(psess *PackageSession, t *types.Type, c int16) *Value {
+	return f.constVal(psess, OpConst16, t, int64(c), true)
 }
-func (f *Func) ConstInt32(t *types.Type, c int32) *Value {
-	return f.constVal(OpConst32, t, int64(c), true)
+func (f *Func) ConstInt32(psess *PackageSession, t *types.Type, c int32) *Value {
+	return f.constVal(psess, OpConst32, t, int64(c), true)
 }
-func (f *Func) ConstInt64(t *types.Type, c int64) *Value {
-	return f.constVal(OpConst64, t, c, true)
+func (f *Func) ConstInt64(psess *PackageSession, t *types.Type, c int64) *Value {
+	return f.constVal(psess, OpConst64, t, c, true)
 }
-func (f *Func) ConstFloat32(t *types.Type, c float64) *Value {
-	return f.constVal(OpConst32F, t, int64(math.Float64bits(float64(float32(c)))), true)
+func (f *Func) ConstFloat32(psess *PackageSession, t *types.Type, c float64) *Value {
+	return f.constVal(psess, OpConst32F, t, int64(math.Float64bits(float64(float32(c)))), true)
 }
-func (f *Func) ConstFloat64(t *types.Type, c float64) *Value {
-	return f.constVal(OpConst64F, t, int64(math.Float64bits(c)), true)
+func (f *Func) ConstFloat64(psess *PackageSession, t *types.Type, c float64) *Value {
+	return f.constVal(psess, OpConst64F, t, int64(math.Float64bits(c)), true)
 }
 
-func (f *Func) ConstSlice(t *types.Type) *Value {
-	return f.constVal(OpConstSlice, t, constSliceMagic, false)
+func (f *Func) ConstSlice(psess *PackageSession, t *types.Type) *Value {
+	return f.constVal(psess, OpConstSlice, t, constSliceMagic, false)
 }
-func (f *Func) ConstInterface(t *types.Type) *Value {
-	return f.constVal(OpConstInterface, t, constInterfaceMagic, false)
+func (f *Func) ConstInterface(psess *PackageSession, t *types.Type) *Value {
+	return f.constVal(psess, OpConstInterface, t, constInterfaceMagic, false)
 }
-func (f *Func) ConstNil(t *types.Type) *Value {
-	return f.constVal(OpConstNil, t, constNilMagic, false)
+func (f *Func) ConstNil(psess *PackageSession, t *types.Type) *Value {
+	return f.constVal(psess, OpConstNil, t, constNilMagic, false)
 }
-func (f *Func) ConstEmptyString(t *types.Type) *Value {
-	v := f.constVal(OpConstString, t, constEmptyStringMagic, false)
+func (f *Func) ConstEmptyString(psess *PackageSession, t *types.Type) *Value {
+	v := f.constVal(psess, OpConstString, t, constEmptyStringMagic, false)
 	v.Aux = ""
 	return v
 }
-func (f *Func) ConstOffPtrSP(t *types.Type, c int64, sp *Value) *Value {
-	v := f.constVal(OpOffPtr, t, c, true)
+func (f *Func) ConstOffPtrSP(psess *PackageSession, t *types.Type, c int64, sp *Value) *Value {
+	v := f.constVal(psess, OpOffPtr, t, c, true)
 	if len(v.Args) == 0 {
 		v.AddArg(sp)
 	}
@@ -592,9 +585,9 @@ func (f *Func) sdom() SparseTree {
 }
 
 // loopnest returns the loop nest information for f.
-func (f *Func) loopnest() *loopnest {
+func (f *Func) loopnest(psess *PackageSession) *loopnest {
 	if f.cachedLoopnest == nil {
-		f.cachedLoopnest = loopnestfor(f)
+		f.cachedLoopnest = psess.loopnestfor(f)
 	}
 	return f.cachedLoopnest
 }
@@ -625,16 +618,14 @@ func (f *Func) DebugHashMatch(evname, name string) bool {
 	evhash := os.Getenv(evname)
 	switch evhash {
 	case "":
-		return true // default behavior with no EV is "on"
+		return true
 	case "y", "Y":
 		f.logDebugHashMatch(evname, name)
 		return true
 	case "n", "N":
 		return false
 	}
-	// Check the hash of the name against a partial input hash.
-	// We use this feature to do a binary search to
-	// find a function that is incorrectly compiled.
+
 	hstr := ""
 	for _, b := range sha1.Sum([]byte(name)) {
 		hstr += fmt.Sprintf("%08b", b)
@@ -645,8 +636,6 @@ func (f *Func) DebugHashMatch(evname, name string) bool {
 		return true
 	}
 
-	// Iteratively try additional hashes to allow tests for multi-point
-	// failure.
 	for i := 0; true; i++ {
 		ev := fmt.Sprintf("%s%d", evname, i)
 		evv := os.Getenv(ev)

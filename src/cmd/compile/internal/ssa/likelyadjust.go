@@ -1,7 +1,3 @@
-// Copyright 2016 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
 package ssa
 
 import (
@@ -28,11 +24,7 @@ type loop struct {
 
 // outerinner records that outer contains inner
 func (sdom SparseTree) outerinner(outer, inner *loop) {
-	// There could be other outer loops found in some random order,
-	// locate the new outer loop appropriately among them.
 
-	// Outer loop headers dominate inner loop headers.
-	// Use this to put the "new" "outer" loop in the right place.
 	oldouter := inner.outer
 	for oldouter != nil && sdom.isAncestor(outer.header, oldouter.header) {
 		inner = oldouter
@@ -49,12 +41,12 @@ func (sdom SparseTree) outerinner(outer, inner *loop) {
 	outer.isInner = false
 }
 
-func checkContainsCall(bb *Block) bool {
+func (psess *PackageSession) checkContainsCall(bb *Block) bool {
 	if bb.Kind == BlockDefer {
 		return true
 	}
 	for _, v := range bb.Values {
-		if opcodeTable[v.Op].call {
+		if psess.opcodeTable[v.Op].call {
 			return true
 		}
 	}
@@ -95,8 +87,6 @@ const (
 	blEXIT    = 3
 )
 
-var bllikelies = [4]string{"default", "call", "ret", "exit"}
-
 func describePredictionAgrees(b *Block, prediction BranchPrediction) string {
 	s := ""
 	if prediction == b.Likely {
@@ -107,38 +97,31 @@ func describePredictionAgrees(b *Block, prediction BranchPrediction) string {
 	return s
 }
 
-func describeBranchPrediction(f *Func, b *Block, likely, not int8, prediction BranchPrediction) {
-	f.Warnl(b.Pos, "Branch prediction rule %s < %s%s",
-		bllikelies[likely-blMin], bllikelies[not-blMin], describePredictionAgrees(b, prediction))
+func (psess *PackageSession) describeBranchPrediction(f *Func, b *Block, likely, not int8, prediction BranchPrediction) {
+	f.Warnl(b.Pos, "Branch prediction rule %s < %s%s", psess.
+		bllikelies[likely-blMin], psess.bllikelies[not-blMin], describePredictionAgrees(b, prediction))
 }
 
-func likelyadjust(f *Func) {
-	// The values assigned to certain and local only matter
-	// in their rank order.  0 is default, more positive
-	// is less likely. It's possible to assign a negative
-	// unlikeliness (though not currently the case).
-	certain := make([]int8, f.NumBlocks()) // In the long run, all outcomes are at least this bad. Mainly for Exit
-	local := make([]int8, f.NumBlocks())   // for our immediate predecessors.
+func (psess *PackageSession) likelyadjust(f *Func) {
+
+	certain := make([]int8, f.NumBlocks())
+	local := make([]int8, f.NumBlocks())
 
 	po := f.postorder()
-	nest := f.loopnest()
+	nest := f.loopnest(psess)
 	b2l := nest.b2l
 
 	for _, b := range po {
 		switch b.Kind {
 		case BlockExit:
-			// Very unlikely.
+
 			local[b.ID] = blEXIT
 			certain[b.ID] = blEXIT
 
-			// Ret, it depends.
 		case BlockRet, BlockRetJmp:
 			local[b.ID] = blRET
 			certain[b.ID] = blRET
 
-			// Calls. TODO not all calls are equal, names give useful clues.
-			// Any name-based heuristics are only relative to other calls,
-			// and less influential than inferences from loop structure.
 		case BlockDefer:
 			local[b.ID] = blCALL
 			certain[b.ID] = max8(blCALL, certain[b.Succs[0].b.ID])
@@ -147,12 +130,7 @@ func likelyadjust(f *Func) {
 			if len(b.Succs) == 1 {
 				certain[b.ID] = certain[b.Succs[0].b.ID]
 			} else if len(b.Succs) == 2 {
-				// If successor is an unvisited backedge, it's in loop and we don't care.
-				// Its default unlikely is also zero which is consistent with favoring loop edges.
-				// Notice that this can act like a "reset" on unlikeliness at loops; the
-				// default "everything returns" unlikeliness is erased by min with the
-				// backedge likeliness; however a loop with calls on every path will be
-				// tagged with call cost. Net effect is that loop entry is favored.
+
 				b0 := b.Succs[0].b.ID
 				b1 := b.Succs[1].b.ID
 				certain[b.ID] = min8(certain[b0], certain[b1])
@@ -162,19 +140,16 @@ func likelyadjust(f *Func) {
 				l1 := b2l[b1]
 
 				prediction := b.Likely
-				// Weak loop heuristic -- both source and at least one dest are in loops,
-				// and there is a difference in the destinations.
-				// TODO what is best arrangement for nested loops?
+
 				if l != nil && l0 != l1 {
 					noprediction := false
 					switch {
-					// prefer not to exit loops
+
 					case l1 == nil:
 						prediction = BranchLikely
 					case l0 == nil:
 						prediction = BranchUnlikely
 
-						// prefer to stay in loop, not exit to outer.
 					case l == l0:
 						prediction = BranchLikely
 					case l == l1:
@@ -188,26 +163,30 @@ func likelyadjust(f *Func) {
 					}
 
 				} else {
-					// Lacking loop structure, fall back on heuristics.
+
 					if certain[b1] > certain[b0] {
 						prediction = BranchLikely
 						if f.pass.debug > 0 {
-							describeBranchPrediction(f, b, certain[b0], certain[b1], prediction)
+							psess.
+								describeBranchPrediction(f, b, certain[b0], certain[b1], prediction)
 						}
 					} else if certain[b0] > certain[b1] {
 						prediction = BranchUnlikely
 						if f.pass.debug > 0 {
-							describeBranchPrediction(f, b, certain[b1], certain[b0], prediction)
+							psess.
+								describeBranchPrediction(f, b, certain[b1], certain[b0], prediction)
 						}
 					} else if local[b1] > local[b0] {
 						prediction = BranchLikely
 						if f.pass.debug > 0 {
-							describeBranchPrediction(f, b, local[b0], local[b1], prediction)
+							psess.
+								describeBranchPrediction(f, b, local[b0], local[b1], prediction)
 						}
 					} else if local[b0] > local[b1] {
 						prediction = BranchUnlikely
 						if f.pass.debug > 0 {
-							describeBranchPrediction(f, b, local[b1], local[b0], prediction)
+							psess.
+								describeBranchPrediction(f, b, local[b1], local[b0], prediction)
 						}
 					}
 				}
@@ -217,16 +196,16 @@ func likelyadjust(f *Func) {
 					}
 				}
 			}
-			// Look for calls in the block.  If there is one, make this block unlikely.
+
 			for _, v := range b.Values {
-				if opcodeTable[v.Op].call {
+				if psess.opcodeTable[v.Op].call {
 					local[b.ID] = blCALL
 					certain[b.ID] = max8(blCALL, certain[b.Succs[0].b.ID])
 				}
 			}
 		}
 		if f.pass.debug > 2 {
-			f.Warnl(b.Pos, "BP: Block %s, local=%s, certain=%s", b, bllikelies[local[b.ID]-blMin], bllikelies[certain[b.ID]-blMin])
+			f.Warnl(b.Pos, "BP: Block %s, local=%s, certain=%s", b, psess.bllikelies[local[b.ID]-blMin], psess.bllikelies[certain[b.ID]-blMin])
 		}
 
 	}
@@ -249,7 +228,7 @@ func (l *loop) LongString() string {
 }
 
 func (l *loop) isWithinOrEq(ll *loop) bool {
-	if ll == nil { // nil means whole program
+	if ll == nil {
 		return true
 	}
 	for ; l != nil; l = l.outer {
@@ -271,7 +250,7 @@ func (l *loop) nearestOuterLoop(sdom SparseTree, b *Block) *loop {
 	return o
 }
 
-func loopnestfor(f *Func) *loopnest {
+func (psess *PackageSession) loopnestfor(f *Func) *loopnest {
 	po := f.postorder()
 	sdom := f.sdom()
 	b2l := make([]*loop, f.NumBlocks())
@@ -283,7 +262,6 @@ func loopnestfor(f *Func) *loopnest {
 		fmt.Printf("loop finding in %s\n", f.Name)
 	}
 
-	// Reducible-loop-nest-finding.
 	for _, b := range po {
 		if f.pass != nil && f.pass.debug > 3 {
 			fmt.Printf("loop finding at %s\n", b)
@@ -291,21 +269,11 @@ func loopnestfor(f *Func) *loopnest {
 
 		var innermost *loop // innermost header reachable from this block
 
-		// IF any successor s of b is in a loop headed by h
-		// AND h dominates b
-		// THEN b is in the loop headed by h.
-		//
-		// Choose the first/innermost such h.
-		//
-		// IF s itself dominates b, then s is a loop header;
-		// and there may be more than one such s.
-		// Since there's at most 2 successors, the inner/outer ordering
-		// between them can be established with simple comparisons.
 		for _, e := range b.Succs {
 			bb := e.b
 			l := b2l[bb.ID]
 
-			if sdom.isAncestorEq(bb, b) { // Found a loop header
+			if sdom.isAncestorEq(bb, b) {
 				if f.pass != nil && f.pass.debug > 4 {
 					fmt.Printf("loop finding    succ %s of %s is header\n", bb.String(), b.String())
 				}
@@ -314,16 +282,13 @@ func loopnestfor(f *Func) *loopnest {
 					loops = append(loops, l)
 					b2l[bb.ID] = l
 				}
-			} else if !visited[bb.ID] { // Found an irreducible loop
+			} else if !visited[bb.ID] {
 				sawIrred = true
 				if f.pass != nil && f.pass.debug > 4 {
 					fmt.Printf("loop finding    succ %s of %s is IRRED, in %s\n", bb.String(), b.String(), f.Name)
 				}
 			} else if l != nil {
-				// TODO handle case where l is irreducible.
-				// Perhaps a loop header is inherited.
-				// is there any loop containing our successor whose
-				// header dominates b?
+
 				if !sdom.isAncestorEq(l.header, b) {
 					l = l.nearestOuterLoop(sdom, b)
 				}
@@ -334,7 +299,7 @@ func loopnestfor(f *Func) *loopnest {
 						fmt.Printf("loop finding    succ %s of %s provides loop with header %s\n", bb.String(), b.String(), l.header.String())
 					}
 				}
-			} else { // No loop
+			} else {
 				if f.pass != nil && f.pass.debug > 4 {
 					fmt.Printf("loop finding    succ %s of %s has no loop\n", bb.String(), b.String())
 				}
@@ -367,34 +332,25 @@ func loopnestfor(f *Func) *loopnest {
 
 	ln := &loopnest{f: f, b2l: b2l, po: po, sdom: sdom, loops: loops, hasIrreducible: sawIrred}
 
-	// Calculate containsUnavoidableCall for regalloc
 	dominatedByCall := make([]bool, f.NumBlocks())
 	for _, b := range po {
-		if checkContainsCall(b) {
+		if psess.checkContainsCall(b) {
 			dominatedByCall[b.ID] = true
 		}
 	}
-	// Run dfs to find path through the loop that avoids all calls.
-	// Such path either escapes loop or return back to header.
-	// It isn't enough to have exit not dominated by any call, for example:
-	// ... some loop
-	// call1   call2
-	//   \      /
-	//     exit
-	// ...
-	// exit is not dominated by any call, but we don't have call-free path to it.
+
 	for _, l := range loops {
-		// Header contains call.
+
 		if dominatedByCall[l.header.ID] {
 			l.containsUnavoidableCall = true
 			continue
 		}
 		callfreepath := false
 		tovisit := make([]*Block, 0, len(l.header.Succs))
-		// Push all non-loop non-exit successors of header onto toVisit.
+
 		for _, s := range l.header.Succs {
 			nb := s.Block()
-			// This corresponds to loop with zero iterations.
+
 			if !l.iterationEnd(nb, b2l) {
 				tovisit = append(tovisit, nb)
 			}
@@ -405,7 +361,7 @@ func loopnestfor(f *Func) *loopnest {
 			if dominatedByCall[cur.ID] {
 				continue
 			}
-			// Record visited in dominatedByCall.
+
 			dominatedByCall[cur.ID] = true
 			for _, s := range cur.Succs {
 				nb := s.Block()
@@ -426,14 +382,10 @@ func loopnestfor(f *Func) *loopnest {
 		}
 	}
 
-	// Curious about the loopiness? "-d=ssa/likelyadjust/stats"
 	if f.pass != nil && f.pass.stats > 0 && len(loops) > 0 {
 		ln.assembleChildren()
 		ln.calculateDepths()
 		ln.findExits()
-
-		// Note stats for non-innermost loops are slightly flawed because
-		// they don't account for inner loop exits that span multiple levels.
 
 		for _, l := range loops {
 			x := len(l.exits)
@@ -547,8 +499,7 @@ func recordIfExit(l, sl *loop, b *Block) bool {
 			l.exits = append(l.exits, b)
 			return true
 		}
-		// sl is not nil, and is deeper than l
-		// it's possible for this to be a goto into an irreducible loop made from gotos.
+
 		for sl.depth > l.depth {
 			sl = sl.outer
 		}

@@ -17,9 +17,6 @@ type indVar struct {
 	max   *Value // maximum value, inclusive/exclusive depends on flags
 	entry *Block // entry block in the loop.
 	flags indVarFlags
-	// Invariants: for all blocks dominated by entry:
-	//	min <= ind < max
-	//	min <= nxt <= max
 }
 
 // findIndVar finds induction variables in a function.
@@ -53,10 +50,8 @@ nextb:
 
 		var flags indVarFlags
 		var ind, max *Value // induction, and maximum
-		entry := -1         // which successor of b enters the loop
+		entry := -1
 
-		// Check thet the control if it either ind </<= max or max >/>= ind.
-		// TODO: Handle 32-bit comparisons.
 		switch b.Control.Op {
 		case OpLeq64:
 			flags |= indVarMaxInc
@@ -74,12 +69,10 @@ nextb:
 			continue nextb
 		}
 
-		// See if the arguments are reversed (i < len() <=> len() > i)
 		if max.Op == OpPhi {
 			ind, max = max, ind
 		}
 
-		// Check that the induction variable is a phi that depends on itself.
 		if ind.Op != OpPhi {
 			continue
 		}
@@ -91,25 +84,23 @@ nextb:
 		} else if n := ind.Args[1]; n.Op == OpAdd64 && (n.Args[0] == ind || n.Args[1] == ind) {
 			min, nxt = ind.Args[0], n
 		} else {
-			// Not a recognized induction variable.
+
 			continue
 		}
 
 		var inc *Value
-		if nxt.Args[0] == ind { // nxt = ind + inc
+		if nxt.Args[0] == ind {
 			inc = nxt.Args[1]
-		} else if nxt.Args[1] == ind { // nxt = inc + ind
+		} else if nxt.Args[1] == ind {
 			inc = nxt.Args[0]
 		} else {
-			panic("unreachable") // one of the cases must be true from the above.
+			panic("unreachable")
 		}
 
-		// Expect the increment to be a constant.
 		if inc.Op != OpConst64 {
 			continue
 		}
 
-		// If the increment is negative, swap min/max and their flags
 		if inc.AuxInt <= 0 {
 			min, max = max, min
 			oldf := flags
@@ -122,40 +113,20 @@ nextb:
 			}
 		}
 
-		// Up to now we extracted the induction variable (ind),
-		// the increment delta (inc), the temporary sum (nxt),
-		// the mininum value (min) and the maximum value (max).
-		//
-		// We also know that ind has the form (Phi min nxt) where
-		// nxt is (Add inc nxt) which means: 1) inc dominates nxt
-		// and 2) there is a loop starting at inc and containing nxt.
-		//
-		// We need to prove that the induction variable is incremented
-		// only when it's smaller than the maximum value.
-		// Two conditions must happen listed below to accept ind
-		// as an induction variable.
-
-		// First condition: loop entry has a single predecessor, which
-		// is the header block.  This implies that b.Succs[entry] is
-		// reached iff ind < max.
 		if len(b.Succs[entry].b.Preds) != 1 {
-			// b.Succs[1-entry] must exit the loop.
+
 			continue
 		}
 
-		// Second condition: b.Succs[entry] dominates nxt so that
-		// nxt is computed when inc < max, meaning nxt <= max.
 		if !sdom.isAncestorEq(b.Succs[entry].b, nxt.Block) {
-			// inc+ind can only be reached through the branch that enters the loop.
+
 			continue
 		}
 
-		// We can only guarantee that the loops runs within limits of induction variable
-		// if the increment is ±1 or when the limits are constants.
 		if inc.AuxInt != 1 && inc.AuxInt != -1 {
 			ok := false
 			if min.Op == OpConst64 && max.Op == OpConst64 {
-				if max.AuxInt > min.AuxInt && max.AuxInt%inc.AuxInt == min.AuxInt%inc.AuxInt { // handle overflow
+				if max.AuxInt > min.AuxInt && max.AuxInt%inc.AuxInt == min.AuxInt%inc.AuxInt {
 					ok = true
 				}
 			}

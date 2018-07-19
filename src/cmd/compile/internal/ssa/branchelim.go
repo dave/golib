@@ -1,7 +1,3 @@
-// Copyright 2017 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
 package ssa
 
 // branchelim tries to eliminate branches by
@@ -17,11 +13,11 @@ package ssa
 //
 // where the intermediate blocks are mostly empty (with no side-effects);
 // rewrite Phis in the postdominator as CondSelects.
-func branchelim(f *Func) {
-	// FIXME: add support for lowering CondSelects on more architectures
+func (psess *PackageSession) branchelim(f *Func) {
+
 	switch f.Config.arch {
 	case "arm64", "amd64":
-		// implemented
+
 	default:
 		return
 	}
@@ -30,21 +26,21 @@ func branchelim(f *Func) {
 	for change {
 		change = false
 		for _, b := range f.Blocks {
-			change = elimIf(f, b) || elimIfElse(f, b) || change
+			change = psess.elimIf(f, b) || psess.elimIfElse(f, b) || change
 		}
 	}
 }
 
-func canCondSelect(v *Value, arch string) bool {
-	// For now, stick to simple scalars that fit in registers
+func (psess *PackageSession) canCondSelect(v *Value, arch string) bool {
+
 	switch {
-	case v.Type.Size() > v.Block.Func.Config.RegSize:
+	case v.Type.Size(psess.types) > v.Block.Func.Config.RegSize:
 		return false
 	case v.Type.IsPtrShaped():
 		return true
 	case v.Type.IsInteger():
-		if arch == "amd64" && v.Type.Size() < 2 {
-			// amd64 doesn't support CMOV with byte registers
+		if arch == "amd64" && v.Type.Size(psess.types) < 2 {
+
 			return false
 		}
 		return true
@@ -53,10 +49,8 @@ func canCondSelect(v *Value, arch string) bool {
 	}
 }
 
-func elimIf(f *Func, dom *Block) bool {
-	// See if dom is an If with one arm that
-	// is trivial and succeeded by the other
-	// successor of dom.
+func (psess *PackageSession) elimIf(f *Func, dom *Block) bool {
+
 	if dom.Kind != BlockIf || dom.Likely != BranchUnknown {
 		return false
 	}
@@ -73,17 +67,11 @@ func elimIf(f *Func, dom *Block) bool {
 		return false
 	}
 
-	// We've found our diamond CFG of blocks.
-	// Now decide if fusing 'simple' into dom+post
-	// looks profitable.
-
-	// Check that there are Phis, and that all of them
-	// can be safely rewritten to CondSelect.
 	hasphis := false
 	for _, v := range post.Values {
 		if v.Op == OpPhi {
 			hasphis = true
-			if !canCondSelect(v, f.Config.arch) {
+			if !psess.canCondSelect(v, f.Config.arch) {
 				return false
 			}
 		}
@@ -98,11 +86,10 @@ func elimIf(f *Func, dom *Block) bool {
 	// the number of useless instructions executed.
 	const maxfuseinsts = 2
 
-	if len(simple.Values) > maxfuseinsts || !allTrivial(simple) {
+	if len(simple.Values) > maxfuseinsts || !psess.allTrivial(simple) {
 		return false
 	}
 
-	// Replace Phi instructions in b with CondSelect instructions
 	swap := (post.Preds[0].Block() == dom) != (dom.Succs[0].Block() == post)
 	for _, v := range post.Values {
 		if v.Op != OpPhi {
@@ -115,8 +102,6 @@ func elimIf(f *Func, dom *Block) bool {
 		v.AddArg(dom.Control)
 	}
 
-	// Put all of the instructions into 'dom'
-	// and update the CFG appropriately.
 	dom.Kind = post.Kind
 	dom.SetControl(post.Control)
 	dom.Aux = post.Aux
@@ -135,7 +120,6 @@ func elimIf(f *Func, dom *Block) bool {
 	dom.Values = append(dom.Values, simple.Values...)
 	dom.Values = append(dom.Values, post.Values...)
 
-	// Trash 'post' and 'simple'
 	clobberBlock(post)
 	clobberBlock(simple)
 
@@ -158,24 +142,22 @@ func clobberBlock(b *Block) {
 	b.Kind = BlockInvalid
 }
 
-func elimIfElse(f *Func, b *Block) bool {
-	// See if 'b' ends in an if/else: it should
-	// have two successors, both of which are BlockPlain
-	// and succeeded by the same block.
+func (psess *PackageSession) elimIfElse(f *Func, b *Block) bool {
+
 	if b.Kind != BlockIf || b.Likely != BranchUnknown {
 		return false
 	}
 	yes, no := b.Succs[0].Block(), b.Succs[1].Block()
-	if !isLeafPlain(yes) || len(yes.Values) > 1 || !allTrivial(yes) {
+	if !isLeafPlain(yes) || len(yes.Values) > 1 || !psess.allTrivial(yes) {
 		return false
 	}
-	if !isLeafPlain(no) || len(no.Values) > 1 || !allTrivial(no) {
+	if !isLeafPlain(no) || len(no.Values) > 1 || !psess.allTrivial(no) {
 		return false
 	}
 	if b.Succs[0].Block().Succs[0].Block() != b.Succs[1].Block().Succs[0].Block() {
 		return false
 	}
-	// block that postdominates the if/else
+
 	post := b.Succs[0].Block().Succs[0].Block()
 	if len(post.Preds) != 2 || post == b {
 		return false
@@ -184,7 +166,7 @@ func elimIfElse(f *Func, b *Block) bool {
 	for _, v := range post.Values {
 		if v.Op == OpPhi {
 			hasphis = true
-			if !canCondSelect(v, f.Config.arch) {
+			if !psess.canCondSelect(v, f.Config.arch) {
 				return false
 			}
 		}
@@ -193,12 +175,10 @@ func elimIfElse(f *Func, b *Block) bool {
 		return false
 	}
 
-	// Don't generate CondSelects if branch is cheaper.
 	if !shouldElimIfElse(no, yes, post, f.Config.arch) {
 		return false
 	}
 
-	// now we're committed: rewrite each Phi as a CondSelect
 	swap := post.Preds[0].Block() != b.Succs[0].Block()
 	for _, v := range post.Values {
 		if v.Op != OpPhi {
@@ -211,8 +191,6 @@ func elimIfElse(f *Func, b *Block) bool {
 		v.AddArg(b.Control)
 	}
 
-	// Move the contents of all of these
-	// blocks into 'b' and update CFG edges accordingly
 	b.Kind = post.Kind
 	b.SetControl(post.Control)
 	b.Aux = post.Aux
@@ -234,7 +212,6 @@ func elimIfElse(f *Func, b *Block) bool {
 	b.Values = append(b.Values, no.Values...)
 	b.Values = append(b.Values, post.Values...)
 
-	// trash post, yes, and no
 	clobberBlock(yes)
 	clobberBlock(no)
 	clobberBlock(post)
@@ -255,8 +232,7 @@ func shouldElimIfElse(no, yes, post *Block, arch string) bool {
 		other := 0
 		for _, v := range post.Values {
 			if v.Op == OpPhi {
-				// Each phi results in CondSelect, which lowers into CMOV,
-				// CMOV has latency >1 on most CPUs.
+
 				phi++
 			}
 			for _, x := range v.Args {
@@ -267,21 +243,18 @@ func shouldElimIfElse(no, yes, post *Block, arch string) bool {
 		}
 		cost := phi * 1
 		if phi > 1 {
-			// If we have more than 1 phi and some values in post have args
-			// in yes or no blocks, we may have to recalucalte condition, because
-			// those args may clobber flags. For now assume that all operations clobber flags.
+
 			cost += other * 1
 		}
 		return cost < maxcost
 	}
 }
 
-func allTrivial(b *Block) bool {
-	// don't fuse memory ops, Phi ops, divides (can panic),
-	// or anything else with side-effects
+func (psess *PackageSession) allTrivial(b *Block) bool {
+
 	for _, v := range b.Values {
-		if v.Op == OpPhi || isDivMod(v.Op) || v.Type.IsMemory() ||
-			v.MemoryArg() != nil || opcodeTable[v.Op].hasSideEffects {
+		if v.Op == OpPhi || isDivMod(v.Op) || v.Type.IsMemory(psess.types) ||
+			v.MemoryArg(psess) != nil || psess.opcodeTable[v.Op].hasSideEffects {
 			return false
 		}
 	}

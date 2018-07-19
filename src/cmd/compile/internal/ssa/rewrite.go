@@ -1,24 +1,20 @@
-// Copyright 2015 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
 package ssa
 
 import (
-	"cmd/compile/internal/types"
-	"cmd/internal/obj"
-	"cmd/internal/src"
 	"fmt"
-	"io"
+	"github.com/dave/golib/src/cmd/compile/internal/types"
+	"github.com/dave/golib/src/cmd/internal/obj"
+	"github.com/dave/golib/src/cmd/internal/src"
+
 	"math"
 	"math/bits"
 	"os"
 	"path/filepath"
 )
 
-func applyRewrite(f *Func, rb blockRewriter, rv valueRewriter) {
-	// repeat rewrites until we find no more rewrites
-	pendingLines := f.cachedLineStarts // Holds statement boundaries that need to be moved to a new value/block
+func (psess *PackageSession) applyRewrite(f *Func, rb blockRewriter, rv valueRewriter) {
+
+	pendingLines := f.cachedLineStarts
 	pendingLines.clear()
 	for {
 		change := false
@@ -34,35 +30,21 @@ func applyRewrite(f *Func, rb blockRewriter, rv valueRewriter) {
 			for j, v := range b.Values {
 				change = phielimValue(v) || change
 
-				// Eliminate copy inputs.
-				// If any copy input becomes unused, mark it
-				// as invalid and discard its argument. Repeat
-				// recursively on the discarded argument.
-				// This phase helps remove phantom "dead copy" uses
-				// of a value so that a x.Uses==1 rule condition
-				// fires reliably.
 				for i, a := range v.Args {
 					if a.Op != OpCopy {
 						continue
 					}
 					aa := copySource(a)
 					v.SetArg(i, aa)
-					// If a, a copy, has a line boundary indicator, attempt to find a new value
-					// to hold it.  The first candidate is the value that will replace a (aa),
-					// if it shares the same block and line and is eligible.
-					// The second option is v, which has a as an input.  Because aa is earlier in
-					// the data flow, it is the better choice.
+
 					if a.Pos.IsStmt() == src.PosIsStmt {
 						if aa.Block == a.Block && aa.Pos.Line() == a.Pos.Line() && aa.Pos.IsStmt() != src.PosNotStmt {
 							aa.Pos = aa.Pos.WithIsStmt()
 						} else if v.Block == a.Block && v.Pos.Line() == a.Pos.Line() && v.Pos.IsStmt() != src.PosNotStmt {
 							v.Pos = v.Pos.WithIsStmt()
 						} else {
-							// Record the lost line and look for a new home after all rewrites are complete.
-							// TODO: it's possible (in FOR loops, in particular) for statement boundaries for the same
-							// line to appear in more than one block, but only one block is stored, so if both end
-							// up here, then one will be lost.
-							pendingLines.set(a.Pos.Line(), int32(a.Block.ID))
+
+							pendingLines.set(psess, a.Pos.Line(), int32(a.Block.ID))
 						}
 						a.Pos = a.Pos.WithNotStmt()
 					}
@@ -74,10 +56,9 @@ func applyRewrite(f *Func, rb blockRewriter, rv valueRewriter) {
 					}
 				}
 
-				// apply rewrite function
 				if rv(v) {
 					change = true
-					// If value changed to a poor choice for a statement boundary, move the boundary
+
 					if v.Pos.IsStmt() == src.PosIsStmt {
 						if k := nextGoodStatementIndex(v, j, b); k != j {
 							v.Pos = v.Pos.WithNotStmt()
@@ -91,16 +72,16 @@ func applyRewrite(f *Func, rb blockRewriter, rv valueRewriter) {
 			break
 		}
 	}
-	// remove clobbered values
+
 	for _, b := range f.Blocks {
 		j := 0
 		for i, v := range b.Values {
 			vl := v.Pos.Line()
 			if v.Op == OpInvalid {
 				if v.Pos.IsStmt() == src.PosIsStmt {
-					pendingLines.set(vl, int32(b.ID))
+					pendingLines.set(psess, vl, int32(b.ID))
 				}
-				f.freeValue(v)
+				f.freeValue(psess, v)
 				continue
 			}
 			if v.Pos.IsStmt() != src.PosNotStmt && pendingLines.get(vl) == int32(b.ID) {
@@ -126,30 +107,28 @@ func applyRewrite(f *Func, rb blockRewriter, rv valueRewriter) {
 	}
 }
 
-// Common functions called from rewriting rules
-
-func is64BitFloat(t *types.Type) bool {
-	return t.Size() == 8 && t.IsFloat()
+func (psess *PackageSession) is64BitFloat(t *types.Type) bool {
+	return t.Size(psess.types) == 8 && t.IsFloat()
 }
 
-func is32BitFloat(t *types.Type) bool {
-	return t.Size() == 4 && t.IsFloat()
+func (psess *PackageSession) is32BitFloat(t *types.Type) bool {
+	return t.Size(psess.types) == 4 && t.IsFloat()
 }
 
-func is64BitInt(t *types.Type) bool {
-	return t.Size() == 8 && t.IsInteger()
+func (psess *PackageSession) is64BitInt(t *types.Type) bool {
+	return t.Size(psess.types) == 8 && t.IsInteger()
 }
 
-func is32BitInt(t *types.Type) bool {
-	return t.Size() == 4 && t.IsInteger()
+func (psess *PackageSession) is32BitInt(t *types.Type) bool {
+	return t.Size(psess.types) == 4 && t.IsInteger()
 }
 
-func is16BitInt(t *types.Type) bool {
-	return t.Size() == 2 && t.IsInteger()
+func (psess *PackageSession) is16BitInt(t *types.Type) bool {
+	return t.Size(psess.types) == 2 && t.IsInteger()
 }
 
-func is8BitInt(t *types.Type) bool {
-	return t.Size() == 1 && t.IsInteger()
+func (psess *PackageSession) is8BitInt(t *types.Type) bool {
+	return t.Size(psess.types) == 1 && t.IsInteger()
 }
 
 func isPtr(t *types.Type) bool {
@@ -180,34 +159,26 @@ func canMergeSym(x, y interface{}) bool {
 // It also checks that the other non-load argument x is something we
 // are ok with clobbering (all our current load+op instructions clobber
 // their input register).
-func canMergeLoad(target, load, x *Value) bool {
+func (psess *PackageSession) canMergeLoad(target, load, x *Value) bool {
 	if target.Block.ID != load.Block.ID {
-		// If the load is in a different block do not merge it.
+
 		return false
 	}
 
-	// We can't merge the load into the target if the load
-	// has more than one use.
 	if load.Uses != 1 {
 		return false
 	}
 
-	// The register containing x is going to get clobbered.
-	// Don't merge if we still need the value of x.
-	// We don't have liveness information here, but we can
-	// approximate x dying with:
-	//  1) target is x's only use.
-	//  2) target is not in a deeper loop than x.
 	if x.Uses != 1 {
 		return false
 	}
-	loopnest := x.Block.Func.loopnest()
+	loopnest := x.Block.Func.loopnest(psess)
 	loopnest.calculateDepths()
 	if loopnest.depth(target.Block.ID) > loopnest.depth(x.Block.ID) {
 		return false
 	}
 
-	mem := load.MemoryArg()
+	mem := load.MemoryArg(psess)
 
 	// We need the load's memory arg to still be alive at target. That
 	// can't be the case if one of target's args depends on a memory
@@ -238,71 +209,55 @@ search:
 	for i := 0; len(args) > 0; i++ {
 		const limit = 100
 		if i >= limit {
-			// Give up if we have done a lot of iterations.
+
 			return false
 		}
 		v := args[len(args)-1]
 		args = args[:len(args)-1]
 		if target.Block.ID != v.Block.ID {
-			// Since target and load are in the same block
-			// we can stop searching when we leave the block.
+
 			continue search
 		}
 		if v.Op == OpPhi {
-			// A Phi implies we have reached the top of the block.
-			// The memory phi, if it exists, is always
-			// the first logical store in the block.
+
 			continue search
 		}
-		if v.Type.IsTuple() && v.Type.FieldType(1).IsMemory() {
-			// We could handle this situation however it is likely
-			// to be very rare.
+		if v.Type.IsTuple() && v.Type.FieldType(psess.types, 1).IsMemory(psess.types) {
+
 			return false
 		}
-		if v.Type.IsMemory() {
+		if v.Type.IsMemory(psess.types) {
 			if memPreds == nil {
-				// Initialise a map containing memory states
-				// known to be predecessors of load's memory
-				// state.
+
 				memPreds = make(map[*Value]bool)
 				m := mem
 				const limit = 50
 				for i := 0; i < limit; i++ {
 					if m.Op == OpPhi {
-						// The memory phi, if it exists, is always
-						// the first logical store in the block.
+
 						break
 					}
 					if m.Block.ID != target.Block.ID {
 						break
 					}
-					if !m.Type.IsMemory() {
+					if !m.Type.IsMemory(psess.types) {
 						break
 					}
 					memPreds[m] = true
 					if len(m.Args) == 0 {
 						break
 					}
-					m = m.MemoryArg()
+					m = m.MemoryArg(psess)
 				}
 			}
 
-			// We can merge if v is a predecessor of mem.
-			//
-			// For example, we can merge load into target in the
-			// following scenario:
-			//      x = read ... v
-			//    mem = write ... v
-			//   load = read ... mem
-			// target = add x load
 			if memPreds[v] {
 				continue search
 			}
 			return false
 		}
 		if len(v.Args) > 0 && v.Args[len(v.Args)-1] == mem {
-			// If v takes mem as an input then we know mem
-			// is valid at this point.
+
 			continue search
 		}
 		for _, a := range v.Args {
@@ -469,8 +424,7 @@ func isSamePtr(p1, p2 *Value) bool {
 	case OpOffPtr:
 		return p1.AuxInt == p2.AuxInt && isSamePtr(p1.Args[0], p2.Args[0])
 	case OpAddr:
-		// OpAddr's 0th arg is either OpSP or OpSB, which means that it is uniquely identified by its Op.
-		// Checking for value equality only works after [z]cse has run.
+
 		return p1.Aux == p2.Aux && p1.Args[0].Op == p2.Args[0].Op
 	case OpAddPtr:
 		return p1.Args[1] == p2.Args[1] && isSamePtr(p1.Args[0], p2.Args[0])
@@ -501,10 +455,7 @@ func disjoint(p1 *Value, n1 int64, p2 *Value, n2 int64) bool {
 	if isSamePtr(p1, p2) {
 		return !overlap(off1, n1, off2, n2)
 	}
-	// p1 and p2 are not the same, so if they are both OpAddrs then
-	// they point to different variables.
-	// If one pointer is on the stack and the other is an argument
-	// then they can't overlap.
+
 	switch p1.Op {
 	case OpAddr:
 		if p2.Op == OpAddr || p2.Op == OpSP {
@@ -539,9 +490,7 @@ func moveSize(align int64, c *Config) int64 {
 // dominated by all of a's blocks. Returns nil if it can't find one.
 // Might return nil even if one does exist.
 func mergePoint(b *Block, a ...*Value) *Block {
-	// Walk backward from b looking for one of the a's blocks.
 
-	// Max distance
 	d := 100
 
 	for d > 0 {
@@ -551,19 +500,17 @@ func mergePoint(b *Block, a ...*Value) *Block {
 			}
 		}
 		if len(b.Preds) > 1 {
-			// Don't know which way to go back. Abort.
+
 			return nil
 		}
 		b = b.Preds[0].b
 		d--
 	}
-	return nil // too far away
+	return nil
 found:
-	// At this point, r is the first value in a that we find by walking backwards.
-	// if we return anything, r will be it.
+
 	r := b
 
-	// Keep going, counting the other a's that we find. They must all dominate r.
 	na := 0
 	for d > 0 {
 		for _, x := range a {
@@ -572,7 +519,7 @@ found:
 			}
 		}
 		if na == len(a) {
-			// Found all of a in a backwards walk. We can return r.
+
 			return r
 		}
 		if len(b.Preds) > 1 {
@@ -582,7 +529,7 @@ found:
 		d--
 
 	}
-	return nil // too far away
+	return nil
 }
 
 // clobber invalidates v.  Returns true.
@@ -591,7 +538,7 @@ found:
 //   B) decrement use counts of v's args.
 func clobber(v *Value) bool {
 	v.reset(OpInvalid)
-	// Note: leave v.Block intact.  The Block field is used after clobber.
+
 	return true
 }
 
@@ -602,7 +549,7 @@ func clobberIfDead(v *Value) bool {
 	if v.Uses == 1 {
 		v.reset(OpInvalid)
 	}
-	// Note: leave v.Block intact.  The Block field is used after clobberIfDead.
+
 	return true
 }
 
@@ -625,8 +572,8 @@ func warnRule(cond bool, v *Value, s string) bool {
 }
 
 // for a pseudo-op like (LessThan x), extract x
-func flagArg(v *Value) *Value {
-	if len(v.Args) != 1 || !v.Args[0].Type.IsFlags() {
+func (psess *PackageSession) flagArg(v *Value) *Value {
+	if len(v.Args) != 1 || !v.Args[0].Type.IsFlags(psess.types) {
 		return nil
 	}
 	return v.Args[0]
@@ -751,28 +698,22 @@ func ccARM64Eval(cc interface{}, flags *Value) int {
 
 // logRule logs the use of the rule s. This will only be enabled if
 // rewrite rules were generated with the -log option, see gen/rulegen.go.
-func logRule(s string) {
-	if ruleFile == nil {
-		// Open a log file to write log to. We open in append
-		// mode because all.bash runs the compiler lots of times,
-		// and we want the concatenation of all of those logs.
-		// This means, of course, that users need to rm the old log
-		// to get fresh data.
-		// TODO: all.bash runs compilers in parallel. Need to synchronize logging somehow?
+func (psess *PackageSession) logRule(s string) {
+	if psess.ruleFile == nil {
+
 		w, err := os.OpenFile(filepath.Join(os.Getenv("GOROOT"), "src", "rulelog"),
 			os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 		if err != nil {
 			panic(err)
 		}
-		ruleFile = w
+		psess.
+			ruleFile = w
 	}
-	_, err := fmt.Fprintf(ruleFile, "rewrite %s\n", s)
+	_, err := fmt.Fprintf(psess.ruleFile, "rewrite %s\n", s)
 	if err != nil {
 		panic(err)
 	}
 }
-
-var ruleFile io.Writer
 
 func min(x, y int64) int64 {
 	if x < y {
@@ -796,18 +737,17 @@ func reciprocalExact64(c float64) bool {
 	b := math.Float64bits(c)
 	man := b & (1<<52 - 1)
 	if man != 0 {
-		return false // not a power of 2, denormal, or NaN
+		return false
 	}
 	exp := b >> 52 & (1<<11 - 1)
-	// exponent bias is 0x3ff.  So taking the reciprocal of a number
-	// changes the exponent to 0x7fe-exp.
+
 	switch exp {
 	case 0:
-		return false // ±0
+		return false
 	case 0x7ff:
-		return false // ±inf
+		return false
 	case 0x7fe:
-		return false // exponent is not representable
+		return false
 	default:
 		return true
 	}
@@ -818,18 +758,17 @@ func reciprocalExact32(c float32) bool {
 	b := math.Float32bits(c)
 	man := b & (1<<23 - 1)
 	if man != 0 {
-		return false // not a power of 2, denormal, or NaN
+		return false
 	}
 	exp := b >> 23 & (1<<8 - 1)
-	// exponent bias is 0x7f.  So taking the reciprocal of a number
-	// changes the exponent to 0xfe-exp.
+
 	switch exp {
 	case 0:
-		return false // ±0
+		return false
 	case 0xff:
-		return false // ±inf
+		return false
 	case 0xfe:
-		return false // exponent is not representable
+		return false
 	default:
 		return true
 	}
@@ -879,8 +818,7 @@ func zeroUpper32Bits(x *Value, depth int) bool {
 	case OpArg:
 		return x.Type.Width == 4
 	case OpPhi, OpSelect0, OpSelect1:
-		// Phis can use each-other as an arguments, instead of tracking visited values,
-		// just limit recursion depth.
+
 		if depth <= 0 {
 			return false
 		}
@@ -900,10 +838,7 @@ func zeroUpper32Bits(x *Value, depth int) bool {
 // safe, either because Move is small or because the arguments are disjoint.
 // This is used as a check for replacing memmove with Move ops.
 func isInlinableMemmove(dst, src *Value, sz int64, c *Config) bool {
-	// It is always safe to convert memmove into Move when its arguments are disjoint.
-	// Move ops may or may not be faster for large sizes depending on how the platform
-	// lowers them, so we only perform this optimization on platforms that we know to
-	// have fast Move ops.
+
 	switch c.arch {
 	case "amd64", "amd64p32":
 		return sz <= 16
@@ -955,27 +890,31 @@ func arm64BFWidth(mask, rshift int64) int64 {
 
 // sizeof returns the size of t in bytes.
 // It will panic if t is not a *types.Type.
-func sizeof(t interface{}) int64 {
-	return t.(*types.Type).Size()
+func (psess *PackageSession) sizeof(t interface{}) int64 {
+	return t.(*types.Type).Size(psess.
+
+		// alignof returns the alignment of t in bytes.
+		// It will panic if t is not a *types.Type.
+		types)
 }
 
-// alignof returns the alignment of t in bytes.
-// It will panic if t is not a *types.Type.
-func alignof(t interface{}) int64 {
-	return t.(*types.Type).Alignment()
+func (psess *PackageSession) alignof(t interface{}) int64 {
+	return t.(*types.Type).Alignment(psess.
+
+		// registerizable reports whether t is a primitive type that fits in
+		// a register. It assumes float64 values will always fit into registers
+		// even if that isn't strictly true.
+		// It will panic if t is not a *types.Type.
+		types)
 }
 
-// registerizable reports whether t is a primitive type that fits in
-// a register. It assumes float64 values will always fit into registers
-// even if that isn't strictly true.
-// It will panic if t is not a *types.Type.
-func registerizable(b *Block, t interface{}) bool {
+func (psess *PackageSession) registerizable(b *Block, t interface{}) bool {
 	typ := t.(*types.Type)
 	if typ.IsPtrShaped() || typ.IsFloat() {
 		return true
 	}
 	if typ.IsInteger() {
-		return typ.Size() <= b.Func.Config.RegSize
+		return typ.Size(psess.types) <= b.Func.Config.RegSize
 	}
 	return false
 }

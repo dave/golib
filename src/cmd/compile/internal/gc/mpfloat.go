@@ -1,7 +1,3 @@
-// Copyright 2009 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
 package gc
 
 import (
@@ -9,8 +5,6 @@ import (
 	"math"
 	"math/big"
 )
-
-// implements float arithmetic
 
 const (
 	// Maximum size in bits for Mpints before signalling
@@ -46,7 +40,7 @@ func newMpcmplx() *Mpcplx {
 
 func (a *Mpflt) SetInt(b *Mpint) {
 	if b.checkOverflow(0) {
-		// sign doesn't really matter but copy anyway
+
 		a.Val.SetInf(b.Val.Sign() < 0)
 		return
 	}
@@ -125,32 +119,32 @@ func (a *Mpflt) Cmp(b *Mpflt) int {
 
 func (a *Mpflt) CmpFloat64(c float64) int {
 	if c == 0 {
-		return a.Val.Sign() // common case shortcut
+		return a.Val.Sign()
 	}
 	return a.Val.Cmp(big.NewFloat(c))
 }
 
-func (a *Mpflt) Float64() float64 {
+func (a *Mpflt) Float64(psess *PackageSession) float64 {
 	x, _ := a.Val.Float64()
 
-	// check for overflow
-	if math.IsInf(x, 0) && nsavederrors+nerrors == 0 {
-		Fatalf("ovf in Mpflt Float64")
+	if math.IsInf(x, 0) && psess.nsavederrors+psess.nerrors == 0 {
+		psess.
+			Fatalf("ovf in Mpflt Float64")
 	}
 
-	return x + 0 // avoid -0 (should not be needed, but be conservative)
+	return x + 0
 }
 
-func (a *Mpflt) Float32() float64 {
+func (a *Mpflt) Float32(psess *PackageSession) float64 {
 	x32, _ := a.Val.Float32()
 	x := float64(x32)
 
-	// check for overflow
-	if math.IsInf(x, 0) && nsavederrors+nerrors == 0 {
-		Fatalf("ovf in Mpflt Float32")
+	if math.IsInf(x, 0) && psess.nsavederrors+psess.nerrors == 0 {
+		psess.
+			Fatalf("ovf in Mpflt Float32")
 	}
 
-	return x + 0 // avoid -0 (should not be needed, but be conservative)
+	return x + 0
 }
 
 func (a *Mpflt) SetFloat64(c float64) {
@@ -158,7 +152,6 @@ func (a *Mpflt) SetFloat64(c float64) {
 		fmt.Printf("\nconst %g", c)
 	}
 
-	// convert -0 to 0
 	if c == 0 {
 		c = 0
 	}
@@ -170,31 +163,32 @@ func (a *Mpflt) SetFloat64(c float64) {
 }
 
 func (a *Mpflt) Neg() {
-	// avoid -0
+
 	if a.Val.Sign() != 0 {
 		a.Val.Neg(&a.Val)
 	}
 }
 
-func (a *Mpflt) SetString(as string) {
+func (a *Mpflt) SetString(psess *PackageSession, as string) {
 	for len(as) > 0 && (as[0] == ' ' || as[0] == '\t') {
 		as = as[1:]
 	}
 
 	f, _, err := a.Val.Parse(as, 10)
 	if err != nil {
-		yyerror("malformed constant: %s (%v)", as, err)
+		psess.
+			yyerror("malformed constant: %s (%v)", as, err)
 		a.Val.SetFloat64(0)
 		return
 	}
 
 	if f.IsInf() {
-		yyerror("constant too large: %s", as)
+		psess.
+			yyerror("constant too large: %s", as)
 		a.Val.SetFloat64(0)
 		return
 	}
 
-	// -0 becomes 0
 	if f.Sign() == 0 && f.Signbit() {
 		a.Val.SetFloat64(0)
 	}
@@ -209,9 +203,6 @@ func fconv(fvp *Mpflt, flag FmtFlag) string {
 		return fvp.Val.Text('b', 0)
 	}
 
-	// use decimal format for error messages
-
-	// determine sign
 	f := &fvp.Val
 	var sign string
 	if f.Sign() < 0 {
@@ -221,13 +212,10 @@ func fconv(fvp *Mpflt, flag FmtFlag) string {
 		sign = "+"
 	}
 
-	// Don't try to convert infinities (will not terminate).
 	if f.IsInf() {
 		return sign + "Inf"
 	}
 
-	// Use exact fmt formatting if in float64 range (common case):
-	// proceed if f doesn't underflow to 0 or overflow to inf.
 	if x, _ := f.Float64(); f.Sign() == 0 == (x == 0) && !math.IsInf(x, 0) {
 		return fmt.Sprintf("%s%.6g", sign, x)
 	}
@@ -237,23 +225,17 @@ func fconv(fvp *Mpflt, flag FmtFlag) string {
 	// formatting.
 	// f = mant * 2**exp
 	var mant big.Float
-	exp := f.MantExp(&mant) // 0.5 <= mant < 1.0
+	exp := f.MantExp(&mant)
 
-	// approximate float64 mantissa m and decimal exponent d
-	// f ~ m * 10**d
-	m, _ := mant.Float64()                     // 0.5 <= m < 1.0
-	d := float64(exp) * (math.Ln2 / math.Ln10) // log_10(2)
+	m, _ := mant.Float64()
+	d := float64(exp) * (math.Ln2 / math.Ln10)
 
-	// adjust m for truncated (integer) decimal exponent e
 	e := int64(d)
 	m *= math.Pow(10, d-float64(e))
 
-	// ensure 1 <= m < 10
 	switch {
 	case m < 1-0.5e-6:
-		// The %.6g format below rounds m to 5 digits after the
-		// decimal point. Make sure that m*10 < 10 even after
-		// rounding up: m*10 + 0.5e-5 < 10 => m < 1 - 0.5e6.
+
 		m *= 10
 		e--
 	case m >= 10:
@@ -270,22 +252,22 @@ func (v *Mpcplx) Mul(rv *Mpcplx) {
 	var ac, ad, bc, bd Mpflt
 
 	ac.Set(&v.Real)
-	ac.Mul(&rv.Real) // ac
+	ac.Mul(&rv.Real)
 
 	bd.Set(&v.Imag)
-	bd.Mul(&rv.Imag) // bd
+	bd.Mul(&rv.Imag)
 
 	bc.Set(&v.Imag)
-	bc.Mul(&rv.Real) // bc
+	bc.Mul(&rv.Real)
 
 	ad.Set(&v.Real)
-	ad.Mul(&rv.Imag) // ad
+	ad.Mul(&rv.Imag)
 
 	v.Real.Set(&ac)
-	v.Real.Sub(&bd) // ac-bd
+	v.Real.Sub(&bd)
 
 	v.Imag.Set(&bc)
-	v.Imag.Add(&ad) // bc+ad
+	v.Imag.Add(&ad)
 }
 
 // complex divide v /= rv
@@ -298,39 +280,35 @@ func (v *Mpcplx) Div(rv *Mpcplx) bool {
 	var ac, ad, bc, bd, cc_plus_dd Mpflt
 
 	cc_plus_dd.Set(&rv.Real)
-	cc_plus_dd.Mul(&rv.Real) // cc
+	cc_plus_dd.Mul(&rv.Real)
 
 	ac.Set(&rv.Imag)
-	ac.Mul(&rv.Imag)    // dd
-	cc_plus_dd.Add(&ac) // cc+dd
+	ac.Mul(&rv.Imag)
+	cc_plus_dd.Add(&ac)
 
-	// We already checked that c and d are not both zero, but we can't
-	// assume that c²+d² != 0 follows, because for tiny values of c
-	// and/or d c²+d² can underflow to zero.  Check that c²+d² is
-	// nonzero, return if it's not.
 	if cc_plus_dd.CmpFloat64(0) == 0 {
 		return false
 	}
 
 	ac.Set(&v.Real)
-	ac.Mul(&rv.Real) // ac
+	ac.Mul(&rv.Real)
 
 	bd.Set(&v.Imag)
-	bd.Mul(&rv.Imag) // bd
+	bd.Mul(&rv.Imag)
 
 	bc.Set(&v.Imag)
-	bc.Mul(&rv.Real) // bc
+	bc.Mul(&rv.Real)
 
 	ad.Set(&v.Real)
-	ad.Mul(&rv.Imag) // ad
+	ad.Mul(&rv.Imag)
 
 	v.Real.Set(&ac)
-	v.Real.Add(&bd)         // ac+bd
-	v.Real.Quo(&cc_plus_dd) // (ac+bd)/(cc+dd)
+	v.Real.Add(&bd)
+	v.Real.Quo(&cc_plus_dd)
 
 	v.Imag.Set(&bc)
-	v.Imag.Sub(&ad)         // bc-ad
-	v.Imag.Quo(&cc_plus_dd) // (bc+ad)/(cc+dd)
+	v.Imag.Sub(&ad)
+	v.Imag.Quo(&cc_plus_dd)
 
 	return true
 }

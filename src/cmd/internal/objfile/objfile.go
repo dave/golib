@@ -1,7 +1,3 @@
-// Copyright 2014 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
 // Package objfile implements portable access to OS-specific executable files.
 package objfile
 
@@ -138,12 +134,11 @@ func (x byAddr) Len() int           { return len(x) }
 func (x byAddr) Swap(i, j int)      { x[i], x[j] = x[j], x[i] }
 
 func (e *Entry) PCLineTable() (Liner, error) {
-	// If the raw file implements Liner directly, use that.
-	// Currently, only Go intermediate objects and archives (goobj) use this path.
+
 	if pcln, ok := e.raw.(Liner); ok {
 		return pcln, nil
 	}
-	// Otherwise, read the pcln tables and build a Liner out of that.
+
 	textStart, symtab, pclntab, err := e.raw.pcln()
 	if err != nil {
 		return nil, err

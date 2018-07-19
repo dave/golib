@@ -1,26 +1,22 @@
-// Copyright 2009 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
 package arm64
 
 import (
-	"cmd/compile/internal/gc"
-	"cmd/compile/internal/ssa"
-	"cmd/internal/obj/arm64"
+	"github.com/dave/golib/src/cmd/compile/internal/gc"
+	"github.com/dave/golib/src/cmd/compile/internal/ssa"
+	"github.com/dave/golib/src/cmd/internal/obj/arm64"
 )
 
-func Init(arch *gc.Arch) {
-	arch.LinkArch = &arm64.Linkarm64
+func (psess *PackageSession) Init(arch *gc.Arch) {
+	arch.LinkArch = &psess.arm64.Linkarm64
 	arch.REGSP = arm64.REGSP
 	arch.MAXWIDTH = 1 << 50
 
 	arch.PadFrame = padframe
-	arch.ZeroRange = zerorange
-	arch.ZeroAuto = zeroAuto
-	arch.Ginsnop = ginsnop
+	arch.ZeroRange = psess.zerorange
+	arch.ZeroAuto = psess.zeroAuto
+	arch.Ginsnop = psess.ginsnop
 
 	arch.SSAMarkMoves = func(s *gc.SSAGenState, b *ssa.Block) {}
-	arch.SSAGenValue = ssaGenValue
-	arch.SSAGenBlock = ssaGenBlock
+	arch.SSAGenValue = psess.ssaGenValue
+	arch.SSAGenBlock = psess.ssaGenBlock
 }

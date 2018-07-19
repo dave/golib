@@ -1,19 +1,15 @@
-// Copyright 2017 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
 // Package loadelf implements an ELF file reader.
 package loadelf
 
 import (
 	"bytes"
-	"cmd/internal/bio"
-	"cmd/internal/objabi"
-	"cmd/internal/sys"
-	"cmd/link/internal/sym"
 	"debug/elf"
 	"encoding/binary"
 	"fmt"
+	"github.com/dave/golib/src/cmd/internal/bio"
+	"github.com/dave/golib/src/cmd/internal/objabi"
+	"github.com/dave/golib/src/cmd/internal/sys"
+	"github.com/dave/golib/src/cmd/link/internal/sym"
 	"io"
 	"log"
 	"sort"
@@ -322,8 +318,6 @@ type ElfSym struct {
 	sym   *sym.Symbol
 }
 
-var ElfMagic = [4]uint8{0x7F, 'E', 'L', 'F'}
-
 const (
 	TagFile               = 1
 	TagCPUName            = 4
@@ -376,17 +370,16 @@ func (a *elfAttributeList) armAttr() elfAttribute {
 		attr.ival = a.uleb128()
 		attr.sval = a.string()
 
-	case attr.tag == 64: // Tag_nodefaults has no argument
+	case attr.tag == 64:
 
-	case attr.tag == 65: // Tag_also_compatible_with
-		// Not really, but we don't actually care about this tag.
+	case attr.tag == 65:
+
 		attr.sval = a.string()
 
-	// Tag with string argument
 	case attr.tag == TagCPUName || attr.tag == TagCPURawName || (attr.tag >= 32 && attr.tag&1 != 0):
 		attr.sval = a.string()
 
-	default: // Tag with integer argument
+	default:
 		attr.ival = a.uleb128()
 	}
 	return attr
@@ -440,7 +433,7 @@ func parseArmAttributes(e binary.ByteOrder, data []byte) (found bool, ehdrFlags 
 				attr := attrList.armAttr()
 				if attr.tag == TagABIVFPArgs && attr.ival == 1 {
 					found = true
-					ehdrFlags = 0x5000402 // has entry point, Version5 EABI, hard-float ABI
+					ehdrFlags = 0x5000402
 				}
 			}
 			if attrList.err != nil {
@@ -472,8 +465,8 @@ func Load(arch *sys.Arch, syms *sym.Symbols, f *bio.Reader, pkg string, length i
 		return errorf("malformed elf file: %v", err)
 	}
 	hdr := new(ElfHdrBytes)
-	binary.Read(bytes.NewReader(hdrbuf[:]), binary.BigEndian, hdr) // only byte arrays; byte order doesn't matter
-	if string(hdr.Ident[:4]) != "\x7FELF" {
+	binary.Read(bytes.NewReader(hdrbuf[:]), binary.BigEndian, hdr)
+	if string(hdr.Ident[:4]) != "\u007fELF" {
 		return errorf("malformed elf file, bad header")
 	}
 	var e binary.ByteOrder
@@ -488,7 +481,6 @@ func Load(arch *sys.Arch, syms *sym.Symbols, f *bio.Reader, pkg string, length i
 		return errorf("malformed elf file, unknown header")
 	}
 
-	// read header
 	elfobj := new(ElfObj)
 
 	elfobj.e = e
@@ -501,7 +493,7 @@ func Load(arch *sys.Arch, syms *sym.Symbols, f *bio.Reader, pkg string, length i
 	if hdr.Ident[4] == ElfClass64 {
 		is64 = 1
 		hdr := new(ElfHdrBytes64)
-		binary.Read(bytes.NewReader(hdrbuf[:]), binary.BigEndian, hdr) // only byte arrays; byte order doesn't matter
+		binary.Read(bytes.NewReader(hdrbuf[:]), binary.BigEndian, hdr)
 		elfobj.type_ = uint32(e.Uint16(hdr.Type[:]))
 		elfobj.machine = uint32(e.Uint16(hdr.Machine[:]))
 		elfobj.version = e.Uint32(hdr.Version[:])
@@ -585,7 +577,6 @@ func Load(arch *sys.Arch, syms *sym.Symbols, f *bio.Reader, pkg string, length i
 		}
 	}
 
-	// load section list into memory.
 	elfobj.sect = make([]ElfSect, elfobj.shnum)
 
 	elfobj.nsect = uint(elfobj.shnum)
@@ -631,7 +622,6 @@ func Load(arch *sys.Arch, syms *sym.Symbols, f *bio.Reader, pkg string, length i
 		}
 	}
 
-	// read section string table and translate names
 	if elfobj.shstrndx >= uint32(elfobj.nsect) {
 		return errorf("malformed elf file: shstrndx out of range %d >= %d", elfobj.shstrndx, elfobj.nsect)
 	}
@@ -646,11 +636,10 @@ func Load(arch *sys.Arch, syms *sym.Symbols, f *bio.Reader, pkg string, length i
 		}
 	}
 
-	// load string table for symbols into memory.
 	elfobj.symtab = section(elfobj, ".symtab")
 
 	if elfobj.symtab == nil {
-		// our work is done here - no symbols means nothing can refer to this file
+
 		return
 	}
 
@@ -672,19 +661,13 @@ func Load(arch *sys.Arch, syms *sym.Symbols, f *bio.Reader, pkg string, length i
 		return errorf("malformed elf file: %v", err)
 	}
 
-	// load text and data segments into memory.
-	// they are not as small as the section lists, but we'll need
-	// the memory anyway for the symbol images, so we might
-	// as well use one large chunk.
-
-	// create symbols for elfmapped sections
 	for i := 0; uint(i) < elfobj.nsect; i++ {
 		sect = &elfobj.sect[i]
 		if sect.type_ == SHT_ARM_ATTRIBUTES && sect.name == ".ARM.attributes" {
 			if err := elfmap(elfobj, sect); err != nil {
 				return errorf("%s: malformed elf file: %v", pn, err)
 			}
-			// We assume the soft-float ABI unless we see a tag indicating otherwise.
+
 			if initEhdrFlags == 0x5000002 {
 				ehdrFlags = 0x5000202
 			} else {
@@ -692,7 +675,7 @@ func Load(arch *sys.Arch, syms *sym.Symbols, f *bio.Reader, pkg string, length i
 			}
 			found, newEhdrFlags, err := parseArmAttributes(e, sect.base[:sect.size])
 			if err != nil {
-				// TODO(dfc) should this return an error?
+
 				log.Printf("%s: %v", pn, err)
 			}
 			if found {
@@ -742,8 +725,6 @@ func Load(arch *sys.Arch, syms *sym.Symbols, f *bio.Reader, pkg string, length i
 		sect.sym = s
 	}
 
-	// enter sub-symbols into symbol table.
-	// symbol 0 is the null symbol.
 	symbols := make([]*sym.Symbol, elfobj.nsymtab)
 
 	for i := 1; i < elfobj.nsymtab; i++ {
@@ -770,23 +751,21 @@ func Load(arch *sys.Arch, syms *sym.Symbols, f *bio.Reader, pkg string, length i
 			continue
 		}
 
-		// even when we pass needSym == 1 to readelfsym, it might still return nil to skip some unwanted symbols
 		if elfsym.sym == nil {
 			continue
 		}
 		sect = &elfobj.sect[elfsym.shndx]
 		if sect.sym == nil {
-			if strings.HasPrefix(elfsym.name, ".Linfo_string") { // clang does this
+			if strings.HasPrefix(elfsym.name, ".Linfo_string") {
 				continue
 			}
 
 			if elfsym.name == "" && elfsym.type_ == 0 && sect.name == ".debug_str" {
-				// This reportedly happens with clang 3.7 on ARM.
-				// See issue 13139.
+
 				continue
 			}
 
-			if strings.HasPrefix(elfsym.name, ".LASF") { // gcc on s390x does this
+			if strings.HasPrefix(elfsym.name, ".LASF") {
 				continue
 			}
 			return errorf("%v: sym#%d: ignoring symbol in section %d (type %d)", elfsym.sym, i, elfsym.shndx, elfsym.type_)
@@ -805,7 +784,7 @@ func Load(arch *sys.Arch, syms *sym.Symbols, f *bio.Reader, pkg string, length i
 		s.Type = sect.sym.Type
 		s.Attr |= sym.AttrSubSymbol
 		if !s.Attr.CgoExportDynamic() {
-			s.Dynimplib = "" // satisfy dynimport
+			s.Dynimplib = ""
 		}
 		s.Value = int64(elfsym.value)
 		s.Size = int64(elfsym.size)
@@ -827,8 +806,6 @@ func Load(arch *sys.Arch, syms *sym.Symbols, f *bio.Reader, pkg string, length i
 		}
 	}
 
-	// Sort outer lists by address, adding to textp.
-	// This keeps textp in increasing address order.
 	for i := uint(0); i < elfobj.nsect; i++ {
 		s := elfobj.sect[i].sym
 		if s == nil {
@@ -853,7 +830,6 @@ func Load(arch *sys.Arch, syms *sym.Symbols, f *bio.Reader, pkg string, length i
 		}
 	}
 
-	// load relocations
 	for i := uint(0); i < elfobj.nsect; i++ {
 		rsect := &elfobj.sect[i]
 		if rsect.type_ != ElfSectRela && rsect.type_ != ElfSectRel {
@@ -878,7 +854,7 @@ func Load(arch *sys.Arch, syms *sym.Symbols, f *bio.Reader, pkg string, length i
 			rp := &r[j]
 			var info uint64
 			if is64 != 0 {
-				// 64-bit rel/rela
+
 				rp.Off = int32(e.Uint64(p))
 
 				p = p[8:]
@@ -889,12 +865,12 @@ func Load(arch *sys.Arch, syms *sym.Symbols, f *bio.Reader, pkg string, length i
 					p = p[8:]
 				}
 			} else {
-				// 32-bit rel/rela
+
 				rp.Off = int32(e.Uint32(p))
 
 				p = p[4:]
 				info = uint64(e.Uint32(p))
-				info = info>>8<<32 | info&0xff // convert to 64-bit info
+				info = info>>8<<32 | info&0xff
 				p = p[4:]
 				if rela != 0 {
 					add = uint64(e.Uint32(p))
@@ -902,13 +878,13 @@ func Load(arch *sys.Arch, syms *sym.Symbols, f *bio.Reader, pkg string, length i
 				}
 			}
 
-			if info&0xffffffff == 0 { // skip R_*_NONE relocation
+			if info&0xffffffff == 0 {
 				j--
 				n--
 				continue
 			}
 
-			if info>>32 == 0 { // absolute relocation, don't bother reading the null symbol
+			if info>>32 == 0 {
 				rp.Sym = nil
 			} else {
 				var elfsym ElfSym
@@ -931,7 +907,7 @@ func Load(arch *sys.Arch, syms *sym.Symbols, f *bio.Reader, pkg string, length i
 			if rela != 0 {
 				rp.Add = int64(add)
 			} else {
-				// load addend from image
+
 				if rp.Siz == 4 {
 					rp.Add = int64(e.Uint32(sect.base[rp.Off:]))
 				} else if rp.Siz == 8 {
@@ -949,9 +925,7 @@ func Load(arch *sys.Arch, syms *sym.Symbols, f *bio.Reader, pkg string, length i
 			}
 		}
 
-		//print("rel %s %d %d %s %#llx\n", sect->sym->name, rp->type, rp->siz, rp->sym->name, rp->add);
 		sort.Sort(sym.RelocByOff(r[:n]))
-		// just in case
 
 		s := sect.sym
 		s.R = r
@@ -1028,8 +1002,7 @@ func readelfsym(arch *sys.Arch, syms *sym.Symbols, elfobj *ElfObj, i int, elfsym
 		elfsym.name = ".got"
 	}
 	if elfsym.name == ".TOC." {
-		// Magic symbol on ppc64.  Will be set to this object
-		// file's .got+0x8000.
+
 		elfsym.bind = ElfSymBindLocal
 	}
 
@@ -1043,13 +1016,6 @@ func readelfsym(arch *sys.Arch, syms *sym.Symbols, elfobj *ElfObj, i int, elfsym
 			if needSym != 0 {
 				s = syms.Lookup(elfsym.name, 0)
 
-				// for global scoped hidden symbols we should insert it into
-				// symbol hash table, but mark them as hidden.
-				// __i686.get_pc_thunk.bx is allowed to be duplicated, to
-				// workaround that we set dupok.
-				// TODO(minux): correctly handle __i686.get_pc_thunk.bx without
-				// set dupok generally. See https://golang.org/cl/5823055
-				// comment #5 for details.
 				if s != nil && elfsym.other == 2 {
 					s.Attr |= sym.AttrDuplicateOK | sym.AttrVisibilityHidden
 				}
@@ -1057,14 +1023,12 @@ func readelfsym(arch *sys.Arch, syms *sym.Symbols, elfobj *ElfObj, i int, elfsym
 
 		case ElfSymBindLocal:
 			if arch.Family == sys.ARM && (strings.HasPrefix(elfsym.name, "$a") || strings.HasPrefix(elfsym.name, "$d")) {
-				// binutils for arm generate these mapping
-				// symbols, ignore these
+
 				break
 			}
 
 			if elfsym.name == ".TOC." {
-				// We need to be able to look this up,
-				// so put it in the hash table.
+
 				if needSym != 0 {
 					s = syms.Lookup(elfsym.name, localSymVersion)
 					s.Attr |= sym.AttrVisibilityHidden
@@ -1074,9 +1038,7 @@ func readelfsym(arch *sys.Arch, syms *sym.Symbols, elfobj *ElfObj, i int, elfsym
 			}
 
 			if needSym != 0 {
-				// local names and hidden global names are unique
-				// and should only be referenced by their index, not name, so we
-				// don't bother to add them into the hash table
+
 				s = syms.Newsym(elfsym.name, localSymVersion)
 
 				s.Attr |= sym.AttrVisibilityHidden
@@ -1096,8 +1058,6 @@ func readelfsym(arch *sys.Arch, syms *sym.Symbols, elfobj *ElfObj, i int, elfsym
 		}
 	}
 
-	// TODO(mwhudson): the test of VisibilityHidden here probably doesn't make
-	// sense and should be removed when someone has thought about it properly.
 	if s != nil && s.Type == 0 && !s.Attr.VisibilityHidden() && elfsym.type_ != ElfSymTypeSection {
 		s.Type = sym.SXREF
 	}
@@ -1107,9 +1067,6 @@ func readelfsym(arch *sys.Arch, syms *sym.Symbols, elfobj *ElfObj, i int, elfsym
 }
 
 func relSize(arch *sys.Arch, pn string, elftype uint32) (uint8, error) {
-	// TODO(mdempsky): Replace this with a struct-valued switch statement
-	// once golang.org/issue/15164 is fixed or found to not impair cmd/link
-	// performance.
 
 	const (
 		AMD64 = uint32(sys.AMD64)

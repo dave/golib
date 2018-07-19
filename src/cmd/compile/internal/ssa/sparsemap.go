@@ -1,13 +1,6 @@
-// Copyright 2015 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
 package ssa
 
-import "cmd/internal/src"
-
-// from https://research.swtch.com/sparse
-// in turn, from Briggs and Torczon
+import "github.com/dave/golib/src/cmd/internal/src"
 
 type sparseEntry struct {
 	key ID
@@ -61,7 +54,7 @@ func (s *sparseMap) set(k ID, v int32, a src.XPos) {
 }
 
 // setBit sets the v'th bit of k's value, where 0 <= v < 32
-func (s *sparseMap) setBit(k ID, v uint) {
+func (s *sparseMap) setBit(psess *PackageSession, k ID, v uint) {
 	if v >= 32 {
 		panic("bit index too large.")
 	}
@@ -70,7 +63,7 @@ func (s *sparseMap) setBit(k ID, v uint) {
 		s.dense[i].val |= 1 << v
 		return
 	}
-	s.dense = append(s.dense, sparseEntry{k, 1 << v, src.NoXPos})
+	s.dense = append(s.dense, sparseEntry{k, 1 << v, psess.src.NoXPos})
 	s.sparse[k] = int32(len(s.dense)) - 1
 }
 

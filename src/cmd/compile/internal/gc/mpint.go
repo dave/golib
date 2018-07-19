@@ -1,15 +1,9 @@
-// Copyright 2009 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
 package gc
 
 import (
 	"fmt"
 	"math/big"
 )
-
-// implements integer arithmetic
 
 // Mpint represents an integer constant.
 type Mpint struct {
@@ -19,13 +13,12 @@ type Mpint struct {
 }
 
 func (a *Mpint) SetOverflow() {
-	a.Val.SetUint64(1) // avoid spurious div-zero errors
+	a.Val.SetUint64(1)
 	a.Ovf = true
 }
 
 func (a *Mpint) checkOverflow(extra int) bool {
-	// We don't need to be precise here, any reasonable upper limit would do.
-	// For now, use existing limit so we pass all the tests unchanged.
+
 	if a.Val.BitLen()+extra > Mpprec {
 		a.SetOverflow()
 	}
@@ -37,8 +30,7 @@ func (a *Mpint) Set(b *Mpint) {
 }
 
 func (a *Mpint) SetFloat(b *Mpflt) bool {
-	// avoid converting huge floating-point numbers to integers
-	// (2*Mpprec is large enough to permit all tests to pass)
+
 	if b.Val.MantExp(nil) > 2*Mpprec {
 		a.SetOverflow()
 		return false
@@ -52,14 +44,12 @@ func (a *Mpint) SetFloat(b *Mpflt) bool {
 	var t big.Float
 	t.SetPrec(Mpprec - delta)
 
-	// try rounding down a little
 	t.SetMode(big.ToZero)
 	t.Set(&b.Val)
 	if _, acc := t.Int(&a.Val); acc == big.Exact {
 		return true
 	}
 
-	// try rounding up a little
 	t.SetMode(big.AwayFromZero)
 	t.Set(&b.Val)
 	if _, acc := t.Int(&a.Val); acc == big.Exact {
@@ -70,10 +60,11 @@ func (a *Mpint) SetFloat(b *Mpflt) bool {
 	return false
 }
 
-func (a *Mpint) Add(b *Mpint) {
+func (a *Mpint) Add(psess *PackageSession, b *Mpint) {
 	if a.Ovf || b.Ovf {
-		if nsavederrors+nerrors == 0 {
-			Fatalf("ovf in Mpint Add")
+		if psess.nsavederrors+psess.nerrors == 0 {
+			psess.
+				Fatalf("ovf in Mpint Add")
 		}
 		a.SetOverflow()
 		return
@@ -82,14 +73,16 @@ func (a *Mpint) Add(b *Mpint) {
 	a.Val.Add(&a.Val, &b.Val)
 
 	if a.checkOverflow(0) {
-		yyerror("constant addition overflow")
+		psess.
+			yyerror("constant addition overflow")
 	}
 }
 
-func (a *Mpint) Sub(b *Mpint) {
+func (a *Mpint) Sub(psess *PackageSession, b *Mpint) {
 	if a.Ovf || b.Ovf {
-		if nsavederrors+nerrors == 0 {
-			Fatalf("ovf in Mpint Sub")
+		if psess.nsavederrors+psess.nerrors == 0 {
+			psess.
+				Fatalf("ovf in Mpint Sub")
 		}
 		a.SetOverflow()
 		return
@@ -98,14 +91,16 @@ func (a *Mpint) Sub(b *Mpint) {
 	a.Val.Sub(&a.Val, &b.Val)
 
 	if a.checkOverflow(0) {
-		yyerror("constant subtraction overflow")
+		psess.
+			yyerror("constant subtraction overflow")
 	}
 }
 
-func (a *Mpint) Mul(b *Mpint) {
+func (a *Mpint) Mul(psess *PackageSession, b *Mpint) {
 	if a.Ovf || b.Ovf {
-		if nsavederrors+nerrors == 0 {
-			Fatalf("ovf in Mpint Mul")
+		if psess.nsavederrors+psess.nerrors == 0 {
+			psess.
+				Fatalf("ovf in Mpint Mul")
 		}
 		a.SetOverflow()
 		return
@@ -114,14 +109,16 @@ func (a *Mpint) Mul(b *Mpint) {
 	a.Val.Mul(&a.Val, &b.Val)
 
 	if a.checkOverflow(0) {
-		yyerror("constant multiplication overflow")
+		psess.
+			yyerror("constant multiplication overflow")
 	}
 }
 
-func (a *Mpint) Quo(b *Mpint) {
+func (a *Mpint) Quo(psess *PackageSession, b *Mpint) {
 	if a.Ovf || b.Ovf {
-		if nsavederrors+nerrors == 0 {
-			Fatalf("ovf in Mpint Quo")
+		if psess.nsavederrors+psess.nerrors == 0 {
+			psess.
+				Fatalf("ovf in Mpint Quo")
 		}
 		a.SetOverflow()
 		return
@@ -130,15 +127,16 @@ func (a *Mpint) Quo(b *Mpint) {
 	a.Val.Quo(&a.Val, &b.Val)
 
 	if a.checkOverflow(0) {
-		// can only happen for div-0 which should be checked elsewhere
-		yyerror("constant division overflow")
+		psess.
+			yyerror("constant division overflow")
 	}
 }
 
-func (a *Mpint) Rem(b *Mpint) {
+func (a *Mpint) Rem(psess *PackageSession, b *Mpint) {
 	if a.Ovf || b.Ovf {
-		if nsavederrors+nerrors == 0 {
-			Fatalf("ovf in Mpint Rem")
+		if psess.nsavederrors+psess.nerrors == 0 {
+			psess.
+				Fatalf("ovf in Mpint Rem")
 		}
 		a.SetOverflow()
 		return
@@ -147,15 +145,16 @@ func (a *Mpint) Rem(b *Mpint) {
 	a.Val.Rem(&a.Val, &b.Val)
 
 	if a.checkOverflow(0) {
-		// should never happen
-		yyerror("constant modulo overflow")
+		psess.
+			yyerror("constant modulo overflow")
 	}
 }
 
-func (a *Mpint) Or(b *Mpint) {
+func (a *Mpint) Or(psess *PackageSession, b *Mpint) {
 	if a.Ovf || b.Ovf {
-		if nsavederrors+nerrors == 0 {
-			Fatalf("ovf in Mpint Or")
+		if psess.nsavederrors+psess.nerrors == 0 {
+			psess.
+				Fatalf("ovf in Mpint Or")
 		}
 		a.SetOverflow()
 		return
@@ -164,10 +163,11 @@ func (a *Mpint) Or(b *Mpint) {
 	a.Val.Or(&a.Val, &b.Val)
 }
 
-func (a *Mpint) And(b *Mpint) {
+func (a *Mpint) And(psess *PackageSession, b *Mpint) {
 	if a.Ovf || b.Ovf {
-		if nsavederrors+nerrors == 0 {
-			Fatalf("ovf in Mpint And")
+		if psess.nsavederrors+psess.nerrors == 0 {
+			psess.
+				Fatalf("ovf in Mpint And")
 		}
 		a.SetOverflow()
 		return
@@ -176,10 +176,11 @@ func (a *Mpint) And(b *Mpint) {
 	a.Val.And(&a.Val, &b.Val)
 }
 
-func (a *Mpint) AndNot(b *Mpint) {
+func (a *Mpint) AndNot(psess *PackageSession, b *Mpint) {
 	if a.Ovf || b.Ovf {
-		if nsavederrors+nerrors == 0 {
-			Fatalf("ovf in Mpint AndNot")
+		if psess.nsavederrors+psess.nerrors == 0 {
+			psess.
+				Fatalf("ovf in Mpint AndNot")
 		}
 		a.SetOverflow()
 		return
@@ -188,10 +189,11 @@ func (a *Mpint) AndNot(b *Mpint) {
 	a.Val.AndNot(&a.Val, &b.Val)
 }
 
-func (a *Mpint) Xor(b *Mpint) {
+func (a *Mpint) Xor(psess *PackageSession, b *Mpint) {
 	if a.Ovf || b.Ovf {
-		if nsavederrors+nerrors == 0 {
-			Fatalf("ovf in Mpint Xor")
+		if psess.nsavederrors+psess.nerrors == 0 {
+			psess.
+				Fatalf("ovf in Mpint Xor")
 		}
 		a.SetOverflow()
 		return
@@ -200,45 +202,50 @@ func (a *Mpint) Xor(b *Mpint) {
 	a.Val.Xor(&a.Val, &b.Val)
 }
 
-func (a *Mpint) Lsh(b *Mpint) {
+func (a *Mpint) Lsh(psess *PackageSession, b *Mpint) {
 	if a.Ovf || b.Ovf {
-		if nsavederrors+nerrors == 0 {
-			Fatalf("ovf in Mpint Lsh")
+		if psess.nsavederrors+psess.nerrors == 0 {
+			psess.
+				Fatalf("ovf in Mpint Lsh")
 		}
 		a.SetOverflow()
 		return
 	}
 
-	s := b.Int64()
+	s := b.Int64(psess)
 	if s < 0 || s >= Mpprec {
 		msg := "shift count too large"
 		if s < 0 {
 			msg = "invalid negative shift count"
 		}
-		yyerror("%s: %d", msg, s)
+		psess.
+			yyerror("%s: %d", msg, s)
 		a.SetInt64(0)
 		return
 	}
 
 	if a.checkOverflow(int(s)) {
-		yyerror("constant shift overflow")
+		psess.
+			yyerror("constant shift overflow")
 		return
 	}
 	a.Val.Lsh(&a.Val, uint(s))
 }
 
-func (a *Mpint) Rsh(b *Mpint) {
+func (a *Mpint) Rsh(psess *PackageSession, b *Mpint) {
 	if a.Ovf || b.Ovf {
-		if nsavederrors+nerrors == 0 {
-			Fatalf("ovf in Mpint Rsh")
+		if psess.nsavederrors+psess.nerrors == 0 {
+			psess.
+				Fatalf("ovf in Mpint Rsh")
 		}
 		a.SetOverflow()
 		return
 	}
 
-	s := b.Int64()
+	s := b.Int64(psess)
 	if s < 0 {
-		yyerror("invalid negative shift count: %d", s)
+		psess.
+			yyerror("invalid negative shift count: %d", s)
 		if a.Val.Sign() < 0 {
 			a.SetInt64(-1)
 		} else {
@@ -256,7 +263,7 @@ func (a *Mpint) Cmp(b *Mpint) int {
 
 func (a *Mpint) CmpInt64(c int64) int {
 	if c == 0 {
-		return a.Val.Sign() // common case shortcut
+		return a.Val.Sign()
 	}
 	return a.Val.Cmp(big.NewInt(c))
 }
@@ -265,10 +272,11 @@ func (a *Mpint) Neg() {
 	a.Val.Neg(&a.Val)
 }
 
-func (a *Mpint) Int64() int64 {
+func (a *Mpint) Int64(psess *PackageSession) int64 {
 	if a.Ovf {
-		if nsavederrors+nerrors == 0 {
-			Fatalf("constant overflow")
+		if psess.nsavederrors+psess.nerrors == 0 {
+			psess.
+				Fatalf("constant overflow")
 		}
 		return 0
 	}
@@ -280,22 +288,17 @@ func (a *Mpint) SetInt64(c int64) {
 	a.Val.SetInt64(c)
 }
 
-func (a *Mpint) SetString(as string) {
+func (a *Mpint) SetString(psess *PackageSession, as string) {
 	_, ok := a.Val.SetString(as, 0)
 	if !ok {
-		// required syntax is [+-][0[x]]d*
-		// At the moment we lose precise error cause;
-		// the old code distinguished between:
-		// - malformed hex constant
-		// - malformed octal constant
-		// - malformed decimal constant
-		// TODO(gri) use different conversion function
-		yyerror("malformed integer constant: %s", as)
+		psess.
+			yyerror("malformed integer constant: %s", as)
 		a.Val.SetUint64(0)
 		return
 	}
 	if a.checkOverflow(0) {
-		yyerror("constant too large: %s", as)
+		psess.
+			yyerror("constant too large: %s", as)
 	}
 }
 

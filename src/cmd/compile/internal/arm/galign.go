@@ -1,26 +1,21 @@
-// Copyright 2009 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
 package arm
 
 import (
-	"cmd/compile/internal/gc"
-	"cmd/compile/internal/ssa"
-	"cmd/internal/obj/arm"
-	"cmd/internal/objabi"
+	"github.com/dave/golib/src/cmd/compile/internal/gc"
+	"github.com/dave/golib/src/cmd/compile/internal/ssa"
+	"github.com/dave/golib/src/cmd/internal/obj/arm"
 )
 
-func Init(arch *gc.Arch) {
-	arch.LinkArch = &arm.Linkarm
+func (psess *PackageSession) Init(arch *gc.Arch) {
+	arch.LinkArch = &psess.arm.Linkarm
 	arch.REGSP = arm.REGSP
 	arch.MAXWIDTH = (1 << 32) - 1
-	arch.SoftFloat = objabi.GOARM == 5
-	arch.ZeroRange = zerorange
-	arch.ZeroAuto = zeroAuto
-	arch.Ginsnop = ginsnop
+	arch.SoftFloat = psess.objabi.GOARM == 5
+	arch.ZeroRange = psess.zerorange
+	arch.ZeroAuto = psess.zeroAuto
+	arch.Ginsnop = psess.ginsnop
 
 	arch.SSAMarkMoves = func(s *gc.SSAGenState, b *ssa.Block) {}
-	arch.SSAGenValue = ssaGenValue
-	arch.SSAGenBlock = ssaGenBlock
+	arch.SSAGenValue = psess.ssaGenValue
+	arch.SSAGenBlock = psess.ssaGenBlock
 }

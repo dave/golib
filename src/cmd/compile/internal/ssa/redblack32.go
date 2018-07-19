@@ -1,7 +1,3 @@
-// Copyright 2016 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
 package ssa
 
 import "fmt"
@@ -21,8 +17,6 @@ type rbrank int8
 // use in sparse lookup algorithms.
 type RBTint32 struct {
 	root *node32
-	// An extra-clever implementation will have special cases
-	// for small sets, but we are not extra-clever today.
 }
 
 func (t *RBTint32) String() string {
@@ -50,10 +44,7 @@ type node32 struct {
 	data                interface{}
 	key                 int32
 	rank                rbrank // From Tarjan pp 48-49:
-	// If x is a node with a parent, then x.rank <= x.parent.rank <= x.rank+1.
-	// If x is a node with a grandparent, then x.rank < x.parent.parent.rank.
-	// If x is an "external [null] node", then x.rank = 0 && x.parent.rank = 1.
-	// Any node with one or more null children should have rank = 1.
+
 }
 
 // makeNode returns a new leaf node with the given key and nil data.
@@ -250,10 +241,10 @@ func (t *node32) glb(key int32, allow_eq bool) *node32 {
 			if key == t.key && allow_eq {
 				return t
 			}
-			// t is too big, glb is to left.
+
 			t = t.left
 		} else {
-			// t is a lower bound, record it and seek a better one.
+
 			best = t
 			t = t.right
 		}
@@ -268,10 +259,10 @@ func (t *node32) lub(key int32, allow_eq bool) *node32 {
 			if key == t.key && allow_eq {
 				return t
 			}
-			// t is too small, lub is to right.
+
 			t = t.right
 		} else {
-			// t is a upper bound, record it and seek a better one.
+
 			best = t
 			t = t.left
 		}
@@ -280,7 +271,7 @@ func (t *node32) lub(key int32, allow_eq bool) *node32 {
 }
 
 func (t *node32) insert(x int32, w *RBTint32) (newroot, newnode *node32) {
-	// defaults
+
 	newroot = t
 	newnode = t
 	if x == t.key {
@@ -300,9 +291,9 @@ func (t *node32) insert(x int32, w *RBTint32) (newroot, newnode *node32) {
 		new_l.parent = t
 		newrank := 1 + new_l.maxChildRank()
 		if newrank > t.rank {
-			if newrank > 1+t.right.Rank() { // rotations required
+			if newrank > 1+t.right.Rank() {
 				if new_l.left.Rank() < new_l.right.Rank() {
-					// double rotation
+
 					t.left = new_l.rightToRoot()
 				}
 				newroot = t.leftToRoot()
@@ -311,7 +302,7 @@ func (t *node32) insert(x int32, w *RBTint32) (newroot, newnode *node32) {
 				t.rank = newrank
 			}
 		}
-	} else { // x > t.key
+	} else {
 		if t.right == nil {
 			n := w.makeNode(x)
 			n.parent = t
@@ -325,9 +316,9 @@ func (t *node32) insert(x int32, w *RBTint32) (newroot, newnode *node32) {
 		new_r.parent = t
 		newrank := 1 + new_r.maxChildRank()
 		if newrank > t.rank {
-			if newrank > 1+t.left.Rank() { // rotations required
+			if newrank > 1+t.left.Rank() {
 				if new_r.right.Rank() < new_r.left.Rank() {
-					// double rotation
+
 					t.right = new_r.leftToRoot()
 				}
 				newroot = t.rightToRoot()
@@ -341,22 +332,13 @@ func (t *node32) insert(x int32, w *RBTint32) (newroot, newnode *node32) {
 }
 
 func (t *node32) rightToRoot() *node32 {
-	//    this
-	// left  right
-	//      rl   rr
-	//
-	// becomes
-	//
-	//       right
-	//    this   rr
-	// left  rl
-	//
+
 	right := t.right
 	rl := right.left
 	right.parent = t.parent
 	right.left = t
 	t.parent = right
-	// parent's child ptr fixed in caller
+
 	t.right = rl
 	if rl != nil {
 		rl.parent = t
@@ -365,22 +347,13 @@ func (t *node32) rightToRoot() *node32 {
 }
 
 func (t *node32) leftToRoot() *node32 {
-	//     this
-	//  left  right
-	// ll  lr
-	//
-	// becomes
-	//
-	//    left
-	//   ll  this
-	//      lr  right
-	//
+
 	left := t.left
 	lr := left.right
 	left.parent = t.parent
 	left.right = t
 	t.parent = left
-	// parent's child ptr fixed in caller
+
 	t.left = lr
 	if lr != nil {
 		lr.parent = t
@@ -391,12 +364,12 @@ func (t *node32) leftToRoot() *node32 {
 // next returns the successor of t in a left-to-right
 // walk of the tree in which t is embedded.
 func (t *node32) next() *node32 {
-	// If there is a right child, it is to the right
+
 	r := t.right
 	if r != nil {
 		return r.min()
 	}
-	// if t is p.left, then p, else repeat.
+
 	p := t.parent
 	for p != nil {
 		if p.left == t {
@@ -411,12 +384,12 @@ func (t *node32) next() *node32 {
 // prev returns the predecessor of t in a left-to-right
 // walk of the tree in which t is embedded.
 func (t *node32) prev() *node32 {
-	// If there is a left child, it is to the left
+
 	l := t.left
 	if l != nil {
 		return l.max()
 	}
-	// if t is p.right, then p, else repeat.
+
 	p := t.parent
 	for p != nil {
 		if p.right == t {

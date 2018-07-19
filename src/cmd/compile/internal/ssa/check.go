@@ -1,7 +1,3 @@
-// Copyright 2015 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
 package ssa
 
 import (
@@ -9,7 +5,7 @@ import (
 )
 
 // checkFunc checks invariants of f.
-func checkFunc(f *Func) {
+func (psess *PackageSession) checkFunc(f *Func) {
 	blockMark := make([]bool, f.NumBlocks())
 	valueMark := make([]bool, f.NumValues())
 
@@ -41,8 +37,8 @@ func checkFunc(f *Func) {
 			if b.Control == nil {
 				f.Fatalf("exit block %s has no control value", b)
 			}
-			if !b.Control.Type.IsMemory() {
-				f.Fatalf("exit block %s has non-memory control value %s", b, b.Control.LongString())
+			if !b.Control.Type.IsMemory(psess.types) {
+				f.Fatalf("exit block %s has non-memory control value %s", b, b.Control.LongString(psess))
 			}
 		case BlockRet:
 			if len(b.Succs) != 0 {
@@ -51,8 +47,8 @@ func checkFunc(f *Func) {
 			if b.Control == nil {
 				f.Fatalf("ret block %s has nil control", b)
 			}
-			if !b.Control.Type.IsMemory() {
-				f.Fatalf("ret block %s has non-memory control value %s", b, b.Control.LongString())
+			if !b.Control.Type.IsMemory(psess.types) {
+				f.Fatalf("ret block %s has non-memory control value %s", b, b.Control.LongString(psess))
 			}
 		case BlockRetJmp:
 			if len(b.Succs) != 0 {
@@ -61,8 +57,8 @@ func checkFunc(f *Func) {
 			if b.Control == nil {
 				f.Fatalf("retjmp block %s has nil control", b)
 			}
-			if !b.Control.Type.IsMemory() {
-				f.Fatalf("retjmp block %s has non-memory control value %s", b, b.Control.LongString())
+			if !b.Control.Type.IsMemory(psess.types) {
+				f.Fatalf("retjmp block %s has non-memory control value %s", b, b.Control.LongString(psess))
 			}
 			if b.Aux == nil {
 				f.Fatalf("retjmp block %s has nil Aux field", b)
@@ -72,7 +68,7 @@ func checkFunc(f *Func) {
 				f.Fatalf("plain block %s len(Succs)==%d, want 1", b, len(b.Succs))
 			}
 			if b.Control != nil {
-				f.Fatalf("plain block %s has non-nil control %s", b, b.Control.LongString())
+				f.Fatalf("plain block %s has non-nil control %s", b, b.Control.LongString(psess))
 			}
 		case BlockIf:
 			if len(b.Succs) != 2 {
@@ -82,7 +78,7 @@ func checkFunc(f *Func) {
 				f.Fatalf("if block %s has no control value", b)
 			}
 			if !b.Control.Type.IsBoolean() {
-				f.Fatalf("if block %s has non-bool control value %s", b, b.Control.LongString())
+				f.Fatalf("if block %s has non-bool control value %s", b, b.Control.LongString(psess))
 			}
 		case BlockDefer:
 			if len(b.Succs) != 2 {
@@ -91,8 +87,8 @@ func checkFunc(f *Func) {
 			if b.Control == nil {
 				f.Fatalf("defer block %s has no control value", b)
 			}
-			if !b.Control.Type.IsMemory() {
-				f.Fatalf("defer block %s has non-memory control value %s", b, b.Control.LongString())
+			if !b.Control.Type.IsMemory(psess.types) {
+				f.Fatalf("defer block %s has non-memory control value %s", b, b.Control.LongString(psess))
 			}
 		case BlockFirst:
 			if len(b.Succs) != 2 {
@@ -107,18 +103,16 @@ func checkFunc(f *Func) {
 		}
 
 		for _, v := range b.Values {
-			// Check to make sure argument count makes sense (argLen of -1 indicates
-			// variable length args)
-			nArgs := opcodeTable[v.Op].argLen
+
+			nArgs := psess.opcodeTable[v.Op].argLen
 			if nArgs != -1 && int32(len(v.Args)) != nArgs {
-				f.Fatalf("value %s has %d args, expected %d", v.LongString(),
+				f.Fatalf("value %s has %d args, expected %d", v.LongString(psess),
 					len(v.Args), nArgs)
 			}
 
-			// Check to make sure aux values make sense.
 			canHaveAux := false
 			canHaveAuxInt := false
-			switch opcodeTable[v.Op].auxType {
+			switch psess.opcodeTable[v.Op].auxType {
 			case auxNone:
 			case auxBool:
 				if v.AuxInt < 0 || v.AuxInt > 1 {
@@ -143,10 +137,10 @@ func checkFunc(f *Func) {
 			case auxInt64, auxFloat64:
 				canHaveAuxInt = true
 			case auxInt128:
-				// AuxInt must be zero, so leave canHaveAuxInt set to false.
+
 			case auxFloat32:
 				canHaveAuxInt = true
-				if !isExactFloat32(v) {
+				if !psess.isExactFloat32(v) {
 					f.Fatalf("value %v has an AuxInt value that is not an exact float32", v)
 				}
 			case auxString, auxSym, auxTyp:
@@ -169,26 +163,26 @@ func checkFunc(f *Func) {
 				f.Fatalf("unknown aux type for %s", v.Op)
 			}
 			if !canHaveAux && v.Aux != nil {
-				f.Fatalf("value %s has an Aux value %v but shouldn't", v.LongString(), v.Aux)
+				f.Fatalf("value %s has an Aux value %v but shouldn't", v.LongString(psess), v.Aux)
 			}
 			if !canHaveAuxInt && v.AuxInt != 0 {
-				f.Fatalf("value %s has an AuxInt value %d but shouldn't", v.LongString(), v.AuxInt)
+				f.Fatalf("value %s has an AuxInt value %d but shouldn't", v.LongString(psess), v.AuxInt)
 			}
 
 			for i, arg := range v.Args {
 				if arg == nil {
-					f.Fatalf("value %s has nil arg", v.LongString())
+					f.Fatalf("value %s has nil arg", v.LongString(psess))
 				}
 				if v.Op != OpPhi {
-					// For non-Phi ops, memory args must be last, if present
-					if arg.Type.IsMemory() && i != len(v.Args)-1 {
-						f.Fatalf("value %s has non-final memory arg (%d < %d)", v.LongString(), i, len(v.Args)-1)
+
+					if arg.Type.IsMemory(psess.types) && i != len(v.Args)-1 {
+						f.Fatalf("value %s has non-final memory arg (%d < %d)", v.LongString(psess), i, len(v.Args)-1)
 					}
 				}
 			}
 
 			if valueMark[v.ID] {
-				f.Fatalf("value %s appears twice!", v.LongString())
+				f.Fatalf("value %s appears twice!", v.LongString(psess))
 			}
 			valueMark[v.ID] = true
 
@@ -196,12 +190,12 @@ func checkFunc(f *Func) {
 				f.Fatalf("%s.block != %s", v, b)
 			}
 			if v.Op == OpPhi && len(v.Args) != len(b.Preds) {
-				f.Fatalf("phi length %s does not match pred length %d for block %s", v.LongString(), len(b.Preds), b)
+				f.Fatalf("phi length %s does not match pred length %d for block %s", v.LongString(psess), len(b.Preds), b)
 			}
 
 			if v.Op == OpAddr {
 				if len(v.Args) == 0 {
-					f.Fatalf("no args for OpAddr %s", v.LongString())
+					f.Fatalf("no args for OpAddr %s", v.LongString(psess))
 				}
 				if v.Args[0].Op != OpSP && v.Args[0].Op != OpSB {
 					f.Fatalf("bad arg to OpAddr %v", v)
@@ -209,24 +203,20 @@ func checkFunc(f *Func) {
 			}
 
 			if f.RegAlloc != nil && f.Config.SoftFloat && v.Type.IsFloat() {
-				f.Fatalf("unexpected floating-point type %v", v.LongString())
+				f.Fatalf("unexpected floating-point type %v", v.LongString(psess))
 			}
 
-			// Check types.
-			// TODO: more type checks?
 			switch c := f.Config; v.Op {
 			case OpSP, OpSB:
 				if v.Type != c.Types.Uintptr {
 					f.Fatalf("bad %s type: want uintptr, have %s",
-						v.Op, v.Type.String())
+						v.Op, v.Type.String(psess.types))
 				}
 			}
 
-			// TODO: check for cycles in values
 		}
 	}
 
-	// Check to make sure all Blocks referenced are in the function.
 	if !blockMark[f.Entry.ID] {
 		f.Fatalf("entry block %v is missing", f.Entry)
 	}
@@ -247,12 +237,11 @@ func checkFunc(f *Func) {
 		f.Fatalf("entry block %s of %s has predecessor(s) %v", f.Entry, f.Name, f.Entry.Preds)
 	}
 
-	// Check to make sure all Values referenced are in the function.
 	for _, b := range f.Blocks {
 		for _, v := range b.Values {
 			for i, a := range v.Args {
 				if !valueMark[a.ID] {
-					f.Fatalf("%v, arg %d of %s, is missing", a, i, v.LongString())
+					f.Fatalf("%v, arg %d of %s, is missing", a, i, v.LongString(psess))
 				}
 			}
 		}
@@ -271,10 +260,8 @@ func checkFunc(f *Func) {
 		}
 	}
 
-	// Check to make sure all args dominate uses.
 	if f.RegAlloc == nil {
-		// Note: regalloc introduces non-dominating args.
-		// See TODO in regalloc.go.
+
 		sdom := f.sdom()
 		for _, b := range f.Blocks {
 			for _, v := range b.Values {
@@ -285,7 +272,7 @@ func checkFunc(f *Func) {
 						y = b.Preds[i].b
 					}
 					if !domCheck(f, sdom, x, y) {
-						f.Fatalf("arg %d of value %s does not dominate, arg=%s", i, v.LongString(), arg.LongString())
+						f.Fatalf("arg %d of value %s does not dominate, arg=%s", i, v.LongString(psess), arg.LongString(psess))
 					}
 				}
 			}
@@ -295,11 +282,10 @@ func checkFunc(f *Func) {
 		}
 	}
 
-	// Check loop construction
-	if f.RegAlloc == nil && f.pass != nil { // non-nil pass allows better-targeted debug printing
-		ln := f.loopnest()
+	if f.RegAlloc == nil && f.pass != nil {
+		ln := f.loopnest(psess)
 		if !ln.hasIrreducible {
-			po := f.postorder() // use po to avoid unreachable blocks.
+			po := f.postorder()
 			for _, b := range po {
 				for _, s := range b.Succs {
 					bb := s.Block()
@@ -314,7 +300,6 @@ func checkFunc(f *Func) {
 		}
 	}
 
-	// Check use counts
 	uses := make([]int32, f.NumValues())
 	for _, b := range f.Blocks {
 		for _, v := range b.Values {
@@ -333,28 +318,23 @@ func checkFunc(f *Func) {
 			}
 		}
 	}
-
-	memCheck(f)
+	psess.
+		memCheck(f)
 }
 
-func memCheck(f *Func) {
-	// Check that if a tuple has a memory type, it is second.
+func (psess *PackageSession) memCheck(f *Func) {
+
 	for _, b := range f.Blocks {
 		for _, v := range b.Values {
-			if v.Type.IsTuple() && v.Type.FieldType(0).IsMemory() {
-				f.Fatalf("memory is first in a tuple: %s\n", v.LongString())
+			if v.Type.IsTuple() && v.Type.FieldType(psess.types, 0).IsMemory(psess.types) {
+				f.Fatalf("memory is first in a tuple: %s\n", v.LongString(psess))
 			}
 		}
 	}
 
-	// Single live memory checks.
-	// These checks only work if there are no memory copies.
-	// (Memory copies introduce ambiguity about which mem value is really live.
-	// probably fixable, but it's easier to avoid the problem.)
-	// For the same reason, disable this check if some memory ops are unused.
 	for _, b := range f.Blocks {
 		for _, v := range b.Values {
-			if (v.Op == OpCopy || v.Uses == 0) && v.Type.IsMemory() {
+			if (v.Op == OpCopy || v.Uses == 0) && v.Type.IsMemory(psess.types) {
 				return
 			}
 		}
@@ -363,24 +343,22 @@ func memCheck(f *Func) {
 		}
 	}
 
-	// Compute live memory at the end of each block.
 	lastmem := make([]*Value, f.NumBlocks())
 	ss := newSparseSet(f.NumValues())
 	for _, b := range f.Blocks {
-		// Mark overwritten memory values. Those are args of other
-		// ops that generate memory values.
+
 		ss.clear()
 		for _, v := range b.Values {
-			if v.Op == OpPhi || !v.Type.IsMemory() {
+			if v.Op == OpPhi || !v.Type.IsMemory(psess.types) {
 				continue
 			}
-			if m := v.MemoryArg(); m != nil {
+			if m := v.MemoryArg(psess); m != nil {
 				ss.add(m.ID)
 			}
 		}
-		// There should be at most one remaining unoverwritten memory value.
+
 		for _, v := range b.Values {
-			if !v.Type.IsMemory() {
+			if !v.Type.IsMemory(psess.types) {
 				continue
 			}
 			if ss.contains(v.ID) {
@@ -391,14 +369,13 @@ func memCheck(f *Func) {
 			}
 			lastmem[b.ID] = v
 		}
-		// If there is no remaining memory value, that means there was no memory update.
-		// Take any memory arg.
+
 		if lastmem[b.ID] == nil {
 			for _, v := range b.Values {
 				if v.Op == OpPhi {
 					continue
 				}
-				m := v.MemoryArg()
+				m := v.MemoryArg(psess)
 				if m == nil {
 					continue
 				}
@@ -409,7 +386,7 @@ func memCheck(f *Func) {
 			}
 		}
 	}
-	// Propagate last live memory through storeless blocks.
+
 	for {
 		changed := false
 		for _, b := range f.Blocks {
@@ -429,47 +406,45 @@ func memCheck(f *Func) {
 			break
 		}
 	}
-	// Check merge points.
+
 	for _, b := range f.Blocks {
 		for _, v := range b.Values {
-			if v.Op == OpPhi && v.Type.IsMemory() {
+			if v.Op == OpPhi && v.Type.IsMemory(psess.types) {
 				for i, a := range v.Args {
 					if a != lastmem[b.Preds[i].b.ID] {
-						f.Fatalf("inconsistent memory phi %s %d %s %s", v.LongString(), i, a, lastmem[b.Preds[i].b.ID])
+						f.Fatalf("inconsistent memory phi %s %d %s %s", v.LongString(psess), i, a, lastmem[b.Preds[i].b.ID])
 					}
 				}
 			}
 		}
 	}
 
-	// Check that only one memory is live at any point.
 	if f.scheduled {
 		for _, b := range f.Blocks {
 			var mem *Value // the current live memory in the block
 			for _, v := range b.Values {
 				if v.Op == OpPhi {
-					if v.Type.IsMemory() {
+					if v.Type.IsMemory(psess.types) {
 						mem = v
 					}
 					continue
 				}
 				if mem == nil && len(b.Preds) > 0 {
-					// If no mem phi, take mem of any predecessor.
+
 					mem = lastmem[b.Preds[0].b.ID]
 				}
 				for _, a := range v.Args {
-					if a.Type.IsMemory() && a != mem {
+					if a.Type.IsMemory(psess.types) && a != mem {
 						f.Fatalf("two live mems @ %s: %s and %s", v, mem, a)
 					}
 				}
-				if v.Type.IsMemory() {
+				if v.Type.IsMemory(psess.types) {
 					mem = v
 				}
 			}
 		}
 	}
 
-	// Check that after scheduling, phis are always first in the block.
 	if f.scheduled {
 		for _, b := range f.Blocks {
 			seenNonPhi := false
@@ -490,14 +465,14 @@ func memCheck(f *Func) {
 // domCheck reports whether x dominates y (including x==y).
 func domCheck(f *Func, sdom SparseTree, x, y *Block) bool {
 	if !sdom.isAncestorEq(f.Entry, y) {
-		// unreachable - ignore
+
 		return true
 	}
 	return sdom.isAncestorEq(x, y)
 }
 
 // isExactFloat32 reports whether v has an AuxInt that can be exactly represented as a float32.
-func isExactFloat32(v *Value) bool {
-	x := v.AuxFloat()
+func (psess *PackageSession) isExactFloat32(v *Value) bool {
+	x := v.AuxFloat(psess)
 	return math.Float64bits(x) == math.Float64bits(float64(float32(x)))
 }

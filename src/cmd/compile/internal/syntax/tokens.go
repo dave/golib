@@ -1,12 +1,6 @@
-// Copyright 2016 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
 package syntax
 
 type token uint
-
-//go:generate stringer -type token -linecomment
 
 const (
 	_    token = iota
@@ -101,8 +95,6 @@ const (
 )
 
 type Operator uint
-
-//go:generate stringer -type Operator -linecomment
 
 const (
 	_ Operator = iota

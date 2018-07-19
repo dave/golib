@@ -1,7 +1,3 @@
-// Copyright 2017 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
 package ssa
 
 // loopRotate converts loops with a check-loop-condition-at-beginning
@@ -21,8 +17,8 @@ package ssa
 //  entry:
 //    CMPQ ...
 //    JLT loop
-func loopRotate(f *Func) {
-	loopnest := f.loopnest()
+func (psess *PackageSession) loopRotate(f *Func) {
+	loopnest := f.loopnest(psess)
 	if loopnest.hasIrreducible {
 		return
 	}
@@ -35,14 +31,10 @@ func loopRotate(f *Func) {
 		idToIdx[b.ID] = i
 	}
 
-	// Set of blocks we're moving, by ID.
 	move := map[ID]struct{}{}
 
-	// Map from block ID to the moving blocks that should
-	// come right after it.
 	after := map[ID][]*Block{}
 
-	// Check each loop header and decide if we want to move it.
 	for _, loop := range loopnest.loops {
 		b := loop.header
 		var p *Block // b's in-loop predecessor
@@ -61,30 +53,25 @@ func loopRotate(f *Func) {
 		after[p.ID] = []*Block{b}
 		for {
 			nextIdx := idToIdx[b.ID] + 1
-			if nextIdx >= len(f.Blocks) { // reached end of function (maybe impossible?)
+			if nextIdx >= len(f.Blocks) {
 				break
 			}
 			nextb := f.Blocks[nextIdx]
-			if nextb == p { // original loop predecessor is next
+			if nextb == p {
 				break
 			}
-			if loopnest.b2l[nextb.ID] != loop { // about to leave loop
+			if loopnest.b2l[nextb.ID] != loop {
 				break
 			}
 			after[p.ID] = append(after[p.ID], nextb)
 			b = nextb
 		}
 
-		// Place b after p.
 		for _, b := range after[p.ID] {
 			move[b.ID] = struct{}{}
 		}
 	}
 
-	// Move blocks to their destinations in a single pass.
-	// We rely here on the fact that loop headers must come
-	// before the rest of the loop.  And that relies on the
-	// fact that we only identify reducible loops.
 	j := 0
 	for i, b := range f.Blocks {
 		if _, ok := move[b.ID]; ok {

@@ -1,19 +1,15 @@
-// Copyright 2010 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
 // Package loadpe implements a PE/COFF file reader.
 package loadpe
 
 import (
-	"cmd/internal/bio"
-	"cmd/internal/objabi"
-	"cmd/internal/sys"
-	"cmd/link/internal/sym"
 	"debug/pe"
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"github.com/dave/golib/src/cmd/internal/bio"
+	"github.com/dave/golib/src/cmd/internal/objabi"
+	"github.com/dave/golib/src/cmd/internal/sys"
+	"github.com/dave/golib/src/cmd/link/internal/sym"
 	"io"
 	"sort"
 	"strings"
@@ -114,8 +110,6 @@ const (
 	IMAGE_SCN_MEM_WRITE              = 0x80000000
 )
 
-// TODO(brainman): maybe just add ReadAt method to bio.Reader instead of creating peBiobuf
-
 // peBiobuf makes bio.Reader look like io.ReaderAt.
 type peBiobuf bio.Reader
 
@@ -140,30 +134,21 @@ func Load(arch *sys.Arch, syms *sym.Symbols, input *bio.Reader, pkg string, leng
 	sectsyms := make(map[*pe.Section]*sym.Symbol)
 	sectdata := make(map[*pe.Section][]byte)
 
-	// Some input files are archives containing multiple of
-	// object files, and pe.NewFile seeks to the start of
-	// input file and get confused. Create section reader
-	// to stop pe.NewFile looking before current position.
 	sr := io.NewSectionReader((*peBiobuf)(input), input.Offset(), 1<<63-1)
 
-	// TODO: replace pe.NewFile with pe.Load (grep for "add Load function" in debug/pe for details)
 	f, err := pe.NewFile(sr)
 	if err != nil {
 		return nil, nil, err
 	}
 	defer f.Close()
 
-	// TODO return error if found .cormeta
-
-	// create symbols for mapped sections
 	for _, sect := range f.Sections {
 		if sect.Characteristics&IMAGE_SCN_MEM_DISCARDABLE != 0 {
 			continue
 		}
 
 		if sect.Characteristics&(IMAGE_SCN_CNT_CODE|IMAGE_SCN_CNT_INITIALIZED_DATA|IMAGE_SCN_CNT_UNINITIALIZED_DATA) == 0 {
-			// This has been seen for .idata sections, which we
-			// want to ignore. See issues 5106 and 5273.
+
 			continue
 		}
 
@@ -171,16 +156,16 @@ func Load(arch *sys.Arch, syms *sym.Symbols, input *bio.Reader, pkg string, leng
 		s := syms.Lookup(name, localSymVersion)
 
 		switch sect.Characteristics & (IMAGE_SCN_CNT_UNINITIALIZED_DATA | IMAGE_SCN_CNT_INITIALIZED_DATA | IMAGE_SCN_MEM_READ | IMAGE_SCN_MEM_WRITE | IMAGE_SCN_CNT_CODE | IMAGE_SCN_MEM_EXECUTE) {
-		case IMAGE_SCN_CNT_INITIALIZED_DATA | IMAGE_SCN_MEM_READ: //.rdata
+		case IMAGE_SCN_CNT_INITIALIZED_DATA | IMAGE_SCN_MEM_READ:
 			s.Type = sym.SRODATA
 
-		case IMAGE_SCN_CNT_UNINITIALIZED_DATA | IMAGE_SCN_MEM_READ | IMAGE_SCN_MEM_WRITE: //.bss
+		case IMAGE_SCN_CNT_UNINITIALIZED_DATA | IMAGE_SCN_MEM_READ | IMAGE_SCN_MEM_WRITE:
 			s.Type = sym.SNOPTRBSS
 
-		case IMAGE_SCN_CNT_INITIALIZED_DATA | IMAGE_SCN_MEM_READ | IMAGE_SCN_MEM_WRITE: //.data
+		case IMAGE_SCN_CNT_INITIALIZED_DATA | IMAGE_SCN_MEM_READ | IMAGE_SCN_MEM_WRITE:
 			s.Type = sym.SNOPTRDATA
 
-		case IMAGE_SCN_CNT_CODE | IMAGE_SCN_MEM_EXECUTE | IMAGE_SCN_MEM_READ: //.text
+		case IMAGE_SCN_CNT_CODE | IMAGE_SCN_MEM_EXECUTE | IMAGE_SCN_MEM_READ:
 			s.Type = sym.STEXT
 
 		default:
@@ -202,7 +187,6 @@ func Load(arch *sys.Arch, syms *sym.Symbols, input *bio.Reader, pkg string, leng
 		}
 	}
 
-	// load relocations
 	for _, rsect := range f.Sections {
 		if _, found := sectsyms[rsect]; !found {
 			continue
@@ -214,8 +198,7 @@ func Load(arch *sys.Arch, syms *sym.Symbols, input *bio.Reader, pkg string, leng
 			continue
 		}
 		if rsect.Characteristics&(IMAGE_SCN_CNT_CODE|IMAGE_SCN_CNT_INITIALIZED_DATA|IMAGE_SCN_CNT_UNINITIALIZED_DATA) == 0 {
-			// This has been seen for .idata sections, which we
-			// want to ignore. See issues 5106 and 5273.
+
 			continue
 		}
 
@@ -246,7 +229,7 @@ func Load(arch *sys.Arch, syms *sym.Symbols, input *bio.Reader, pkg string, leng
 				return nil, nil, fmt.Errorf("%s: %v: unknown relocation type %v", pn, sectsyms[rsect], r.Type)
 
 			case IMAGE_REL_I386_REL32, IMAGE_REL_AMD64_REL32,
-				IMAGE_REL_AMD64_ADDR32, // R_X86_64_PC32
+				IMAGE_REL_AMD64_ADDR32,
 				IMAGE_REL_AMD64_ADDR32NB:
 				rp.Type = objabi.R_PCREL
 
@@ -255,21 +238,16 @@ func Load(arch *sys.Arch, syms *sym.Symbols, input *bio.Reader, pkg string, leng
 			case IMAGE_REL_I386_DIR32NB, IMAGE_REL_I386_DIR32:
 				rp.Type = objabi.R_ADDR
 
-				// load addend from image
 				rp.Add = int64(int32(binary.LittleEndian.Uint32(sectdata[rsect][rp.Off:])))
 
-			case IMAGE_REL_AMD64_ADDR64: // R_X86_64_64
+			case IMAGE_REL_AMD64_ADDR64:
 				rp.Siz = 8
 
 				rp.Type = objabi.R_ADDR
 
-				// load addend from image
 				rp.Add = int64(binary.LittleEndian.Uint64(sectdata[rsect][rp.Off:]))
 			}
 
-			// ld -r could generate multiple section symbols for the
-			// same section but with different values, we have to take
-			// that into account
 			if issect(pesym) {
 				rp.Add += int64(pesym.Value)
 			}
@@ -282,7 +260,6 @@ func Load(arch *sys.Arch, syms *sym.Symbols, input *bio.Reader, pkg string, leng
 		s.R = s.R[:rsect.NumberOfRelocations]
 	}
 
-	// enter sub-symbols into symbol table.
 	for i, numaux := 0, 0; i < len(f.COFFSymbols); i += numaux + 1 {
 		pesym := &f.COFFSymbols[i]
 
@@ -317,11 +294,11 @@ func Load(arch *sys.Arch, syms *sym.Symbols, input *bio.Reader, pkg string, leng
 			return nil, nil, err
 		}
 
-		if pesym.SectionNumber == 0 { // extern
+		if pesym.SectionNumber == 0 {
 			if s.Type == sym.SDYNIMPORT {
-				s.Plt = -2 // flag for dynimport in PE object files.
+				s.Plt = -2
 			}
-			if s.Type == sym.SXREF && pesym.Value > 0 { // global data
+			if s.Type == sym.SXREF && pesym.Value > 0 {
 				s.Type = sym.SNOPTRDATA
 				s.Size = int64(pesym.Value)
 			}
@@ -363,8 +340,6 @@ func Load(arch *sys.Arch, syms *sym.Symbols, input *bio.Reader, pkg string, leng
 		}
 	}
 
-	// Sort outer lists by address, adding to textp.
-	// This keeps textp in increasing address order.
 	for _, sect := range f.Sections {
 		s := sectsyms[sect]
 		if s == nil {
@@ -406,13 +381,12 @@ func readpesym(arch *sys.Arch, syms *sym.Symbols, f *pe.File, pesym *pe.COFFSymb
 		name = sectsyms[f.Sections[pesym.SectionNumber-1]].Name
 	} else {
 		name = symname
-		name = strings.TrimPrefix(name, "__imp_") // __imp_Name => Name
+		name = strings.TrimPrefix(name, "__imp_")
 		if arch.Family == sys.I386 && name[0] == '_' {
-			name = name[1:] // _Name => Name
+			name = name[1:]
 		}
 	}
 
-	// remove last @XXX
 	if i := strings.LastIndex(name, "@"); i >= 0 {
 		name = name[:i]
 	}
@@ -424,7 +398,7 @@ func readpesym(arch *sys.Arch, syms *sym.Symbols, f *pe.File, pesym *pe.COFFSymb
 
 	case IMAGE_SYM_DTYPE_FUNCTION, IMAGE_SYM_DTYPE_NULL:
 		switch pesym.StorageClass {
-		case IMAGE_SYM_CLASS_EXTERNAL: //global
+		case IMAGE_SYM_CLASS_EXTERNAL:
 			s = syms.Lookup(name, 0)
 
 		case IMAGE_SYM_CLASS_NULL, IMAGE_SYM_CLASS_STATIC, IMAGE_SYM_CLASS_LABEL:
@@ -440,7 +414,7 @@ func readpesym(arch *sys.Arch, syms *sym.Symbols, f *pe.File, pesym *pe.COFFSymb
 		s.Type = sym.SXREF
 	}
 	if strings.HasPrefix(symname, "__imp_") {
-		s.Got = -2 // flag for __imp_
+		s.Got = -2
 	}
 
 	return s, nil

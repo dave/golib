@@ -1,17 +1,13 @@
-// Copyright 2015 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
 package ssa
 
 import (
-	"cmd/internal/src"
+	"github.com/dave/golib/src/cmd/internal/src"
 )
 
 // findlive returns the reachable blocks and live values in f.
-func findlive(f *Func) (reachable []bool, live []bool) {
+func (psess *PackageSession) findlive(f *Func) (reachable []bool, live []bool) {
 	reachable = ReachableBlocks(f)
-	live, _ = liveValues(f, reachable)
+	live, _ = psess.liveValues(f, reachable)
 	return
 }
 
@@ -19,13 +15,13 @@ func findlive(f *Func) (reachable []bool, live []bool) {
 func ReachableBlocks(f *Func) []bool {
 	reachable := make([]bool, f.NumBlocks())
 	reachable[f.Entry.ID] = true
-	p := make([]*Block, 0, 64) // stack-like worklist
+	p := make([]*Block, 0, 64)
 	p = append(p, f.Entry)
 	for len(p) > 0 {
-		// Pop a reachable block
+
 		b := p[len(p)-1]
 		p = p[:len(p)-1]
-		// Mark successors as reachable
+
 		s := b.Succs
 		if b.Kind == BlockFirst {
 			s = s[:1]
@@ -37,7 +33,7 @@ func ReachableBlocks(f *Func) []bool {
 			}
 			if !reachable[c.ID] {
 				reachable[c.ID] = true
-				p = append(p, c) // push
+				p = append(p, c)
 			}
 		}
 	}
@@ -48,11 +44,9 @@ func ReachableBlocks(f *Func) []bool {
 // to be statements in reversed data flow order.
 // The second result is used to help conserve statement boundaries for debugging.
 // reachable is a map from block ID to whether the block is reachable.
-func liveValues(f *Func, reachable []bool) (live []bool, liveOrderStmts []*Value) {
+func (psess *PackageSession) liveValues(f *Func, reachable []bool) (live []bool, liveOrderStmts []*Value) {
 	live = make([]bool, f.NumValues())
 
-	// After regalloc, consider all values to be live.
-	// See the comment at the top of regalloc.go and in deadcode for details.
 	if f.RegAlloc != nil {
 		for i := range live {
 			live[i] = true
@@ -60,11 +54,8 @@ func liveValues(f *Func, reachable []bool) (live []bool, liveOrderStmts []*Value
 		return
 	}
 
-	// Find all live values
-	q := make([]*Value, 0, 64) // stack-like worklist of unscanned values
+	q := make([]*Value, 0, 64)
 
-	// Starting set: all control values of reachable blocks are live.
-	// Calls are live (because callee can observe the memory state).
 	for _, b := range f.Blocks {
 		if !reachable[b.ID] {
 			continue
@@ -77,15 +68,15 @@ func liveValues(f *Func, reachable []bool) (live []bool, liveOrderStmts []*Value
 			}
 		}
 		for _, v := range b.Values {
-			if (opcodeTable[v.Op].call || opcodeTable[v.Op].hasSideEffects) && !live[v.ID] {
+			if (psess.opcodeTable[v.Op].call || psess.opcodeTable[v.Op].hasSideEffects) && !live[v.ID] {
 				live[v.ID] = true
 				q = append(q, v)
 				if v.Pos.IsStmt() != src.PosNotStmt {
 					liveOrderStmts = append(liveOrderStmts, v)
 				}
 			}
-			if v.Type.IsVoid() && !live[v.ID] {
-				// The only Void ops are nil checks.  We must keep these.
+			if v.Type.IsVoid(psess.types) && !live[v.ID] {
+
 				live[v.ID] = true
 				q = append(q, v)
 				if v.Pos.IsStmt() != src.PosNotStmt {
@@ -95,9 +86,8 @@ func liveValues(f *Func, reachable []bool) (live []bool, liveOrderStmts []*Value
 		}
 	}
 
-	// Compute transitive closure of live values.
 	for len(q) > 0 {
-		// pop a reachable value
+
 		v := q[len(q)-1]
 		q = q[:len(q)-1]
 		for i, x := range v.Args {
@@ -106,7 +96,7 @@ func liveValues(f *Func, reachable []bool) (live []bool, liveOrderStmts []*Value
 			}
 			if !live[x.ID] {
 				live[x.ID] = true
-				q = append(q, x) // push
+				q = append(q, x)
 				if x.Pos.IsStmt() != src.PosNotStmt {
 					liveOrderStmts = append(liveOrderStmts, x)
 				}
@@ -118,19 +108,14 @@ func liveValues(f *Func, reachable []bool) (live []bool, liveOrderStmts []*Value
 }
 
 // deadcode removes dead code from f.
-func deadcode(f *Func) {
-	// deadcode after regalloc is forbidden for now. Regalloc
-	// doesn't quite generate legal SSA which will lead to some
-	// required moves being eliminated. See the comment at the
-	// top of regalloc.go for details.
+func (psess *PackageSession) deadcode(f *Func) {
+
 	if f.RegAlloc != nil {
 		f.Fatalf("deadcode after regalloc")
 	}
 
-	// Find reachable blocks.
 	reachable := ReachableBlocks(f)
 
-	// Get rid of edges from dead to live code.
 	for _, b := range f.Blocks {
 		if reachable[b.ID] {
 			continue
@@ -145,7 +130,6 @@ func deadcode(f *Func) {
 		}
 	}
 
-	// Get rid of dead edges from live code.
 	for _, b := range f.Blocks {
 		if !reachable[b.ID] {
 			continue
@@ -158,13 +142,10 @@ func deadcode(f *Func) {
 		b.Likely = BranchUnknown
 	}
 
-	// Splice out any copies introduced during dead block removal.
 	copyelim(f)
 
-	// Find live values.
-	live, order := liveValues(f, reachable)
+	live, order := psess.liveValues(f, reachable)
 
-	// Remove dead & duplicate entries from namedValues map.
 	s := f.newSparseSet(f.NumValues())
 	defer f.retSparseSet(s)
 	i := 0
@@ -195,26 +176,24 @@ func deadcode(f *Func) {
 	}
 	f.Names = f.Names[:i]
 
-	pendingLines := f.cachedLineStarts // Holds statement boundaries that need to be moved to a new value/block
+	pendingLines := f.cachedLineStarts
 	pendingLines.clear()
 
-	// Unlink values and conserve statement boundaries
 	for i, b := range f.Blocks {
 		if !reachable[b.ID] {
-			// TODO what if control is statement boundary? Too late here.
+
 			b.SetControl(nil)
 		}
 		for _, v := range b.Values {
 			if !live[v.ID] {
 				v.resetArgs()
 				if v.Pos.IsStmt() == src.PosIsStmt && reachable[b.ID] {
-					pendingLines.set(v.Pos.Line(), int32(i)) // TODO could be more than one pos for a line
+					pendingLines.set(psess, v.Pos.Line(), int32(i))
 				}
 			}
 		}
 	}
 
-	// Find new homes for lost lines -- require earliest in data flow with same line that is also in same block
 	for i := len(order) - 1; i >= 0; i-- {
 		w := order[i]
 		if j := pendingLines.get(w.Pos.Line()); j > -1 && f.Blocks[j] == w.Block {
@@ -223,7 +202,6 @@ func deadcode(f *Func) {
 		}
 	}
 
-	// Any boundary that failed to match a live value can move to a block end
 	for i := 0; i < pendingLines.size(); i++ {
 		l, bi := pendingLines.getEntry(i)
 		b := f.Blocks[bi]
@@ -232,8 +210,6 @@ func deadcode(f *Func) {
 		}
 	}
 
-	// Remove dead values from blocks' value list. Return dead
-	// values to the allocator.
 	for _, b := range f.Blocks {
 		i := 0
 		for _, v := range b.Values {
@@ -241,10 +217,10 @@ func deadcode(f *Func) {
 				b.Values[i] = v
 				i++
 			} else {
-				f.freeValue(v)
+				f.freeValue(psess, v)
 			}
 		}
-		// aid GC
+
 		tail := b.Values[i:]
 		for j := range tail {
 			tail[j] = nil
@@ -252,7 +228,6 @@ func deadcode(f *Func) {
 		b.Values = b.Values[:i]
 	}
 
-	// Remove dead blocks from WBLoads list.
 	i = 0
 	for _, b := range f.WBLoads {
 		if reachable[b.ID] {
@@ -265,7 +240,6 @@ func deadcode(f *Func) {
 	}
 	f.WBLoads = f.WBLoads[:i]
 
-	// Remove unreachable blocks. Return dead blocks to allocator.
 	i = 0
 	for _, b := range f.Blocks {
 		if reachable[b.ID] {
@@ -278,7 +252,7 @@ func deadcode(f *Func) {
 			f.freeBlock(b)
 		}
 	}
-	// zero remainder to help GC
+
 	tail := f.Blocks[i:]
 	for j := range tail {
 		tail[j] = nil
@@ -293,13 +267,10 @@ func (b *Block) removeEdge(i int) {
 	c := e.b
 	j := e.i
 
-	// Adjust b.Succs
 	b.removeSucc(i)
 
-	// Adjust c.Preds
 	c.removePred(j)
 
-	// Remove phi args from c's phis.
 	n := len(c.Preds)
 	for _, v := range c.Values {
 		if v.Op != OpPhi {
@@ -310,36 +281,6 @@ func (b *Block) removeEdge(i int) {
 		v.Args[n] = nil
 		v.Args = v.Args[:n]
 		phielimValue(v)
-		// Note: this is trickier than it looks. Replacing
-		// a Phi with a Copy can in general cause problems because
-		// Phi and Copy don't have exactly the same semantics.
-		// Phi arguments always come from a predecessor block,
-		// whereas copies don't. This matters in loops like:
-		// 1: x = (Phi y)
-		//    y = (Add x 1)
-		//    goto 1
-		// If we replace Phi->Copy, we get
-		// 1: x = (Copy y)
-		//    y = (Add x 1)
-		//    goto 1
-		// (Phi y) refers to the *previous* value of y, whereas
-		// (Copy y) refers to the *current* value of y.
-		// The modified code has a cycle and the scheduler
-		// will barf on it.
-		//
-		// Fortunately, this situation can only happen for dead
-		// code loops. We know the code we're working with is
-		// not dead, so we're ok.
-		// Proof: If we have a potential bad cycle, we have a
-		// situation like this:
-		//   x = (Phi z)
-		//   y = (op1 x ...)
-		//   z = (op2 y ...)
-		// Where opX are not Phi ops. But such a situation
-		// implies a cycle in the dominator graph. In the
-		// example, x.Block dominates y.Block, y.Block dominates
-		// z.Block, and z.Block dominates x.Block (treating
-		// "dominates" as reflexive).  Cycles in the dominator
-		// graph can only happen in an unreachable cycle.
+
 	}
 }

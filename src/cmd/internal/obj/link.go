@@ -1,186 +1,14 @@
-// Derived from Inferno utils/6l/l.h and related files.
-// https://bitbucket.org/inferno-os/inferno-os/src/default/utils/6l/l.h
-//
-//	Copyright © 1994-1999 Lucent Technologies Inc.  All rights reserved.
-//	Portions Copyright © 1995-1997 C H Forsyth (forsyth@terzarima.net)
-//	Portions Copyright © 1997-1999 Vita Nuova Limited
-//	Portions Copyright © 2000-2007 Vita Nuova Holdings Limited (www.vitanuova.com)
-//	Portions Copyright © 2004,2006 Bruce Ellis
-//	Portions Copyright © 2005-2007 C H Forsyth (forsyth@terzarima.net)
-//	Revisions Copyright © 2000-2007 Lucent Technologies Inc. and others
-//	Portions Copyright © 2009 The Go Authors. All rights reserved.
-//
-// Permission is hereby granted, free of charge, to any person obtaining a copy
-// of this software and associated documentation files (the "Software"), to deal
-// in the Software without restriction, including without limitation the rights
-// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-// copies of the Software, and to permit persons to whom the Software is
-// furnished to do so, subject to the following conditions:
-//
-// The above copyright notice and this permission notice shall be included in
-// all copies or substantial portions of the Software.
-//
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL THE
-// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-// THE SOFTWARE.
-
 package obj
 
 import (
 	"bufio"
-	"cmd/internal/dwarf"
-	"cmd/internal/objabi"
-	"cmd/internal/src"
-	"cmd/internal/sys"
 	"fmt"
+	"github.com/dave/golib/src/cmd/internal/dwarf"
+	"github.com/dave/golib/src/cmd/internal/objabi"
+	"github.com/dave/golib/src/cmd/internal/src"
+	"github.com/dave/golib/src/cmd/internal/sys"
 	"sync"
 )
-
-// An Addr is an argument to an instruction.
-// The general forms and their encodings are:
-//
-//	sym±offset(symkind)(reg)(index*scale)
-//		Memory reference at address &sym(symkind) + offset + reg + index*scale.
-//		Any of sym(symkind), ±offset, (reg), (index*scale), and *scale can be omitted.
-//		If (reg) and *scale are both omitted, the resulting expression (index) is parsed as (reg).
-//		To force a parsing as index*scale, write (index*1).
-//		Encoding:
-//			type = TYPE_MEM
-//			name = symkind (NAME_AUTO, ...) or 0 (NAME_NONE)
-//			sym = sym
-//			offset = ±offset
-//			reg = reg (REG_*)
-//			index = index (REG_*)
-//			scale = scale (1, 2, 4, 8)
-//
-//	$<mem>
-//		Effective address of memory reference <mem>, defined above.
-//		Encoding: same as memory reference, but type = TYPE_ADDR.
-//
-//	$<±integer value>
-//		This is a special case of $<mem>, in which only ±offset is present.
-//		It has a separate type for easy recognition.
-//		Encoding:
-//			type = TYPE_CONST
-//			offset = ±integer value
-//
-//	*<mem>
-//		Indirect reference through memory reference <mem>, defined above.
-//		Only used on x86 for CALL/JMP *sym(SB), which calls/jumps to a function
-//		pointer stored in the data word sym(SB), not a function named sym(SB).
-//		Encoding: same as above, but type = TYPE_INDIR.
-//
-//	$*$<mem>
-//		No longer used.
-//		On machines with actual SB registers, $*$<mem> forced the
-//		instruction encoding to use a full 32-bit constant, never a
-//		reference relative to SB.
-//
-//	$<floating point literal>
-//		Floating point constant value.
-//		Encoding:
-//			type = TYPE_FCONST
-//			val = floating point value
-//
-//	$<string literal, up to 8 chars>
-//		String literal value (raw bytes used for DATA instruction).
-//		Encoding:
-//			type = TYPE_SCONST
-//			val = string
-//
-//	<register name>
-//		Any register: integer, floating point, control, segment, and so on.
-//		If looking for specific register kind, must check type and reg value range.
-//		Encoding:
-//			type = TYPE_REG
-//			reg = reg (REG_*)
-//
-//	x(PC)
-//		Encoding:
-//			type = TYPE_BRANCH
-//			val = Prog* reference OR ELSE offset = target pc (branch takes priority)
-//
-//	$±x-±y
-//		Final argument to TEXT, specifying local frame size x and argument size y.
-//		In this form, x and y are integer literals only, not arbitrary expressions.
-//		This avoids parsing ambiguities due to the use of - as a separator.
-//		The ± are optional.
-//		If the final argument to TEXT omits the -±y, the encoding should still
-//		use TYPE_TEXTSIZE (not TYPE_CONST), with u.argsize = ArgsSizeUnknown.
-//		Encoding:
-//			type = TYPE_TEXTSIZE
-//			offset = x
-//			val = int32(y)
-//
-//	reg<<shift, reg>>shift, reg->shift, reg@>shift
-//		Shifted register value, for ARM and ARM64.
-//		In this form, reg must be a register and shift can be a register or an integer constant.
-//		Encoding:
-//			type = TYPE_SHIFT
-//		On ARM:
-//			offset = (reg&15) | shifttype<<5 | count
-//			shifttype = 0, 1, 2, 3 for <<, >>, ->, @>
-//			count = (reg&15)<<8 | 1<<4 for a register shift count, (n&31)<<7 for an integer constant.
-//		On ARM64:
-//			offset = (reg&31)<<16 | shifttype<<22 | (count&63)<<10
-//			shifttype = 0, 1, 2 for <<, >>, ->
-//
-//	(reg, reg)
-//		A destination register pair. When used as the last argument of an instruction,
-//		this form makes clear that both registers are destinations.
-//		Encoding:
-//			type = TYPE_REGREG
-//			reg = first register
-//			offset = second register
-//
-//	[reg, reg, reg-reg]
-//		Register list for ARM, ARM64, 386/AMD64.
-//		Encoding:
-//			type = TYPE_REGLIST
-//		On ARM:
-//			offset = bit mask of registers in list; R0 is low bit.
-//		On ARM64:
-//			offset = register count (Q:size) | arrangement (opcode) | first register
-//		On 386/AMD64:
-//			reg = range low register
-//			offset = 2 packed registers + kind tag (see x86.EncodeRegisterRange)
-//
-//	reg, reg
-//		Register pair for ARM.
-//		TYPE_REGREG2
-//
-//	(reg+reg)
-//		Register pair for PPC64.
-//		Encoding:
-//			type = TYPE_MEM
-//			reg = first register
-//			index = second register
-//			scale = 1
-//
-//	reg.[US]XT[BHWX]
-//		Register extension for ARM64
-//		Encoding:
-//			type = TYPE_REG
-//			reg = REG_[US]XT[BHWX] + register + shift amount
-//			offset = ((reg&31) << 16) | (exttype << 13) | (amount<<10)
-//
-//	reg.<T>
-//		Register arrangement for ARM64 SIMD register
-//		e.g.: V1.S4, V2.S2, V7.D2, V2.H4, V6.B16
-//		Encoding:
-//			type = TYPE_REG
-//			reg = REG_ARNG + register + arrangement
-//
-//	reg.<T>[index]
-//		Register element for ARM64
-//		Encoding:
-//			type = TYPE_REG
-//			reg = REG_ELEM + register + arrangement
-//			index = element index
 
 type Addr struct {
 	Reg    int16
@@ -215,8 +43,6 @@ const (
 	// we want to preserve in the DWARF debug info.
 	NAME_DELETED_AUTO
 )
-
-//go:generate stringer -type AddrType
 
 type AddrType uint8
 
@@ -469,30 +295,10 @@ func (a *Attribute) Set(flag Attribute, value bool) {
 	}
 }
 
-var textAttrStrings = [...]struct {
-	bit Attribute
-	s   string
-}{
-	{bit: AttrDuplicateOK, s: "DUPOK"},
-	{bit: AttrMakeTypelink, s: ""},
-	{bit: AttrCFunc, s: "CFUNC"},
-	{bit: AttrNoSplit, s: "NOSPLIT"},
-	{bit: AttrLeaf, s: "LEAF"},
-	{bit: AttrSeenGlobl, s: ""},
-	{bit: AttrOnList, s: ""},
-	{bit: AttrReflectMethod, s: "REFLECTMETHOD"},
-	{bit: AttrLocal, s: "LOCAL"},
-	{bit: AttrWrapper, s: "WRAPPER"},
-	{bit: AttrNeedCtxt, s: "NEEDCTXT"},
-	{bit: AttrNoFrame, s: "NOFRAME"},
-	{bit: AttrStatic, s: "STATIC"},
-	{bit: AttrWasInlined, s: ""},
-}
-
 // TextAttrString formats a for printing in as part of a TEXT prog.
-func (a Attribute) TextAttrString() string {
+func (a Attribute) TextAttrString(psess *PackageSession) string {
 	var s string
-	for _, x := range textAttrStrings {
+	for _, x := range psess.textAttrStrings {
 		if a&x.bit != 0 {
 			if x.s != "" {
 				s += x.s + "|"
@@ -503,7 +309,7 @@ func (a Attribute) TextAttrString() string {
 	if a != 0 {
 		s += fmt.Sprintf("UnknownAttribute(%d)|", a)
 	}
-	// Chop off trailing |, if present.
+
 	if len(s) > 0 {
 		s = s[:len(s)-1]
 	}
@@ -603,8 +409,7 @@ func (ctxt *Link) FixedFrameSize() int64 {
 	case sys.AMD64, sys.I386, sys.Wasm:
 		return 0
 	case sys.PPC64:
-		// PIC code on ppc64le requires 32 bytes of stack, and it's easier to
-		// just use that much stack always on ppc64x.
+
 		return int64(4 * ctxt.Arch.PtrSize)
 	default:
 		return int64(ctxt.Arch.PtrSize)

@@ -1,43 +1,15 @@
-// Copyright 2012 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
 package gc
-
-import (
-	"cmd/compile/internal/types"
-	"cmd/internal/src"
-	"cmd/internal/sys"
-)
-
-// The racewalk pass is currently handled in two parts.
-//
-// First, for flag_race, it inserts calls to racefuncenter and
-// racefuncexit at the start and end (respectively) of each
-// function. This is handled below.
-//
-// Second, during buildssa, it inserts appropriate instrumentation
-// calls immediately before each memory load or store. This is handled
-// by the (*state).instrument method in ssa.go, so here we just set
-// the Func.InstrumentBody flag as needed. For background on why this
-// is done during SSA construction rather than a separate SSA pass,
-// see issue #19054.
-
-// TODO(dvyukov): do not instrument initialization as writes:
-// a := make([]int, 10)
 
 // Do not instrument the following packages at all,
 // at best instrumentation would cause infinite recursion.
-var omit_pkgs = []string{"runtime/internal/atomic", "runtime/internal/sys", "runtime", "runtime/race", "runtime/msan", "internal/cpu"}
 
 // Only insert racefuncenterfp/racefuncexit into the following packages.
 // Memory accesses in the packages are either uninteresting or will cause false positives.
-var norace_inst_pkgs = []string{"sync", "sync/atomic"}
 
-func ispkgin(pkgs []string) bool {
-	if myimportpath != "" {
+func (psess *PackageSession) ispkgin(pkgs []string) bool {
+	if psess.myimportpath != "" {
 		for _, p := range pkgs {
-			if myimportpath == p {
+			if psess.myimportpath == p {
 				return true
 			}
 		}
@@ -46,36 +18,33 @@ func ispkgin(pkgs []string) bool {
 	return false
 }
 
-func instrument(fn *Node) {
+func (psess *PackageSession) instrument(fn *Node) {
 	if fn.Func.Pragma&Norace != 0 {
 		return
 	}
 
-	if !flag_race || !ispkgin(norace_inst_pkgs) {
+	if !psess.flag_race || !psess.ispkgin(psess.norace_inst_pkgs) {
 		fn.Func.SetInstrumentBody(true)
 	}
 
-	if flag_race {
-		lno := lineno
-		lineno = src.NoXPos
+	if psess.flag_race {
+		lno := psess.lineno
+		psess.
+			lineno = psess.src.NoXPos
 
-		if thearch.LinkArch.Arch == sys.ArchPPC64LE {
-			fn.Func.Enter.Prepend(mkcall("racefuncenterfp", nil, nil))
-			fn.Func.Exit.Append(mkcall("racefuncexit", nil, nil))
+		if psess.thearch.LinkArch.Arch == psess.sys.ArchPPC64LE {
+			fn.Func.Enter.Prepend(psess.mkcall("racefuncenterfp", nil, nil))
+			fn.Func.Exit.Append(psess.mkcall("racefuncexit", nil, nil))
 		} else {
 
-			// nodpc is the PC of the caller as extracted by
-			// getcallerpc. We use -widthptr(FP) for x86.
-			// BUG: This only works for amd64. This will not
-			// work on arm or others that might support
-			// race in the future.
-			nodpc := nodfp.copy()
-			nodpc.Type = types.Types[TUINTPTR]
-			nodpc.Xoffset = int64(-Widthptr)
+			nodpc := psess.nodfp.copy()
+			nodpc.Type = psess.types.Types[TUINTPTR]
+			nodpc.Xoffset = int64(-psess.Widthptr)
 			fn.Func.Dcl = append(fn.Func.Dcl, nodpc)
-			fn.Func.Enter.Prepend(mkcall("racefuncenter", nil, nil, nodpc))
-			fn.Func.Exit.Append(mkcall("racefuncexit", nil, nil))
+			fn.Func.Enter.Prepend(psess.mkcall("racefuncenter", nil, nil, nodpc))
+			fn.Func.Exit.Append(psess.mkcall("racefuncexit", nil, nil))
 		}
-		lineno = lno
+		psess.
+			lineno = lno
 	}
 }

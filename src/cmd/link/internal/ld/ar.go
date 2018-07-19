@@ -1,41 +1,11 @@
-// Inferno utils/include/ar.h
-// https://bitbucket.org/inferno-os/inferno-os/src/default/utils/include/ar.h
-//
-//	Copyright © 1994-1999 Lucent Technologies Inc.  All rights reserved.
-//	Portions Copyright © 1995-1997 C H Forsyth (forsyth@terzarima.net)
-//	Portions Copyright © 1997-1999 Vita Nuova Limited
-//	Portions Copyright © 2000-2007 Vita Nuova Holdings Limited (www.vitanuova.com)
-//	Portions Copyright © 2004,2006 Bruce Ellis
-//	Portions Copyright © 2005-2007 C H Forsyth (forsyth@terzarima.net)
-//	Revisions Copyright © 2000-2007 Lucent Technologies Inc. and others
-//	Portions Copyright © 2009 The Go Authors. All rights reserved.
-//
-// Permission is hereby granted, free of charge, to any person obtaining a copy
-// of this software and associated documentation files (the "Software"), to deal
-// in the Software without restriction, including without limitation the rights
-// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-// copies of the Software, and to permit persons to whom the Software is
-// furnished to do so, subject to the following conditions:
-//
-// The above copyright notice and this permission notice shall be included in
-// all copies or substantial portions of the Software.
-//
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL THE
-// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-// THE SOFTWARE.
-
 package ld
 
 import (
-	"cmd/internal/bio"
-	"cmd/internal/objabi"
-	"cmd/link/internal/sym"
 	"encoding/binary"
 	"fmt"
+	"github.com/dave/golib/src/cmd/internal/bio"
+
+	"github.com/dave/golib/src/cmd/link/internal/sym"
 	"io"
 	"os"
 )
@@ -64,40 +34,45 @@ type ArHdr struct {
 // file, but it has an armap listing symbols and the objects that
 // define them. This is used for the compiler support library
 // libgcc.a.
-func hostArchive(ctxt *Link, name string) {
+func (psess *PackageSession) hostArchive(ctxt *Link, name string) {
 	f, err := bio.Open(name)
 	if err != nil {
 		if os.IsNotExist(err) {
-			// It's OK if we don't have a libgcc file at all.
+
 			if ctxt.Debugvlog != 0 {
 				ctxt.Logf("skipping libgcc file: %v\n", err)
 			}
 			return
 		}
-		Exitf("cannot open file %s: %v", name, err)
+		psess.
+			Exitf("cannot open file %s: %v", name, err)
 	}
 	defer f.Close()
 
 	var magbuf [len(ARMAG)]byte
 	if _, err := io.ReadFull(f, magbuf[:]); err != nil {
-		Exitf("file %s too short", name)
+		psess.
+			Exitf("file %s too short", name)
 	}
 
 	if string(magbuf[:]) != ARMAG {
-		Exitf("%s is not an archive file", name)
+		psess.
+			Exitf("%s is not an archive file", name)
 	}
 
 	var arhdr ArHdr
 	l := nextar(f, f.Offset(), &arhdr)
 	if l <= 0 {
-		Exitf("%s missing armap", name)
+		psess.
+			Exitf("%s missing armap", name)
 	}
 
 	var armap archiveMap
 	if arhdr.name == "/" || arhdr.name == "/SYM64/" {
-		armap = readArmap(name, f, arhdr)
+		armap = psess.readArmap(name, f, arhdr)
 	} else {
-		Exitf("%s missing armap", name)
+		psess.
+			Exitf("%s missing armap", name)
 	}
 
 	loaded := make(map[uint64]bool)
@@ -118,13 +93,14 @@ func hostArchive(ctxt *Link, name string) {
 		for _, off := range load {
 			l := nextar(f, int64(off), &arhdr)
 			if l <= 0 {
-				Exitf("%s missing archive entry at offset %d", name, off)
+				psess.
+					Exitf("%s missing archive entry at offset %d", name, off)
 			}
 			pname := fmt.Sprintf("%s(%s)", name, arhdr.name)
 			l = atolwhex(arhdr.size)
 
 			libgcc := sym.Library{Pkg: "libgcc"}
-			h := ldobj(ctxt, f, &libgcc, l, pname, name)
+			h := psess.ldobj(ctxt, f, &libgcc, l, pname, name)
 			f.Seek(h.off, 0)
 			h.ld(ctxt, f, h.pkg, h.length, h.pn)
 		}
@@ -138,7 +114,7 @@ func hostArchive(ctxt *Link, name string) {
 type archiveMap map[string]uint64
 
 // readArmap reads the archive symbol map.
-func readArmap(filename string, f *bio.Reader, arhdr ArHdr) archiveMap {
+func (psess *PackageSession) readArmap(filename string, f *bio.Reader, arhdr ArHdr) archiveMap {
 	is64 := arhdr.name == "/SYM64/"
 	wordSize := 4
 	if is64 {
@@ -147,7 +123,8 @@ func readArmap(filename string, f *bio.Reader, arhdr ArHdr) archiveMap {
 
 	contents := make([]byte, atolwhex(arhdr.size))
 	if _, err := io.ReadFull(f, contents); err != nil {
-		Exitf("short read from %s", filename)
+		psess.
+			Exitf("short read from %s", filename)
 	}
 
 	var c uint64
@@ -169,9 +146,7 @@ func readArmap(filename string, f *bio.Reader, arhdr ArHdr) archiveMap {
 		name := string(names[:n])
 		names = names[n+1:]
 
-		// For Mach-O and PE/386 files we strip a leading
-		// underscore from the symbol name.
-		if objabi.GOOS == "darwin" || (objabi.GOOS == "windows" && objabi.GOARCH == "386") {
+		if psess.objabi.GOOS == "darwin" || (psess.objabi.GOOS == "windows" && psess.objabi.GOARCH == "386") {
 			if name[0] == '_' && len(name) > 1 {
 				name = name[1:]
 			}

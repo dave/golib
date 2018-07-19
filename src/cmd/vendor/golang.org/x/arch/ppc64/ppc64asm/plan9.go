@@ -1,7 +1,3 @@
-// Copyright 2015 The Go Authors.  All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
 package ppc64asm
 
 import (
@@ -36,9 +32,9 @@ func GoSyntax(inst Inst, pc uint64, symname func(uint64) (string, uint64)) strin
 	if op == "" {
 		op = strings.ToUpper(inst.Op.String())
 	}
-	// laid out the instruction
+
 	switch inst.Op {
-	default: // dst, sA, sB, ...
+	default:
 		if len(args) == 0 {
 			return op
 		} else if len(args) == 1 {
@@ -46,7 +42,7 @@ func GoSyntax(inst Inst, pc uint64, symname func(uint64) (string, uint64)) strin
 		}
 		args = append(args, args[0])
 		return op + " " + strings.Join(args[1:], ", ")
-	// store instructions always have the memory operand at the end, no need to reorder
+
 	case STB, STBU, STBX, STBUX,
 		STH, STHU, STHX, STHUX,
 		STW, STWU, STWX, STWUX,
@@ -54,26 +50,26 @@ func GoSyntax(inst Inst, pc uint64, symname func(uint64) (string, uint64)) strin
 		STQ,
 		STHBRX, STWBRX:
 		return op + " " + strings.Join(args, ", ")
-	// branch instructions needs additional handling
+
 	case BCLR:
-		if int(inst.Args[0].(Imm))&20 == 20 { // unconditional
+		if int(inst.Args[0].(Imm))&20 == 20 {
 			return "RET"
 		}
 		return op + " " + strings.Join(args, ", ")
 	case BC:
-		if int(inst.Args[0].(Imm))&0x1c == 12 { // jump on cond bit set
+		if int(inst.Args[0].(Imm))&0x1c == 12 {
 			return fmt.Sprintf("B%s %s", args[1], args[2])
-		} else if int(inst.Args[0].(Imm))&0x1c == 4 && revCondMap[args[1]] != "" { // jump on cond bit not set
+		} else if int(inst.Args[0].(Imm))&0x1c == 4 && revCondMap[args[1]] != "" {
 			return fmt.Sprintf("B%s %s", revCondMap[args[1]], args[2])
 		}
 		return op + " " + strings.Join(args, ", ")
 	case BCCTR:
-		if int(inst.Args[0].(Imm))&20 == 20 { // unconditional
+		if int(inst.Args[0].(Imm))&20 == 20 {
 			return "BR (CTR)"
 		}
 		return op + " " + strings.Join(args, ", ")
 	case BCCTRL:
-		if int(inst.Args[0].(Imm))&20 == 20 { // unconditional
+		if int(inst.Args[0].(Imm))&20 == 20 {
 			return "BL (CTR)"
 		}
 		return op + " " + strings.Join(args, ", ")
@@ -86,7 +82,7 @@ func GoSyntax(inst Inst, pc uint64, symname func(uint64) (string, uint64)) strin
 // NOTE: because Plan9Syntax is the only caller of this func, and it receives a copy
 //       of inst, it's ok to modify inst.Args here.
 func plan9Arg(inst *Inst, argIndex int, pc uint64, arg Arg, symname func(uint64) (string, uint64)) string {
-	// special cases for load/store instructions
+
 	if _, ok := arg.(Offset); ok {
 		if argIndex+1 == len(inst.Args) || inst.Args[argIndex+1] == nil {
 			panic(fmt.Errorf("wrong table: offset not followed by register"))
@@ -103,7 +99,7 @@ func plan9Arg(inst *Inst, argIndex int, pc uint64, arg Arg, symname func(uint64)
 		return strings.ToUpper(arg.String())
 	case CondReg:
 		if arg == CR0 && strings.HasPrefix(inst.Op.String(), "cmp") {
-			return "" // don't show cr0 for cmp instructions
+			return ""
 		} else if arg >= CR0 {
 			return fmt.Sprintf("CR%d", int(arg-CR0))
 		}
@@ -155,7 +151,7 @@ var plan9OpMap = map[Op]string{
 	ADDI: "ADD",
 	ADD_: "ADDCC",
 	LBZ:  "MOVBZ", STB: "MOVB",
-	LBZU: "MOVBZU", STBU: "MOVBU", // TODO(minux): indexed forms are not handled
+	LBZU: "MOVBZU", STBU: "MOVBU",
 	LHZ: "MOVHZ", LHA: "MOVH", STH: "MOVH",
 	LHZU: "MOVHZU", STHU: "MOVHU",
 	LI:  "MOVD",
@@ -164,7 +160,7 @@ var plan9OpMap = map[Op]string{
 	LWZU: "MOVWZU", STWU: "MOVWU",
 	LD: "MOVD", STD: "MOVD",
 	LDU: "MOVDU", STDU: "MOVDU",
-	MTSPR: "MOVD", MFSPR: "MOVD", // the width is ambiguous for SPRs
+	MTSPR: "MOVD", MFSPR: "MOVD",
 	B:     "BR",
 	BL:    "CALL",
 	CMPLD: "CMPU", CMPLW: "CMPWU",

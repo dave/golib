@@ -1,12 +1,6 @@
-// Copyright 2018 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
 package wasm
 
-import "cmd/internal/obj"
-
-//go:generate go run ../stringer.go -i $GOFILE -o anames.go -p wasm
+import "github.com/dave/golib/src/cmd/internal/obj"
 
 const (
 	/* mark flags */
@@ -23,10 +17,6 @@ const (
 	ASet
 	ATee
 	ANot // alias for I32Eqz
-
-	// The following are low-level WebAssembly instructions.
-	// Their order matters, since it matches the opcode encoding.
-	// Gaps in the encoding are indicated by comments.
 
 	AUnreachable // opcode 0x00
 	ANop
@@ -210,8 +200,6 @@ const (
 	AI64ReinterpretF64
 	AF32ReinterpretI32
 	AF64ReinterpretI64
-
-	// End of low-level WebAssembly instructions.
 
 	ARESUMEPOINT
 	// ACALLNORESUME is a call which is not followed by a resume point.

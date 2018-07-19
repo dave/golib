@@ -1,7 +1,3 @@
-// Copyright 2015 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
 package ssa
 
 import (
@@ -14,10 +10,11 @@ func printFunc(f *Func) {
 	f.Logf("%s", f)
 }
 
-func (f *Func) String() string {
+func (f *Func) String(psess *PackageSession) string {
 	var buf bytes.Buffer
 	p := stringFuncPrinter{w: &buf}
-	fprintFunc(p, f)
+	psess.
+		fprintFunc(p, f)
 	return buf.String()
 }
 
@@ -56,15 +53,14 @@ func (p stringFuncPrinter) startBlock(b *Block, reachable bool) {
 	io.WriteString(p.w, "\n")
 }
 
-func (p stringFuncPrinter) endBlock(b *Block) {
-	fmt.Fprintln(p.w, "    "+b.LongString())
+func (p stringFuncPrinter) endBlock(psess *PackageSession, b *Block) {
+	fmt.Fprintln(p.w, "    "+b.LongString(psess))
 }
 
-func (p stringFuncPrinter) value(v *Value, live bool) {
+func (p stringFuncPrinter) value(psess *PackageSession, v *Value, live bool) {
 	fmt.Fprint(p.w, "    ")
-	//fmt.Fprint(p.w, v.Block.Func.fe.Pos(v.Pos))
-	//fmt.Fprint(p.w, ": ")
-	fmt.Fprint(p.w, v.LongString())
+
+	fmt.Fprint(p.w, v.LongString(psess))
 	if !live {
 		fmt.Fprint(p.w, " DEAD")
 	}
@@ -81,15 +77,15 @@ func (p stringFuncPrinter) named(n LocalSlot, vals []*Value) {
 	fmt.Fprintf(p.w, "name %s: %v\n", n, vals)
 }
 
-func fprintFunc(p funcPrinter, f *Func) {
-	reachable, live := findlive(f)
+func (psess *PackageSession) fprintFunc(p funcPrinter, f *Func) {
+	reachable, live := psess.findlive(f)
 	p.header(f)
 	printed := make([]bool, f.NumValues())
 	for _, b := range f.Blocks {
 		p.startBlock(b, reachable[b.ID])
 
 		if f.scheduled {
-			// Order of Values has been decided - print in that order.
+
 			for _, v := range b.Values {
 				p.value(v, live[v.ID])
 				printed[v.ID] = true
@@ -98,7 +94,6 @@ func fprintFunc(p funcPrinter, f *Func) {
 			continue
 		}
 
-		// print phis first since all value cycles contain a phi
 		n := 0
 		for _, v := range b.Values {
 			if v.Op != OpPhi {
@@ -109,7 +104,6 @@ func fprintFunc(p funcPrinter, f *Func) {
 			n++
 		}
 
-		// print rest of values in dependency order
 		for n < len(b.Values) {
 			m := n
 		outer:
@@ -118,8 +112,7 @@ func fprintFunc(p funcPrinter, f *Func) {
 					continue
 				}
 				for _, w := range v.Args {
-					// w == nil shouldn't happen, but if it does,
-					// don't panic; we'll get a better diagnosis later.
+
 					if w != nil && w.Block == b && !printed[w.ID] {
 						continue outer
 					}

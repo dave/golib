@@ -1,37 +1,31 @@
-// Copyright 2015 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
 package ssa
 
 // convert to machine-dependent ops
-func lower(f *Func) {
-	// repeat rewrites until we find no more rewrites
-	applyRewrite(f, f.Config.lowerBlock, f.Config.lowerValue)
+func (psess *PackageSession) lower(f *Func) {
+	psess.
+		applyRewrite(f, f.Config.lowerBlock, f.Config.lowerValue)
 }
 
 // checkLower checks for unlowered opcodes and fails if we find one.
-func checkLower(f *Func) {
-	// Needs to be a separate phase because it must run after both
-	// lowering and a subsequent dead code elimination (because lowering
-	// rules may leave dead generic ops behind).
+func (psess *PackageSession) checkLower(f *Func) {
+
 	for _, b := range f.Blocks {
 		for _, v := range b.Values {
-			if !opcodeTable[v.Op].generic {
-				continue // lowered
+			if !psess.opcodeTable[v.Op].generic {
+				continue
 			}
 			switch v.Op {
 			case OpSP, OpSB, OpInitMem, OpArg, OpPhi, OpVarDef, OpVarKill, OpVarLive, OpKeepAlive, OpSelect0, OpSelect1, OpConvert:
-				continue // ok not to lower
+				continue
 			case OpGetG:
 				if f.Config.hasGReg {
-					// has hardware g register, regalloc takes care of it
-					continue // ok not to lower
+
+					continue
 				}
 			}
-			s := "not lowered: " + v.String() + ", " + v.Op.String() + " " + v.Type.SimpleString()
+			s := "not lowered: " + v.String() + ", " + v.Op.String(psess) + " " + v.Type.SimpleString(psess.types)
 			for _, a := range v.Args {
-				s += " " + a.Type.SimpleString()
+				s += " " + a.Type.SimpleString(psess.types)
 			}
 			f.Fatalf("%s", s)
 		}

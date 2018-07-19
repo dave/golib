@@ -1,7 +1,3 @@
-// Copyright 2014 The Go Authors.  All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
 package armasm
 
 import (
@@ -39,14 +35,13 @@ func GoSyntax(inst Inst, pc uint64, symname func(uint64) (string, uint64), text 
 
 	switch inst.Op &^ 15 {
 	case LDR_EQ, LDRB_EQ, LDRH_EQ, LDRSB_EQ, LDRSH_EQ, VLDR_EQ:
-		// Check for RET
+
 		reg, _ := inst.Args[0].(Reg)
 		mem, _ := inst.Args[1].(Mem)
 		if inst.Op&^15 == LDR_EQ && reg == R15 && mem.Base == SP && mem.Sign == 0 && mem.Mode == AddrPostIndex {
 			return fmt.Sprintf("RET%s #%d", op[3:], mem.Offset)
 		}
 
-		// Check for PC-relative load.
 		if mem.Base == PC && mem.Sign == 0 && mem.Mode == AddrOffset && text != nil {
 			addr := uint32(pc) + 8 + uint32(mem.Offset)
 			buf := make([]byte, 8)
@@ -76,12 +71,12 @@ func GoSyntax(inst Inst, pc uint64, symname func(uint64) (string, uint64), text 
 
 			case VLDR_EQ:
 				switch {
-				case strings.HasPrefix(args[0], "D"): // VLDR.F64
+				case strings.HasPrefix(args[0], "D"):
 					if _, err := text.ReadAt(buf, int64(addr)); err != nil {
 						break
 					}
 					args[1] = fmt.Sprintf("$%f", math.Float64frombits(binary.LittleEndian.Uint64(buf)))
-				case strings.HasPrefix(args[0], "S"): // VLDR.F32
+				case strings.HasPrefix(args[0], "S"):
 					if _, err := text.ReadAt(buf[:4], int64(addr)); err != nil {
 						break
 					}
@@ -93,7 +88,6 @@ func GoSyntax(inst Inst, pc uint64, symname func(uint64) (string, uint64), text 
 		}
 	}
 
-	// Move addressing mode into opcode suffix.
 	suffix := ""
 	switch inst.Op &^ 15 {
 	case PLD, PLI, PLD_W:
@@ -116,25 +110,22 @@ func GoSyntax(inst Inst, pc uint64, symname func(uint64) (string, uint64), text 
 		}
 	}
 
-	// Reverse args, placing dest last.
 	for i, j := 0, len(args)-1; i < j; i, j = i+1, j-1 {
 		args[i], args[j] = args[j], args[i]
 	}
-	// For MLA-like instructions, the addend is the third operand.
+
 	switch inst.Op &^ 15 {
 	case SMLAWT_EQ, SMLAWB_EQ, MLA_EQ, MLA_S_EQ, MLS_EQ, SMMLA_EQ, SMMLS_EQ, SMLABB_EQ, SMLATB_EQ, SMLABT_EQ, SMLATT_EQ, SMLAD_EQ, SMLAD_X_EQ, SMLSD_EQ, SMLSD_X_EQ:
 		args = []string{args[1], args[2], args[0], args[3]}
 	}
-	// For STREX like instructions, the memory operands comes first.
+
 	switch inst.Op &^ 15 {
 	case STREX_EQ, STREXB_EQ, STREXH_EQ, SWP_EQ, SWP_B_EQ:
 		args = []string{args[1], args[0], args[2]}
 	}
 
-	// special process for FP instructions
 	op, args = fpTrans(&inst, op, args)
 
-	// LDR/STR like instructions -> MOV like
 	switch inst.Op &^ 15 {
 	case MOV_EQ:
 		op = "MOVW" + op[3:]
@@ -261,7 +252,7 @@ func memOpTrans(mem Mem) (string, string) {
 	suffix := ""
 	switch mem.Mode {
 	case AddrOffset, AddrLDM:
-		// no suffix
+
 	case AddrPreIndex, AddrLDM_WB:
 		suffix = ".W"
 	case AddrPostIndex:
@@ -350,13 +341,13 @@ var fpInst []goFPInfo = []goFPInfo{
 func fpTrans(inst *Inst, op string, args []string) (string, []string) {
 	for _, fp := range fpInst {
 		if inst.Op&^15 == fp.op {
-			// remove gnu syntax suffixes
+
 			op = strings.Replace(op, ".F32", "", -1)
 			op = strings.Replace(op, ".F64", "", -1)
 			op = strings.Replace(op, ".S32", "", -1)
 			op = strings.Replace(op, ".U32", "", -1)
 			op = strings.Replace(op, ".32", "", -1)
-			// compose op name
+
 			if fp.op == VLDR_EQ || fp.op == VSTR_EQ {
 				switch {
 				case strings.HasPrefix(args[fp.transArgs[0]], "D"):
@@ -369,23 +360,23 @@ func fpTrans(inst *Inst, op string, args []string) (string, []string) {
 			} else {
 				op = fp.goName + op[len(fp.gnuName):]
 			}
-			// transform registers
+
 			for ix, ri := range fp.transArgs {
 				switch {
-				case strings.HasSuffix(args[ri], "[1]"): // MOVW Rx, Dy[1]
+				case strings.HasSuffix(args[ri], "[1]"):
 					break
-				case strings.HasSuffix(args[ri], "[0]"): // Dx[0] -> Fx
+				case strings.HasSuffix(args[ri], "[0]"):
 					args[ri] = strings.Replace(args[ri], "[0]", "", -1)
 					fallthrough
-				case strings.HasPrefix(args[ri], "D"): // Dx -> Fx
+				case strings.HasPrefix(args[ri], "D"):
 					args[ri] = "F" + args[ri][1:]
 				case strings.HasPrefix(args[ri], "S"):
-					if inst.Args[ix].(Reg)&1 == 0 { // Sx -> Fy, y = x/2, if x is even
+					if inst.Args[ix].(Reg)&1 == 0 {
 						args[ri] = fmt.Sprintf("F%d", (inst.Args[ix].(Reg)-S0)/2)
 					}
-				case strings.HasPrefix(args[ri], "$"): // CMPF/CMPD $0, Fx
+				case strings.HasPrefix(args[ri], "$"):
 					break
-				case strings.HasPrefix(args[ri], "R"): // MOVW Rx, Dy[1]
+				case strings.HasPrefix(args[ri], "R"):
 					break
 				default:
 					panic(fmt.Sprintf("wrong FP register: %v", inst))

@@ -1,74 +1,15 @@
-// Copyright 2009 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
-// TODO(gri) This file should probably become part of package types.
-
 package gc
 
-import "cmd/compile/internal/types"
+import "github.com/dave/golib/src/cmd/compile/internal/types"
 
 // builtinpkg is a fake package that declares the universe block.
-var builtinpkg *types.Pkg
 
-var itable *types.Type // distinguished *byte
-
-var basicTypes = [...]struct {
-	name  string
-	etype types.EType
-}{
-	{"int8", TINT8},
-	{"int16", TINT16},
-	{"int32", TINT32},
-	{"int64", TINT64},
-	{"uint8", TUINT8},
-	{"uint16", TUINT16},
-	{"uint32", TUINT32},
-	{"uint64", TUINT64},
-	{"float32", TFLOAT32},
-	{"float64", TFLOAT64},
-	{"complex64", TCOMPLEX64},
-	{"complex128", TCOMPLEX128},
-	{"bool", TBOOL},
-	{"string", TSTRING},
-}
-
-var typedefs = [...]struct {
-	name     string
-	etype    types.EType
-	sameas32 types.EType
-	sameas64 types.EType
-}{
-	{"int", TINT, TINT32, TINT64},
-	{"uint", TUINT, TUINT32, TUINT64},
-	{"uintptr", TUINTPTR, TUINT32, TUINT64},
-}
-
-var builtinFuncs = [...]struct {
-	name string
-	op   Op
-}{
-	{"append", OAPPEND},
-	{"cap", OCAP},
-	{"close", OCLOSE},
-	{"complex", OCOMPLEX},
-	{"copy", OCOPY},
-	{"delete", ODELETE},
-	{"imag", OIMAG},
-	{"len", OLEN},
-	{"make", OMAKE},
-	{"new", ONEW},
-	{"panic", OPANIC},
-	{"print", OPRINT},
-	{"println", OPRINTN},
-	{"real", OREAL},
-	{"recover", ORECOVER},
-}
+// distinguished *byte
 
 // isBuiltinFuncName reports whether name matches a builtin function
 // name.
-func isBuiltinFuncName(name string) bool {
-	for _, fn := range builtinFuncs {
+func (psess *PackageSession) isBuiltinFuncName(name string) bool {
+	for _, fn := range psess.builtinFuncs {
 		if fn.name == name {
 			return true
 		}
@@ -76,387 +17,480 @@ func isBuiltinFuncName(name string) bool {
 	return false
 }
 
-var unsafeFuncs = [...]struct {
-	name string
-	op   Op
-}{
-	{"Alignof", OALIGNOF},
-	{"Offsetof", OOFFSETOF},
-	{"Sizeof", OSIZEOF},
-}
-
 // initUniverse initializes the universe block.
-func initUniverse() {
-	lexinit()
-	typeinit()
-	lexinit1()
+func (psess *PackageSession) initUniverse() {
+	psess.
+		lexinit()
+	psess.
+		typeinit()
+	psess.
+		lexinit1()
 }
 
 // lexinit initializes known symbols and the basic types.
-func lexinit() {
-	for _, s := range basicTypes {
+func (psess *PackageSession) lexinit() {
+	for _, s := range psess.basicTypes {
 		etype := s.etype
-		if int(etype) >= len(types.Types) {
-			Fatalf("lexinit: %s bad etype", s.name)
+		if int(etype) >= len(psess.types.Types) {
+			psess.
+				Fatalf("lexinit: %s bad etype", s.name)
 		}
-		s2 := builtinpkg.Lookup(s.name)
-		t := types.Types[etype]
+		s2 := psess.builtinpkg.Lookup(psess.types, s.name)
+		t := psess.types.Types[etype]
 		if t == nil {
 			t = types.New(etype)
 			t.Sym = s2
 			if etype != TANY && etype != TSTRING {
-				dowidth(t)
+				psess.
+					dowidth(t)
 			}
-			types.Types[etype] = t
+			psess.types.
+				Types[etype] = t
 		}
-		s2.Def = asTypesNode(typenod(t))
+		s2.Def = asTypesNode(psess.typenod(t))
 		asNode(s2.Def).Name = new(Name)
 	}
 
-	for _, s := range builtinFuncs {
-		s2 := builtinpkg.Lookup(s.name)
-		s2.Def = asTypesNode(newname(s2))
-		asNode(s2.Def).SetSubOp(s.op)
+	for _, s := range psess.builtinFuncs {
+		s2 := psess.builtinpkg.Lookup(psess.types, s.name)
+		s2.Def = asTypesNode(psess.newname(s2))
+		asNode(s2.Def).SetSubOp(psess, s.op)
 	}
 
-	for _, s := range unsafeFuncs {
-		s2 := unsafepkg.Lookup(s.name)
-		s2.Def = asTypesNode(newname(s2))
-		asNode(s2.Def).SetSubOp(s.op)
+	for _, s := range psess.unsafeFuncs {
+		s2 := psess.unsafepkg.Lookup(psess.types, s.name)
+		s2.Def = asTypesNode(psess.newname(s2))
+		asNode(s2.Def).SetSubOp(psess, s.op)
 	}
+	psess.types.
+		Idealstring = types.New(TSTRING)
+	psess.types.
+		Idealbool = types.New(TBOOL)
+	psess.types.
+		Types[TANY] = types.New(TANY)
 
-	types.Idealstring = types.New(TSTRING)
-	types.Idealbool = types.New(TBOOL)
-	types.Types[TANY] = types.New(TANY)
-
-	s := builtinpkg.Lookup("true")
-	s.Def = asTypesNode(nodbool(true))
-	asNode(s.Def).Sym = lookup("true")
+	s := psess.builtinpkg.Lookup(psess.types, "true")
+	s.Def = asTypesNode(psess.nodbool(true))
+	asNode(s.Def).Sym = psess.lookup("true")
 	asNode(s.Def).Name = new(Name)
-	asNode(s.Def).Type = types.Idealbool
+	asNode(s.Def).Type = psess.types.Idealbool
 
-	s = builtinpkg.Lookup("false")
-	s.Def = asTypesNode(nodbool(false))
-	asNode(s.Def).Sym = lookup("false")
+	s = psess.builtinpkg.Lookup(psess.types, "false")
+	s.Def = asTypesNode(psess.nodbool(false))
+	asNode(s.Def).Sym = psess.lookup("false")
 	asNode(s.Def).Name = new(Name)
-	asNode(s.Def).Type = types.Idealbool
+	asNode(s.Def).Type = psess.types.Idealbool
 
-	s = lookup("_")
+	s = psess.lookup("_")
 	s.Block = -100
-	s.Def = asTypesNode(newname(s))
-	types.Types[TBLANK] = types.New(TBLANK)
-	asNode(s.Def).Type = types.Types[TBLANK]
-	nblank = asNode(s.Def)
+	s.Def = asTypesNode(psess.newname(s))
+	psess.types.
+		Types[TBLANK] = types.New(TBLANK)
+	asNode(s.Def).Type = psess.types.Types[TBLANK]
+	psess.
+		nblank = asNode(s.Def)
 
-	s = builtinpkg.Lookup("_")
+	s = psess.builtinpkg.Lookup(psess.types, "_")
 	s.Block = -100
-	s.Def = asTypesNode(newname(s))
-	types.Types[TBLANK] = types.New(TBLANK)
-	asNode(s.Def).Type = types.Types[TBLANK]
-
-	types.Types[TNIL] = types.New(TNIL)
-	s = builtinpkg.Lookup("nil")
+	s.Def = asTypesNode(psess.newname(s))
+	psess.types.
+		Types[TBLANK] = types.New(TBLANK)
+	asNode(s.Def).Type = psess.types.Types[TBLANK]
+	psess.types.
+		Types[TNIL] = types.New(TNIL)
+	s = psess.builtinpkg.Lookup(psess.types, "nil")
 	var v Val
 	v.U = new(NilVal)
-	s.Def = asTypesNode(nodlit(v))
+	s.Def = asTypesNode(psess.nodlit(v))
 	asNode(s.Def).Sym = s
 	asNode(s.Def).Name = new(Name)
 
-	s = builtinpkg.Lookup("iota")
-	s.Def = asTypesNode(nod(OIOTA, nil, nil))
+	s = psess.builtinpkg.Lookup(psess.types, "iota")
+	s.Def = asTypesNode(psess.nod(OIOTA, nil, nil))
 	asNode(s.Def).Sym = s
 	asNode(s.Def).Name = new(Name)
 }
 
-func typeinit() {
-	if Widthptr == 0 {
-		Fatalf("typeinit before betypeinit")
+func (psess *PackageSession) typeinit() {
+	if psess.Widthptr == 0 {
+		psess.
+			Fatalf("typeinit before betypeinit")
 	}
 
 	for et := types.EType(0); et < NTYPE; et++ {
-		simtype[et] = et
+		psess.
+			simtype[et] = et
 	}
-
-	types.Types[TPTR32] = types.New(TPTR32)
-	dowidth(types.Types[TPTR32])
-
-	types.Types[TPTR64] = types.New(TPTR64)
-	dowidth(types.Types[TPTR64])
+	psess.types.
+		Types[TPTR32] = types.New(TPTR32)
+	psess.
+		dowidth(psess.types.Types[TPTR32])
+	psess.types.
+		Types[TPTR64] = types.New(TPTR64)
+	psess.
+		dowidth(psess.types.Types[TPTR64])
 
 	t := types.New(TUNSAFEPTR)
-	types.Types[TUNSAFEPTR] = t
-	t.Sym = unsafepkg.Lookup("Pointer")
-	t.Sym.Def = asTypesNode(typenod(t))
+	psess.types.
+		Types[TUNSAFEPTR] = t
+	t.Sym = psess.unsafepkg.Lookup(psess.types, "Pointer")
+	t.Sym.Def = asTypesNode(psess.typenod(t))
 	asNode(t.Sym.Def).Name = new(Name)
-	dowidth(types.Types[TUNSAFEPTR])
-
-	types.Tptr = TPTR32
-	if Widthptr == 8 {
-		types.Tptr = TPTR64
+	psess.
+		dowidth(psess.types.Types[TUNSAFEPTR])
+	psess.types.
+		Tptr = TPTR32
+	if psess.Widthptr == 8 {
+		psess.types.
+			Tptr = TPTR64
 	}
 
 	for et := TINT8; et <= TUINT64; et++ {
-		isInt[et] = true
+		psess.
+			isInt[et] = true
 	}
-	isInt[TINT] = true
-	isInt[TUINT] = true
-	isInt[TUINTPTR] = true
+	psess.
+		isInt[TINT] = true
+	psess.
+		isInt[TUINT] = true
+	psess.
+		isInt[TUINTPTR] = true
+	psess.
+		isFloat[TFLOAT32] = true
+	psess.
+		isFloat[TFLOAT64] = true
+	psess.
+		isComplex[TCOMPLEX64] = true
+	psess.
+		isComplex[TCOMPLEX128] = true
+	psess.
+		isforw[TFORW] = true
 
-	isFloat[TFLOAT32] = true
-	isFloat[TFLOAT64] = true
-
-	isComplex[TCOMPLEX64] = true
-	isComplex[TCOMPLEX128] = true
-
-	isforw[TFORW] = true
-
-	// initialize okfor
 	for et := types.EType(0); et < NTYPE; et++ {
-		if isInt[et] || et == TIDEAL {
-			okforeq[et] = true
-			okforcmp[et] = true
-			okforarith[et] = true
-			okforadd[et] = true
-			okforand[et] = true
-			okforconst[et] = true
-			issimple[et] = true
-			minintval[et] = new(Mpint)
-			maxintval[et] = new(Mpint)
+		if psess.isInt[et] || et == TIDEAL {
+			psess.
+				okforeq[et] = true
+			psess.
+				okforcmp[et] = true
+			psess.
+				okforarith[et] = true
+			psess.
+				okforadd[et] = true
+			psess.
+				okforand[et] = true
+			psess.
+				okforconst[et] = true
+			psess.
+				issimple[et] = true
+			psess.
+				minintval[et] = new(Mpint)
+			psess.
+				maxintval[et] = new(Mpint)
 		}
 
-		if isFloat[et] {
-			okforeq[et] = true
-			okforcmp[et] = true
-			okforadd[et] = true
-			okforarith[et] = true
-			okforconst[et] = true
-			issimple[et] = true
-			minfltval[et] = newMpflt()
-			maxfltval[et] = newMpflt()
+		if psess.isFloat[et] {
+			psess.
+				okforeq[et] = true
+			psess.
+				okforcmp[et] = true
+			psess.
+				okforadd[et] = true
+			psess.
+				okforarith[et] = true
+			psess.
+				okforconst[et] = true
+			psess.
+				issimple[et] = true
+			psess.
+				minfltval[et] = newMpflt()
+			psess.
+				maxfltval[et] = newMpflt()
 		}
 
-		if isComplex[et] {
-			okforeq[et] = true
-			okforadd[et] = true
-			okforarith[et] = true
-			okforconst[et] = true
-			issimple[et] = true
+		if psess.isComplex[et] {
+			psess.
+				okforeq[et] = true
+			psess.
+				okforadd[et] = true
+			psess.
+				okforarith[et] = true
+			psess.
+				okforconst[et] = true
+			psess.
+				issimple[et] = true
 		}
 	}
-
-	issimple[TBOOL] = true
-
-	okforadd[TSTRING] = true
-
-	okforbool[TBOOL] = true
-
-	okforcap[TARRAY] = true
-	okforcap[TCHAN] = true
-	okforcap[TSLICE] = true
-
-	okforconst[TBOOL] = true
-	okforconst[TSTRING] = true
-
-	okforlen[TARRAY] = true
-	okforlen[TCHAN] = true
-	okforlen[TMAP] = true
-	okforlen[TSLICE] = true
-	okforlen[TSTRING] = true
-
-	okforeq[TPTR32] = true
-	okforeq[TPTR64] = true
-	okforeq[TUNSAFEPTR] = true
-	okforeq[TINTER] = true
-	okforeq[TCHAN] = true
-	okforeq[TSTRING] = true
-	okforeq[TBOOL] = true
-	okforeq[TMAP] = true    // nil only; refined in typecheck
-	okforeq[TFUNC] = true   // nil only; refined in typecheck
-	okforeq[TSLICE] = true  // nil only; refined in typecheck
-	okforeq[TARRAY] = true  // only if element type is comparable; refined in typecheck
-	okforeq[TSTRUCT] = true // only if all struct fields are comparable; refined in typecheck
-
-	okforcmp[TSTRING] = true
+	psess.
+		issimple[TBOOL] = true
+	psess.
+		okforadd[TSTRING] = true
+	psess.
+		okforbool[TBOOL] = true
+	psess.
+		okforcap[TARRAY] = true
+	psess.
+		okforcap[TCHAN] = true
+	psess.
+		okforcap[TSLICE] = true
+	psess.
+		okforconst[TBOOL] = true
+	psess.
+		okforconst[TSTRING] = true
+	psess.
+		okforlen[TARRAY] = true
+	psess.
+		okforlen[TCHAN] = true
+	psess.
+		okforlen[TMAP] = true
+	psess.
+		okforlen[TSLICE] = true
+	psess.
+		okforlen[TSTRING] = true
+	psess.
+		okforeq[TPTR32] = true
+	psess.
+		okforeq[TPTR64] = true
+	psess.
+		okforeq[TUNSAFEPTR] = true
+	psess.
+		okforeq[TINTER] = true
+	psess.
+		okforeq[TCHAN] = true
+	psess.
+		okforeq[TSTRING] = true
+	psess.
+		okforeq[TBOOL] = true
+	psess.
+		okforeq[TMAP] = true
+	psess.
+		okforeq[TFUNC] = true
+	psess.
+		okforeq[TSLICE] = true
+	psess.
+		okforeq[TARRAY] = true
+	psess.
+		okforeq[TSTRUCT] = true
+	psess.
+		okforcmp[TSTRING] = true
 
 	var i int
-	for i = 0; i < len(okfor); i++ {
-		okfor[i] = okfornone[:]
+	for i = 0; i < len(psess.okfor); i++ {
+		psess.
+			okfor[i] = psess.okfornone[:]
 	}
-
-	// binary
-	okfor[OADD] = okforadd[:]
-	okfor[OAND] = okforand[:]
-	okfor[OANDAND] = okforbool[:]
-	okfor[OANDNOT] = okforand[:]
-	okfor[ODIV] = okforarith[:]
-	okfor[OEQ] = okforeq[:]
-	okfor[OGE] = okforcmp[:]
-	okfor[OGT] = okforcmp[:]
-	okfor[OLE] = okforcmp[:]
-	okfor[OLT] = okforcmp[:]
-	okfor[OMOD] = okforand[:]
-	okfor[OMUL] = okforarith[:]
-	okfor[ONE] = okforeq[:]
-	okfor[OOR] = okforand[:]
-	okfor[OOROR] = okforbool[:]
-	okfor[OSUB] = okforarith[:]
-	okfor[OXOR] = okforand[:]
-	okfor[OLSH] = okforand[:]
-	okfor[ORSH] = okforand[:]
-
-	// unary
-	okfor[OCOM] = okforand[:]
-	okfor[OMINUS] = okforarith[:]
-	okfor[ONOT] = okforbool[:]
-	okfor[OPLUS] = okforarith[:]
-
-	// special
-	okfor[OCAP] = okforcap[:]
-	okfor[OLEN] = okforlen[:]
-
-	// comparison
-	iscmp[OLT] = true
-	iscmp[OGT] = true
-	iscmp[OGE] = true
-	iscmp[OLE] = true
-	iscmp[OEQ] = true
-	iscmp[ONE] = true
-
-	maxintval[TINT8].SetString("0x7f")
-	minintval[TINT8].SetString("-0x80")
-	maxintval[TINT16].SetString("0x7fff")
-	minintval[TINT16].SetString("-0x8000")
-	maxintval[TINT32].SetString("0x7fffffff")
-	minintval[TINT32].SetString("-0x80000000")
-	maxintval[TINT64].SetString("0x7fffffffffffffff")
-	minintval[TINT64].SetString("-0x8000000000000000")
-
-	maxintval[TUINT8].SetString("0xff")
-	maxintval[TUINT16].SetString("0xffff")
-	maxintval[TUINT32].SetString("0xffffffff")
-	maxintval[TUINT64].SetString("0xffffffffffffffff")
-
-	// f is valid float if min < f < max.  (min and max are not themselves valid.)
-	maxfltval[TFLOAT32].SetString("33554431p103") // 2^24-1 p (127-23) + 1/2 ulp
-	minfltval[TFLOAT32].SetString("-33554431p103")
-	maxfltval[TFLOAT64].SetString("18014398509481983p970") // 2^53-1 p (1023-52) + 1/2 ulp
-	minfltval[TFLOAT64].SetString("-18014398509481983p970")
-
-	maxfltval[TCOMPLEX64] = maxfltval[TFLOAT32]
-	minfltval[TCOMPLEX64] = minfltval[TFLOAT32]
-	maxfltval[TCOMPLEX128] = maxfltval[TFLOAT64]
-	minfltval[TCOMPLEX128] = minfltval[TFLOAT64]
-
-	// for walk to use in error messages
-	types.Types[TFUNC] = functype(nil, nil, nil)
-
-	// types used in front end
-	// types.Types[TNIL] got set early in lexinit
-	types.Types[TIDEAL] = types.New(TIDEAL)
-
-	types.Types[TINTER] = types.New(TINTER)
-
-	// simple aliases
-	simtype[TMAP] = types.Tptr
-	simtype[TCHAN] = types.Tptr
-	simtype[TFUNC] = types.Tptr
-	simtype[TUNSAFEPTR] = types.Tptr
-
-	array_array = int(Rnd(0, int64(Widthptr)))
-	array_nel = int(Rnd(int64(array_array)+int64(Widthptr), int64(Widthptr)))
-	array_cap = int(Rnd(int64(array_nel)+int64(Widthptr), int64(Widthptr)))
-	sizeof_Array = int(Rnd(int64(array_cap)+int64(Widthptr), int64(Widthptr)))
-
-	// string is same as slice wo the cap
-	sizeof_String = int(Rnd(int64(array_nel)+int64(Widthptr), int64(Widthptr)))
-
-	dowidth(types.Types[TSTRING])
-	dowidth(types.Idealstring)
-
-	itable = types.NewPtr(types.Types[TUINT8])
+	psess.
+		okfor[OADD] = psess.okforadd[:]
+	psess.
+		okfor[OAND] = psess.okforand[:]
+	psess.
+		okfor[OANDAND] = psess.okforbool[:]
+	psess.
+		okfor[OANDNOT] = psess.okforand[:]
+	psess.
+		okfor[ODIV] = psess.okforarith[:]
+	psess.
+		okfor[OEQ] = psess.okforeq[:]
+	psess.
+		okfor[OGE] = psess.okforcmp[:]
+	psess.
+		okfor[OGT] = psess.okforcmp[:]
+	psess.
+		okfor[OLE] = psess.okforcmp[:]
+	psess.
+		okfor[OLT] = psess.okforcmp[:]
+	psess.
+		okfor[OMOD] = psess.okforand[:]
+	psess.
+		okfor[OMUL] = psess.okforarith[:]
+	psess.
+		okfor[ONE] = psess.okforeq[:]
+	psess.
+		okfor[OOR] = psess.okforand[:]
+	psess.
+		okfor[OOROR] = psess.okforbool[:]
+	psess.
+		okfor[OSUB] = psess.okforarith[:]
+	psess.
+		okfor[OXOR] = psess.okforand[:]
+	psess.
+		okfor[OLSH] = psess.okforand[:]
+	psess.
+		okfor[ORSH] = psess.okforand[:]
+	psess.
+		okfor[OCOM] = psess.okforand[:]
+	psess.
+		okfor[OMINUS] = psess.okforarith[:]
+	psess.
+		okfor[ONOT] = psess.okforbool[:]
+	psess.
+		okfor[OPLUS] = psess.okforarith[:]
+	psess.
+		okfor[OCAP] = psess.okforcap[:]
+	psess.
+		okfor[OLEN] = psess.okforlen[:]
+	psess.
+		iscmp[OLT] = true
+	psess.
+		iscmp[OGT] = true
+	psess.
+		iscmp[OGE] = true
+	psess.
+		iscmp[OLE] = true
+	psess.
+		iscmp[OEQ] = true
+	psess.
+		iscmp[ONE] = true
+	psess.
+		maxintval[TINT8].SetString(psess, "0x7f")
+	psess.
+		minintval[TINT8].SetString(psess, "-0x80")
+	psess.
+		maxintval[TINT16].SetString(psess, "0x7fff")
+	psess.
+		minintval[TINT16].SetString(psess, "-0x8000")
+	psess.
+		maxintval[TINT32].SetString(psess, "0x7fffffff")
+	psess.
+		minintval[TINT32].SetString(psess, "-0x80000000")
+	psess.
+		maxintval[TINT64].SetString(psess, "0x7fffffffffffffff")
+	psess.
+		minintval[TINT64].SetString(psess, "-0x8000000000000000")
+	psess.
+		maxintval[TUINT8].SetString(psess, "0xff")
+	psess.
+		maxintval[TUINT16].SetString(psess, "0xffff")
+	psess.
+		maxintval[TUINT32].SetString(psess, "0xffffffff")
+	psess.
+		maxintval[TUINT64].SetString(psess, "0xffffffffffffffff")
+	psess.
+		maxfltval[TFLOAT32].SetString(psess, "33554431p103")
+	psess.
+		minfltval[TFLOAT32].SetString(psess, "-33554431p103")
+	psess.
+		maxfltval[TFLOAT64].SetString(psess, "18014398509481983p970")
+	psess.
+		minfltval[TFLOAT64].SetString(psess, "-18014398509481983p970")
+	psess.
+		maxfltval[TCOMPLEX64] = psess.maxfltval[TFLOAT32]
+	psess.
+		minfltval[TCOMPLEX64] = psess.minfltval[TFLOAT32]
+	psess.
+		maxfltval[TCOMPLEX128] = psess.maxfltval[TFLOAT64]
+	psess.
+		minfltval[TCOMPLEX128] = psess.minfltval[TFLOAT64]
+	psess.types.
+		Types[TFUNC] = psess.functype(nil, nil, nil)
+	psess.types.
+		Types[TIDEAL] = types.New(TIDEAL)
+	psess.types.
+		Types[TINTER] = types.New(TINTER)
+	psess.
+		simtype[TMAP] = psess.types.Tptr
+	psess.
+		simtype[TCHAN] = psess.types.Tptr
+	psess.
+		simtype[TFUNC] = psess.types.Tptr
+	psess.
+		simtype[TUNSAFEPTR] = psess.types.Tptr
+	psess.
+		array_array = int(psess.Rnd(0, int64(psess.Widthptr)))
+	psess.
+		array_nel = int(psess.Rnd(int64(psess.array_array)+int64(psess.Widthptr), int64(psess.Widthptr)))
+	psess.
+		array_cap = int(psess.Rnd(int64(psess.array_nel)+int64(psess.Widthptr), int64(psess.Widthptr)))
+	psess.
+		sizeof_Array = int(psess.Rnd(int64(psess.array_cap)+int64(psess.Widthptr), int64(psess.Widthptr)))
+	psess.
+		sizeof_String = int(psess.Rnd(int64(psess.array_nel)+int64(psess.Widthptr), int64(psess.Widthptr)))
+	psess.
+		dowidth(psess.types.Types[TSTRING])
+	psess.
+		dowidth(psess.types.Idealstring)
+	psess.
+		itable = psess.types.NewPtr(psess.types.Types[TUINT8])
 }
 
-func makeErrorInterface() *types.Type {
+func (psess *PackageSession) makeErrorInterface() *types.Type {
 	field := types.NewField()
-	field.Type = types.Types[TSTRING]
-	f := functypefield(fakeRecvField(), nil, []*types.Field{field})
+	field.Type = psess.types.Types[TSTRING]
+	f := psess.functypefield(psess.fakeRecvField(), nil, []*types.Field{field})
 
 	field = types.NewField()
-	field.Sym = lookup("Error")
+	field.Sym = psess.lookup("Error")
 	field.Type = f
 
 	t := types.New(TINTER)
-	t.SetInterface([]*types.Field{field})
+	t.SetInterface(psess.types, []*types.Field{field})
 	return t
 }
 
-func lexinit1() {
-	// error type
-	s := builtinpkg.Lookup("error")
-	types.Errortype = makeErrorInterface()
-	types.Errortype.Sym = s
-	types.Errortype.Orig = makeErrorInterface()
-	s.Def = asTypesNode(typenod(types.Errortype))
+func (psess *PackageSession) lexinit1() {
 
-	// We create separate byte and rune types for better error messages
-	// rather than just creating type alias *types.Sym's for the uint8 and
-	// int32 types. Hence, (bytetype|runtype).Sym.isAlias() is false.
-	// TODO(gri) Should we get rid of this special case (at the cost
-	// of less informative error messages involving bytes and runes)?
-	// (Alternatively, we could introduce an OTALIAS node representing
-	// type aliases, albeit at the cost of having to deal with it everywhere).
+	s := psess.builtinpkg.Lookup(psess.types, "error")
+	psess.types.
+		Errortype = psess.makeErrorInterface()
+	psess.types.
+		Errortype.Sym = s
+	psess.types.
+		Errortype.Orig = psess.makeErrorInterface()
+	s.Def = asTypesNode(psess.typenod(psess.types.Errortype))
 
-	// byte alias
-	s = builtinpkg.Lookup("byte")
-	types.Bytetype = types.New(TUINT8)
-	types.Bytetype.Sym = s
-	s.Def = asTypesNode(typenod(types.Bytetype))
+	s = psess.builtinpkg.Lookup(psess.types, "byte")
+	psess.types.
+		Bytetype = types.New(TUINT8)
+	psess.types.
+		Bytetype.Sym = s
+	s.Def = asTypesNode(psess.typenod(psess.types.Bytetype))
 	asNode(s.Def).Name = new(Name)
 
-	// rune alias
-	s = builtinpkg.Lookup("rune")
-	types.Runetype = types.New(TINT32)
-	types.Runetype.Sym = s
-	s.Def = asTypesNode(typenod(types.Runetype))
+	s = psess.builtinpkg.Lookup(psess.types, "rune")
+	psess.types.
+		Runetype = types.New(TINT32)
+	psess.types.
+		Runetype.Sym = s
+	s.Def = asTypesNode(psess.typenod(psess.types.Runetype))
 	asNode(s.Def).Name = new(Name)
 
-	// backend-dependent builtin types (e.g. int).
-	for _, s := range typedefs {
-		s1 := builtinpkg.Lookup(s.name)
+	for _, s := range psess.typedefs {
+		s1 := psess.builtinpkg.Lookup(psess.types, s.name)
 
 		sameas := s.sameas32
-		if Widthptr == 8 {
+		if psess.Widthptr == 8 {
 			sameas = s.sameas64
 		}
-
-		simtype[s.etype] = sameas
-		minfltval[s.etype] = minfltval[sameas]
-		maxfltval[s.etype] = maxfltval[sameas]
-		minintval[s.etype] = minintval[sameas]
-		maxintval[s.etype] = maxintval[sameas]
+		psess.
+			simtype[s.etype] = sameas
+		psess.
+			minfltval[s.etype] = psess.minfltval[sameas]
+		psess.
+			maxfltval[s.etype] = psess.maxfltval[sameas]
+		psess.
+			minintval[s.etype] = psess.minintval[sameas]
+		psess.
+			maxintval[s.etype] = psess.maxintval[sameas]
 
 		t := types.New(s.etype)
 		t.Sym = s1
-		types.Types[s.etype] = t
-		s1.Def = asTypesNode(typenod(t))
+		psess.types.
+			Types[s.etype] = t
+		s1.Def = asTypesNode(psess.typenod(t))
 		asNode(s1.Def).Name = new(Name)
-		s1.Origpkg = builtinpkg
-
-		dowidth(t)
+		s1.Origpkg = psess.builtinpkg
+		psess.
+			dowidth(t)
 	}
 }
 
 // finishUniverse makes the universe block visible within the current package.
-func finishUniverse() {
-	// Operationally, this is similar to a dot import of builtinpkg, except
-	// that we silently skip symbols that are already declared in the
-	// package block rather than emitting a redeclared symbol error.
+func (psess *PackageSession) finishUniverse() {
 
-	for _, s := range builtinpkg.Syms {
+	for _, s := range psess.builtinpkg.Syms {
 		if s.Def == nil {
 			continue
 		}
-		s1 := lookup(s.Name)
+		s1 := psess.lookup(s.Name)
 		if s1.Def != nil {
 			continue
 		}
@@ -464,9 +498,12 @@ func finishUniverse() {
 		s1.Def = s.Def
 		s1.Block = s.Block
 	}
-
-	nodfp = newname(lookup(".fp"))
-	nodfp.Type = types.Types[TINT32]
-	nodfp.SetClass(PPARAM)
-	nodfp.Name.SetUsed(true)
+	psess.
+		nodfp = psess.newname(psess.lookup(".fp"))
+	psess.
+		nodfp.Type = psess.types.Types[TINT32]
+	psess.
+		nodfp.SetClass(PPARAM)
+	psess.
+		nodfp.Name.SetUsed(true)
 }

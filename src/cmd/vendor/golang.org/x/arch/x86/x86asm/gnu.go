@@ -1,7 +1,3 @@
-// Copyright 2014 The Go Authors.  All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
 package x86asm
 
 import (
@@ -12,23 +8,14 @@ import (
 // GNUSyntax returns the GNU assembler syntax for the instruction, as defined by GNU binutils.
 // This general form is often called ``AT&T syntax'' as a reference to AT&T System V Unix.
 func GNUSyntax(inst Inst, pc uint64, symname SymLookup) string {
-	// Rewrite instruction to mimic GNU peculiarities.
-	// Note that inst has been passed by value and contains
-	// no pointers, so any changes we make here are local
-	// and will not propagate back out to the caller.
 
 	if symname == nil {
 		symname = func(uint64) (string, uint64) { return "", 0 }
 	}
 
-	// Adjust opcode [sic].
 	switch inst.Op {
 	case FDIV, FDIVR, FSUB, FSUBR, FDIVP, FDIVRP, FSUBP, FSUBRP:
-		// DC E0, DC F0: libopcodes swaps FSUBR/FSUB and FDIVR/FDIV, at least
-		// if you believe the Intel manual is correct (the encoding is irregular as given;
-		// libopcodes uses the more regular expected encoding).
-		// TODO(rsc): Test to ensure Intel manuals are correct and report to libopcodes maintainers?
-		// NOTE: iant thinks this is deliberate, but we can't find the history.
+
 		_, reg1 := inst.Args[0].(Reg)
 		_, reg2 := inst.Args[1].(Reg)
 		if reg1 && reg2 && (inst.Opcode>>24 == 0xDC || inst.Opcode>>24 == 0xDE) {
@@ -53,12 +40,7 @@ func GNUSyntax(inst Inst, pc uint64, symname SymLookup) string {
 		}
 
 	case MOVNTSD:
-		// MOVNTSD is F2 0F 2B /r.
-		// MOVNTSS is F3 0F 2B /r (supposedly; not in manuals).
-		// Usually inner prefixes win for display,
-		// so that F3 F2 0F 2B 11 is REP MOVNTSD
-		// and F2 F3 0F 2B 11 is REPN MOVNTSS.
-		// Libopcodes always prefers MOVNTSS regardless of prefix order.
+
 		if countPrefix(&inst, 0xF3) > 0 {
 			found := false
 			for i := len(inst.Prefix) - 1; i >= 0; i-- {
@@ -76,7 +58,6 @@ func GNUSyntax(inst Inst, pc uint64, symname SymLookup) string {
 		}
 	}
 
-	// Add implicit arguments.
 	switch inst.Op {
 	case MONITOR:
 		inst.Args[0] = EDX
@@ -96,28 +77,14 @@ func GNUSyntax(inst Inst, pc uint64, symname SymLookup) string {
 		}
 	}
 
-	// Adjust which prefixes will be displayed.
-	// The rule is to display all the prefixes not implied by
-	// the usual instruction display, that is, all the prefixes
-	// except the ones with PrefixImplicit set.
-	// However, of course, there are exceptions to the rule.
 	switch inst.Op {
 	case CRC32:
-		// CRC32 has a mandatory F2 prefix.
-		// If there are multiple F2s and no F3s, the extra F2s do not print.
-		// (And Decode has already marked them implicit.)
-		// However, if there is an F3 anywhere, then the extra F2s do print.
-		// If there are multiple F2 prefixes *and* an (ignored) F3,
-		// then libopcodes prints the extra F2s as REPNs.
+
 		if countPrefix(&inst, 0xF2) > 1 {
 			unmarkImplicit(&inst, 0xF2)
 			markLastImplicit(&inst, 0xF2)
 		}
 
-		// An unused data size override should probably be shown,
-		// to distinguish DATA16 CRC32B from plain CRC32B,
-		// but libopcodes always treats the final override as implicit
-		// and the others as explicit.
 		unmarkImplicit(&inst, PrefixDataSize)
 		markLastImplicit(&inst, PrefixDataSize)
 
@@ -135,14 +102,7 @@ func GNUSyntax(inst Inst, pc uint64, symname SymLookup) string {
 		markLastImplicit(&inst, PrefixAddrSize)
 
 	case MOV:
-		// The 16-bit and 32-bit forms of MOV Sreg, dst and MOV src, Sreg
-		// cannot be distinguished when src or dst refers to memory, because
-		// Sreg is always a 16-bit value, even when we're doing a 32-bit
-		// instruction. Because the instruction tables distinguished these two,
-		// any operand size prefix has been marked as used (to decide which
-		// branch to take). Unmark it, so that it will show up in disassembly,
-		// so that the reader can tell the size of memory operand.
-		// up with the same arguments
+
 		dst, _ := inst.Args[0].(Reg)
 		src, _ := inst.Args[1].(Reg)
 		if ES <= src && src <= GS && isMem(inst.Args[0]) || ES <= dst && dst <= GS && isMem(inst.Args[1]) {
@@ -172,17 +132,14 @@ func GNUSyntax(inst Inst, pc uint64, symname SymLookup) string {
 			for i, p := range inst.Prefix {
 				switch p & 0xFFF {
 				case PrefixPN, PrefixPT:
-					inst.Prefix[i] &= 0xF0FF // cut interpretation bits, producing original segment prefix
+					inst.Prefix[i] &= 0xF0FF
 				}
 			}
 		}
 	}
 
-	// XACQUIRE/XRELEASE adjustment.
 	if inst.Op == MOV {
-		// MOV into memory is a candidate for turning REP into XRELEASE.
-		// However, if the REP is followed by a REPN, that REPN blocks the
-		// conversion.
+
 		haveREPN := false
 		for i := len(inst.Prefix) - 1; i >= 0; i-- {
 			switch inst.Prefix[i] &^ PrefixIgnored {
@@ -196,7 +153,6 @@ func GNUSyntax(inst Inst, pc uint64, symname SymLookup) string {
 		}
 	}
 
-	// We only format the final F2/F3 as XRELEASE/XACQUIRE.
 	haveXA := false
 	haveXR := false
 	for i := len(inst.Prefix) - 1; i >= 0; i-- {
@@ -217,19 +173,11 @@ func GNUSyntax(inst Inst, pc uint64, symname SymLookup) string {
 		}
 	}
 
-	// Determine opcode.
 	op := strings.ToLower(inst.Op.String())
 	if alt := gnuOp[inst.Op]; alt != "" {
 		op = alt
 	}
 
-	// Determine opcode suffix.
-	// Libopcodes omits the suffix if the width of the operation
-	// can be inferred from a register arguments. For example,
-	// add $1, %ebx has no suffix because you can tell from the
-	// 32-bit register destination that it is a 32-bit add,
-	// but in addl $1, (%ebx), the destination is memory, so the
-	// size is not evident without the l suffix.
 	needSuffix := true
 SuffixLoop:
 	for i, a := range inst.Args {
@@ -244,25 +192,22 @@ SuffixLoop:
 
 			case SHL, SHR, RCL, RCR, ROL, ROR, SAR:
 				if i == 1 {
-					// shift count does not tell us operand size
+
 					continue
 				}
 
 			case CRC32:
-				// The source argument does tell us operand size,
-				// but libopcodes still always puts a suffix on crc32.
+
 				continue
 
 			case PUSH, POP:
-				// Even though segment registers are 16-bit, push and pop
-				// can save/restore them from 32-bit slots, so they
-				// do not imply operand size.
+
 				if ES <= a && a <= GS {
 					continue
 				}
 
 			case CVTSI2SD, CVTSI2SS:
-				// The integer register argument takes priority.
+
 				if X0 <= a && a <= X15 {
 					continue
 				}
@@ -280,7 +225,6 @@ SuffixLoop:
 		case CMPXCHG8B, FLDCW, FNSTCW, FNSTSW, LDMXCSR, LLDT, LMSW, LTR, PCLMULQDQ,
 			SETA, SETAE, SETB, SETBE, SETE, SETG, SETGE, SETL, SETLE, SETNE, SETNO, SETNP, SETNS, SETO, SETP, SETS,
 			SLDT, SMSW, STMXCSR, STR, VERR, VERW:
-			// For various reasons, libopcodes emits no suffix for these instructions.
 
 		case CRC32:
 			op += byteSizeSuffix(argBytes(&inst, inst.Args[1]))
@@ -289,18 +233,17 @@ SuffixLoop:
 			op += byteSizeSuffix(inst.DataSize / 8)
 
 		case MOVZX, MOVSX:
-			// Integer size conversions get two suffixes.
+
 			op = op[:4] + byteSizeSuffix(argBytes(&inst, inst.Args[1])) + byteSizeSuffix(argBytes(&inst, inst.Args[0]))
 
 		case LOOP, LOOPE, LOOPNE:
-			// Add w suffix to indicate use of CX register instead of ECX.
+
 			if inst.AddrSize == 16 {
 				op += "w"
 			}
 
 		case CALL, ENTER, JMP, LCALL, LEAVE, LJMP, LRET, RET, SYSRET, XBEGIN:
-			// Add w suffix to indicate use of 16-bit target.
-			// Exclude JMP rel8.
+
 			if inst.Opcode>>24 == 0xEB {
 				break
 			}
@@ -312,7 +255,7 @@ SuffixLoop:
 			}
 
 		case FRSTOR, FNSAVE, FNSTENV, FLDENV:
-			// Add s suffix to indicate shortened FPU state (I guess).
+
 			if inst.DataSize == 16 {
 				op += "s"
 			}
@@ -328,7 +271,7 @@ SuffixLoop:
 
 		default:
 			if isFloat(inst.Op) {
-				// I can't explain any of this, but it's what libopcodes does.
+
 				switch inst.MemBytes {
 				default:
 					if (inst.Op == FLD || inst.Op == FSTP) && isMem(inst.Args[0]) {
@@ -354,7 +297,6 @@ SuffixLoop:
 		}
 	}
 
-	// Adjust special case opcodes.
 	switch inst.Op {
 	case 0:
 		if inst.Prefix[0] != 0 {
@@ -383,7 +325,7 @@ SuffixLoop:
 
 	case XLATB:
 		if markLastImplicit(&inst, PrefixAddrSize) {
-			op = "xlat" // not xlatb
+			op = "xlat"
 		}
 	}
 
@@ -399,7 +341,7 @@ SuffixLoop:
 		switch inst.Op {
 		case MOVSB, MOVSW, MOVSD, MOVSQ, OUTSB, OUTSW, OUTSD:
 			if i == 0 {
-				usedPrefixes = true // disable use of prefixes for first argument
+				usedPrefixes = true
 			} else {
 				usedPrefixes = false
 			}
@@ -410,13 +352,11 @@ SuffixLoop:
 		args = append(args, gnuArg(&inst, pc, symname, a, &usedPrefixes))
 	}
 
-	// The default is to print the arguments in reverse Intel order.
-	// A few instructions inhibit this behavior.
 	switch inst.Op {
 	case BOUND, LCALL, ENTER, LJMP:
-		// no reverse
+
 	default:
-		// reverse args
+
 		for i, j := 0, len(args)-1; i < j; i, j = i+1, j-1 {
 			args[i], args[j] = args[j], args[i]
 		}
@@ -463,10 +403,7 @@ SuffixLoop:
 			continue
 
 		case PrefixAddrSize, PrefixAddr16, PrefixAddr32:
-			// For unknown reasons, if the addr16 prefix is repeated,
-			// libopcodes displays all but the last as addr32, even though
-			// the addressing form used in a memory reference is clearly
-			// still 16-bit.
+
 			n := 32
 			if inst.Mode == 32 {
 				n = 16
@@ -480,8 +417,7 @@ SuffixLoop:
 
 		case PrefixData16, PrefixData32:
 			if implicitData && countPrefix(&inst, PrefixDataSize) > 1 {
-				// Similar to the addr32 logic above, but it only kicks in
-				// when something used the data size prefix (one is implicit).
+
 				n := 16
 				if inst.Mode == 16 {
 					n = 32
@@ -501,11 +437,10 @@ SuffixLoop:
 		}
 	}
 
-	// Finally! Put it all together.
 	text := prefix + op
 	if args != nil {
 		text += " "
-		// Indirect call/jmp gets a star to distinguish from direct jump address.
+
 		if (inst.Op == CALL || inst.Op == JMP || inst.Op == LJMP || inst.Op == LCALL) && (isMem(inst.Args[0]) || isReg(inst.Args[0])) {
 			text += "*"
 		}
@@ -530,7 +465,7 @@ func gnuArg(inst *Inst, pc uint64, symname SymLookup, x Arg, usedPrefixes *bool)
 			}
 
 		case IN, INSB, INSW, INSD, OUT, OUTSB, OUTSW, OUTSD:
-			// DX is the port, but libopcodes prints it as if it were a memory reference.
+
 			if x == DX {
 				return "(%dx)"
 			}
@@ -564,7 +499,7 @@ func gnuArg(inst *Inst, pc uint64, symname SymLookup, x Arg, usedPrefixes *bool)
 		}
 		switch inst.Op {
 		case INSB, INSW, INSD, STOSB, STOSW, STOSD, STOSQ, SCASB, SCASW, SCASD, SCASQ:
-			// These do not accept segment prefixes, at least in the GNU rendering.
+
 		default:
 			if *usedPrefixes {
 				break
@@ -650,7 +585,7 @@ func gnuArg(inst *Inst, pc uint64, symname SymLookup, x Arg, usedPrefixes *bool)
 			}
 		}
 		if AX <= x.Base && x.Base <= DI {
-			// 16-bit addressing - no scale
+
 			return fmt.Sprintf("%s%s(%s,%s)", seg, disp, base, index)
 		}
 		return fmt.Sprintf("%s%s(%s,%s,%d)", seg, disp, base, index, x.Scale)

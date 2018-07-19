@@ -1,17 +1,11 @@
-// Copyright 2013 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
-// Writing of Go object files.
-
 package obj
 
 import (
 	"bufio"
-	"cmd/internal/dwarf"
-	"cmd/internal/objabi"
-	"cmd/internal/sys"
 	"fmt"
+	"github.com/dave/golib/src/cmd/internal/dwarf"
+	"github.com/dave/golib/src/cmd/internal/objabi"
+	"github.com/dave/golib/src/cmd/internal/sys"
 	"log"
 	"path/filepath"
 	"sort"
@@ -86,37 +80,31 @@ func newObjWriter(ctxt *Link, b *bufio.Writer) *objWriter {
 	}
 }
 
-func WriteObjFile(ctxt *Link, b *bufio.Writer) {
+func (psess *PackageSession) WriteObjFile(ctxt *Link, b *bufio.Writer) {
 	w := newObjWriter(ctxt, b)
 
-	// Magic header
 	w.wr.WriteString("\x00\x00go19ld")
 
-	// Version
 	w.wr.WriteByte(1)
 
-	// Autolib
 	for _, pkg := range ctxt.Imports {
 		w.writeString(pkg)
 	}
 	w.writeString("")
 
-	// Symbol references
 	for _, s := range ctxt.Text {
-		w.writeRefs(s)
+		w.writeRefs(psess, s)
 		w.addLengths(s)
 	}
 	for _, s := range ctxt.Data {
-		w.writeRefs(s)
+		w.writeRefs(psess, s)
 		w.addLengths(s)
 	}
-	// End symbol references
+
 	w.wr.WriteByte(0xff)
 
-	// Lengths
 	w.writeLengths()
 
-	// Data block
 	for _, s := range ctxt.Text {
 		w.wr.Write(s.P)
 		pc := &s.Func.Pcln
@@ -138,15 +126,13 @@ func WriteObjFile(ctxt *Link, b *bufio.Writer) {
 		w.wr.Write(s.P)
 	}
 
-	// Symbols
 	for _, s := range ctxt.Text {
-		w.writeSym(s)
+		w.writeSym(psess, s)
 	}
 	for _, s := range ctxt.Data {
-		w.writeSym(s)
+		w.writeSym(psess, s)
 	}
 
-	// Magic footer
 	w.wr.WriteString("\xff\xffgo19ld")
 }
 
@@ -174,14 +160,14 @@ func (w *objWriter) writeRef(s *LSym, isPath bool) {
 	} else {
 		w.writeString(s.Name)
 	}
-	// Write "version".
+
 	w.writeBool(s.Static())
 	w.nRefs++
 	s.RefIdx = w.nRefs
 	m[s.Name] = w.nRefs
 }
 
-func (w *objWriter) writeRefs(s *LSym) {
+func (w *objWriter) writeRefs(psess *PackageSession, s *LSym) {
 	w.writeRef(s, false)
 	w.writeRef(s.Gotype, false)
 	for _, r := range s.R {
@@ -203,7 +189,7 @@ func (w *objWriter) writeRefs(s *LSym) {
 		}
 		for _, call := range pc.InlTree.nodes {
 			w.writeRef(call.Func, false)
-			f, _ := linkgetlineFromPos(w.ctxt, call.Pos)
+			f, _ := psess.linkgetlineFromPos(w.ctxt, call.Pos)
 			fsym := w.ctxt.Lookup(f)
 			w.writeRef(fsym, true)
 		}
@@ -263,7 +249,7 @@ func (w *objWriter) writeSymDebug(s *LSym) {
 		fmt.Fprintf(ctxt.Bso, "\n")
 	}
 
-	sort.Sort(relocByOff(s.R)) // generate stable output
+	sort.Sort(relocByOff(s.R))
 	for _, r := range s.R {
 		name := ""
 		if r.Sym != nil {
@@ -279,7 +265,7 @@ func (w *objWriter) writeSymDebug(s *LSym) {
 	}
 }
 
-func (w *objWriter) writeSym(s *LSym) {
+func (w *objWriter) writeSym(psess *PackageSession, s *LSym) {
 	ctxt := w.ctxt
 	if ctxt.Debugasm {
 		w.writeSymDebug(s)
@@ -375,7 +361,7 @@ func (w *objWriter) writeSym(s *LSym) {
 	w.writeInt(int64(len(pc.InlTree.nodes)))
 	for _, call := range pc.InlTree.nodes {
 		w.writeInt(int64(call.Parent))
-		f, l := linkgetlineFromPos(w.ctxt, call.Pos)
+		f, l := psess.linkgetlineFromPos(w.ctxt, call.Pos)
 		fsym := ctxt.Lookup(f)
 		w.writeRefIndex(fsym)
 		w.writeInt(int64(l))
@@ -526,10 +512,10 @@ func (s *LSym) Len() int64 {
 // fileSymbol returns a symbol corresponding to the source file of the
 // first instruction (prog) of the specified function. This will
 // presumably be the file in which the function is defined.
-func (ctxt *Link) fileSymbol(fn *LSym) *LSym {
+func (ctxt *Link) fileSymbol(psess *PackageSession, fn *LSym) *LSym {
 	p := fn.Func.Text
 	if p != nil {
-		f, _ := linkgetlineFromPos(ctxt, p.Pos)
+		f, _ := psess.linkgetlineFromPos(ctxt, p.Pos)
 		fsym := ctxt.Lookup(f)
 		return fsym
 	}
@@ -539,7 +525,7 @@ func (ctxt *Link) fileSymbol(fn *LSym) *LSym {
 // populateDWARF fills in the DWARF Debugging Information Entries for
 // TEXT symbol 's'. The various DWARF symbols must already have been
 // initialized in InitTextSym.
-func (ctxt *Link) populateDWARF(curfn interface{}, s *LSym, myimportpath string) {
+func (ctxt *Link) populateDWARF(psess *PackageSession, curfn interface{}, s *LSym, myimportpath string) {
 	info, loc, ranges, absfunc, _ := ctxt.dwarfSym(s)
 	if info.Size != 0 {
 		ctxt.Diag("makeFuncDebugEntry double process %v", s)
@@ -552,7 +538,7 @@ func (ctxt *Link) populateDWARF(curfn interface{}, s *LSym, myimportpath string)
 	}
 	var err error
 	dwctxt := dwCtxt{ctxt}
-	filesym := ctxt.fileSymbol(s)
+	filesym := ctxt.fileSymbol(psess, s)
 	fnstate := &dwarf.FnState{
 		Name:       s.Name,
 		Importpath: myimportpath,
@@ -568,13 +554,13 @@ func (ctxt *Link) populateDWARF(curfn interface{}, s *LSym, myimportpath string)
 		InlCalls:   inlcalls,
 	}
 	if absfunc != nil {
-		err = dwarf.PutAbstractFunc(dwctxt, fnstate)
+		err = psess.dwarf.PutAbstractFunc(dwctxt, fnstate)
 		if err != nil {
 			ctxt.Diag("emitting DWARF for %s failed: %v", s.Name, err)
 		}
-		err = dwarf.PutConcreteFunc(dwctxt, fnstate)
+		err = psess.dwarf.PutConcreteFunc(dwctxt, fnstate)
 	} else {
-		err = dwarf.PutDefaultFunc(dwctxt, fnstate)
+		err = psess.dwarf.PutDefaultFunc(dwctxt, fnstate)
 	}
 	if err != nil {
 		ctxt.Diag("emitting DWARF for %s failed: %v", s.Name, err)
@@ -583,7 +569,7 @@ func (ctxt *Link) populateDWARF(curfn interface{}, s *LSym, myimportpath string)
 
 // DwarfIntConst creates a link symbol for an integer constant with the
 // given name, type and value.
-func (ctxt *Link) DwarfIntConst(myimportpath, name, typename string, val int64) {
+func (ctxt *Link) DwarfIntConst(psess *PackageSession, myimportpath, name, typename string, val int64) {
 	if myimportpath == "" {
 		return
 	}
@@ -591,10 +577,11 @@ func (ctxt *Link) DwarfIntConst(myimportpath, name, typename string, val int64) 
 		s.Type = objabi.SDWARFINFO
 		ctxt.Data = append(ctxt.Data, s)
 	})
-	dwarf.PutIntConst(dwCtxt{ctxt}, s, ctxt.Lookup(dwarf.InfoPrefix+typename), myimportpath+"."+name, val)
+	psess.dwarf.
+		PutIntConst(dwCtxt{ctxt}, s, ctxt.Lookup(dwarf.InfoPrefix+typename), myimportpath+"."+name, val)
 }
 
-func (ctxt *Link) DwarfAbstractFunc(curfn interface{}, s *LSym, myimportpath string) {
+func (ctxt *Link) DwarfAbstractFunc(psess *PackageSession, curfn interface{}, s *LSym, myimportpath string) {
 	absfn := ctxt.DwFixups.AbsFuncDwarfSym(s)
 	if absfn.Size != 0 {
 		ctxt.Diag("internal error: DwarfAbstractFunc double process %v", s)
@@ -604,7 +591,7 @@ func (ctxt *Link) DwarfAbstractFunc(curfn interface{}, s *LSym, myimportpath str
 	}
 	scopes, _ := ctxt.DebugInfo(s, curfn)
 	dwctxt := dwCtxt{ctxt}
-	filesym := ctxt.fileSymbol(s)
+	filesym := ctxt.fileSymbol(psess, s)
 	fnstate := dwarf.FnState{
 		Name:       s.Name,
 		Importpath: myimportpath,
@@ -614,7 +601,7 @@ func (ctxt *Link) DwarfAbstractFunc(curfn interface{}, s *LSym, myimportpath str
 		External:   !s.Static(),
 		Scopes:     scopes,
 	}
-	if err := dwarf.PutAbstractFunc(dwctxt, &fnstate); err != nil {
+	if err := psess.dwarf.PutAbstractFunc(dwctxt, &fnstate); err != nil {
 		ctxt.Diag("emitting DWARF for %s failed: %v", s.Name, err)
 	}
 }
@@ -708,9 +695,6 @@ func (ft *DwarfFixupTable) SetPrecursorFunc(s *LSym, fn interface{}) {
 		ft.ctxt.Diag("internal error: DwarfFixupTable.SetPrecursorFunc double call on %v", s)
 	}
 
-	// initialize abstract function symbol now. This is done here so
-	// as to avoid data races later on during the parallel portion of
-	// the back end.
 	absfn := ft.ctxt.LookupDerived(s, dwarf.InfoPrefix+s.Name+dwarf.AbstractFuncSuffix)
 	absfn.Set(AttrDuplicateOK, true)
 	absfn.Type = objabi.SDWARFINFO
@@ -722,11 +706,10 @@ func (ft *DwarfFixupTable) SetPrecursorFunc(s *LSym, fn interface{}) {
 // Make a note of a child DIE reference: relocation 'ridx' within symbol 's'
 // is targeting child 'c' of DIE with symbol 'tgt'.
 func (ft *DwarfFixupTable) ReferenceChildDIE(s *LSym, ridx int, tgt *LSym, dclidx int, inlIndex int) {
-	// Protect against concurrent access if multiple backend workers
+
 	ft.mu.Lock()
 	defer ft.mu.Unlock()
 
-	// Create entry for symbol if not already present.
 	idx, found := ft.symtab[tgt]
 	if !found {
 		ft.svec = append(ft.svec, symFixups{inlIndex: int32(inlIndex)})
@@ -734,8 +717,6 @@ func (ft *DwarfFixupTable) ReferenceChildDIE(s *LSym, ridx int, tgt *LSym, dclid
 		ft.symtab[tgt] = idx
 	}
 
-	// Do we have child DIE offsets available? If so, then apply them,
-	// otherwise create a fixup record.
 	sf := &ft.svec[idx]
 	if len(sf.doffsets) > 0 {
 		found := false
@@ -761,13 +742,12 @@ func (ft *DwarfFixupTable) ReferenceChildDIE(s *LSym, ridx int, tgt *LSym, dclid
 // consumed later in on DwarfFixupTable.Finalize, which applies any
 // outstanding fixups.
 func (ft *DwarfFixupTable) RegisterChildDIEOffsets(s *LSym, vars []*dwarf.Var, coffsets []int32) {
-	// Length of these two slices should agree
+
 	if len(vars) != len(coffsets) {
 		ft.ctxt.Diag("internal error: RegisterChildDIEOffsets vars/offsets length mismatch")
 		return
 	}
 
-	// Generate the slice of declOffset's based in vars/coffsets
 	doffsets := make([]declOffset, len(coffsets))
 	for i := range coffsets {
 		doffsets[i].dclIdx = vars[i].ChildIndex
@@ -777,7 +757,6 @@ func (ft *DwarfFixupTable) RegisterChildDIEOffsets(s *LSym, vars []*dwarf.Var, c
 	ft.mu.Lock()
 	defer ft.mu.Unlock()
 
-	// Store offsets for this symbol.
 	idx, found := ft.symtab[s]
 	if !found {
 		sf := symFixups{inlIndex: -1, defseen: true, doffsets: doffsets}
@@ -810,7 +789,7 @@ func (ft *DwarfFixupTable) processFixups(slot int, s *LSym) {
 // return the LSym corresponding to the 'abstract subprogram' DWARF
 // info entry for a function.
 func (ft *DwarfFixupTable) AbsFuncDwarfSym(fnsym *LSym) *LSym {
-	// Protect against concurrent access if multiple backend workers
+
 	ft.mu.Lock()
 	defer ft.mu.Unlock()
 
@@ -832,8 +811,6 @@ func (ft *DwarfFixupTable) Finalize(myimportpath string, trace bool) {
 		ft.ctxt.Logf("DwarfFixupTable.Finalize invoked for %s\n", myimportpath)
 	}
 
-	// Collect up the keys from the precursor map, then sort the
-	// resulting list (don't want to rely on map ordering here).
 	fns := make([]*LSym, len(ft.precursor))
 	idx := 0
 	for fn := range ft.precursor {
@@ -842,12 +819,10 @@ func (ft *DwarfFixupTable) Finalize(myimportpath string, trace bool) {
 	}
 	sort.Sort(bySymName(fns))
 
-	// Should not be called during parallel portion of compilation.
 	if ft.ctxt.InParallel {
 		ft.ctxt.Diag("internal error: DwarfFixupTable.Finalize call during parallel backend")
 	}
 
-	// Generate any missing abstract functions.
 	for _, s := range fns {
 		absfn := ft.AbsFuncDwarfSym(s)
 		slot, found := ft.symtab[absfn]
@@ -856,7 +831,6 @@ func (ft *DwarfFixupTable) Finalize(myimportpath string, trace bool) {
 		}
 	}
 
-	// Apply fixups.
 	for _, s := range fns {
 		absfn := ft.AbsFuncDwarfSym(s)
 		slot, found := ft.symtab[absfn]

@@ -1,7 +1,3 @@
-// Copyright 2014 The Go Authors.  All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
 package armasm
 
 import (
@@ -51,12 +47,12 @@ func gnuArg(inst *Inst, argIndex int, arg Arg) string {
 	switch inst.Op &^ 15 {
 	case LDRD_EQ, LDREXD_EQ, STRD_EQ:
 		if argIndex == 1 {
-			// second argument in consecutive pair not printed
+
 			return ""
 		}
 	case STREXD_EQ:
 		if argIndex == 2 {
-			// second argument in consecutive pair not printed
+
 			return ""
 		}
 	}
@@ -84,7 +80,7 @@ func gnuArg(inst *Inst, argIndex int, arg Arg) string {
 			}
 			X += gnuArg(inst, -1, arg.Index)
 			if arg.Shift == ShiftLeft && arg.Count == 0 {
-				// nothing
+
 			} else if arg.Shift == RotateRightExt {
 				X += ", rrx"
 			} else {

@@ -1,7 +1,3 @@
-// Copyright 2015 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
 package ssa
 
 import "container/heap"
@@ -26,8 +22,7 @@ func (h ValHeap) Len() int      { return len(h.a) }
 func (h ValHeap) Swap(i, j int) { a := h.a; a[i], a[j] = a[j], a[i] }
 
 func (h *ValHeap) Push(x interface{}) {
-	// Push and Pop use pointer receivers because they modify the slice's length,
-	// not just its contents.
+
 	v := x.(*Value)
 	h.a = append(h.a, v)
 }
@@ -44,14 +39,14 @@ func (h ValHeap) Less(i, j int) bool {
 	sx := h.score[x.ID]
 	sy := h.score[y.ID]
 	if c := sx - sy; c != 0 {
-		return c > 0 // higher score comes later.
+		return c > 0
 	}
-	if x.Pos != y.Pos { // Favor in-order line stepping
+	if x.Pos != y.Pos {
 		return x.Pos.After(y.Pos)
 	}
 	if x.Op != OpPhi {
 		if c := len(x.Args) - len(y.Args); c != 0 {
-			return c < 0 // smaller args comes later
+			return c < 0
 		}
 	}
 	return x.ID > y.ID
@@ -62,29 +57,22 @@ func (h ValHeap) Less(i, j int) bool {
 // will appear in the assembly output. For now it generates a
 // reasonable valid schedule using a priority queue. TODO(khr):
 // schedule smarter.
-func schedule(f *Func) {
-	// For each value, the number of times it is used in the block
-	// by values that have not been scheduled yet.
+func (psess *PackageSession) schedule(f *Func) {
+
 	uses := make([]int32, f.NumValues())
 
-	// reusable priority queue
 	priq := new(ValHeap)
 
-	// "priority" for a value
 	score := make([]int8, f.NumValues())
 
-	// scheduling order. We queue values in this list in reverse order.
-	// A constant bound allows this to be stack-allocated. 64 is
-	// enough to cover almost every schedule call.
 	order := make([]*Value, 0, 64)
 
-	// maps mem values to the next live memory value
 	nextMem := make([]*Value, f.NumValues())
-	// additional pretend arguments for each Value. Used to enforce load/store ordering.
+
 	additionalArgs := make([][]*Value, f.NumValues())
 
 	for _, b := range f.Blocks {
-		// Compute score. Larger numbers are scheduled closer to the end of the block.
+
 		for _, v := range b.Values {
 			switch {
 			case v.Op == OpAMD64LoweredGetClosurePtr || v.Op == OpPPC64LoweredGetClosurePtr ||
@@ -92,10 +80,7 @@ func schedule(f *Func) {
 				v.Op == Op386LoweredGetClosurePtr || v.Op == OpMIPS64LoweredGetClosurePtr ||
 				v.Op == OpS390XLoweredGetClosurePtr || v.Op == OpMIPSLoweredGetClosurePtr ||
 				v.Op == OpWasmLoweredGetClosurePtr:
-				// We also score GetLoweredClosurePtr as early as possible to ensure that the
-				// context register is not stomped. GetLoweredClosurePtr should only appear
-				// in the entry block where there are no phi functions, so there is no
-				// conflict or ambiguity here.
+
 				if b != f.Entry {
 					f.Fatalf("LoweredGetClosurePtr appeared outside of entry block, b=%s", b.String())
 				}
@@ -105,30 +90,22 @@ func schedule(f *Func) {
 				v.Op == Op386LoweredNilCheck || v.Op == OpMIPS64LoweredNilCheck ||
 				v.Op == OpS390XLoweredNilCheck || v.Op == OpMIPSLoweredNilCheck ||
 				v.Op == OpWasmLoweredNilCheck:
-				// Nil checks must come before loads from the same address.
+
 				score[v.ID] = ScoreNilCheck
 			case v.Op == OpPhi:
-				// We want all the phis first.
+
 				score[v.ID] = ScorePhi
 			case v.Op == OpVarDef:
-				// We want all the vardefs next.
+
 				score[v.ID] = ScoreVarDef
-			case v.Type.IsMemory():
-				// Schedule stores as early as possible. This tends to
-				// reduce register pressure. It also helps make sure
-				// VARDEF ops are scheduled before the corresponding LEA.
+			case v.Type.IsMemory(psess.types):
+
 				score[v.ID] = ScoreMemory
 			case v.Op == OpSelect0 || v.Op == OpSelect1:
-				// Schedule the pseudo-op of reading part of a tuple
-				// immediately after the tuple-generating op, since
-				// this value is already live. This also removes its
-				// false dependency on the other part of the tuple.
-				// Also ensures tuple is never spilled.
+
 				score[v.ID] = ScoreReadTuple
-			case v.Type.IsFlags() || v.Type.IsTuple():
-				// Schedule flag register generation as late as possible.
-				// This makes sure that we only have one live flags
-				// value at a time.
+			case v.Type.IsFlags(psess.types) || v.Type.IsTuple():
+
 				score[v.ID] = ScoreFlags
 			default:
 				score[v.ID] = ScoreDefault
@@ -137,34 +114,29 @@ func schedule(f *Func) {
 	}
 
 	for _, b := range f.Blocks {
-		// Find store chain for block.
-		// Store chains for different blocks overwrite each other, so
-		// the calculated store chain is good only for this block.
+
 		for _, v := range b.Values {
-			if v.Op != OpPhi && v.Type.IsMemory() {
+			if v.Op != OpPhi && v.Type.IsMemory(psess.types) {
 				for _, w := range v.Args {
-					if w.Type.IsMemory() {
+					if w.Type.IsMemory(psess.types) {
 						nextMem[w.ID] = v
 					}
 				}
 			}
 		}
 
-		// Compute uses.
 		for _, v := range b.Values {
 			if v.Op == OpPhi {
-				// If a value is used by a phi, it does not induce
-				// a scheduling edge because that use is from the
-				// previous iteration.
+
 				continue
 			}
 			for _, w := range v.Args {
 				if w.Block == b {
 					uses[w.ID]++
 				}
-				// Any load must come before the following store.
-				if !v.Type.IsMemory() && w.Type.IsMemory() {
-					// v is a load.
+
+				if !v.Type.IsMemory(psess.types) && w.Type.IsMemory(psess.types) {
+
 					s := nextMem[w.ID]
 					if s == nil || s.Block != b {
 						continue
@@ -176,15 +148,9 @@ func schedule(f *Func) {
 		}
 
 		if b.Control != nil && b.Control.Op != OpPhi {
-			// Force the control value to be scheduled at the end,
-			// unless it is a phi value (which must be first).
+
 			score[b.Control.ID] = ScoreControl
 
-			// Schedule values dependent on the control value at the end.
-			// This reduces the number of register spills. We don't find
-			// all values that depend on the control, just values with a
-			// direct dependency. This is cheaper and in testing there
-			// was no difference in the number of spills.
 			for _, v := range b.Values {
 				if v.Op != OpPhi {
 					for _, a := range v.Args {
@@ -196,24 +162,18 @@ func schedule(f *Func) {
 			}
 		}
 
-		// To put things into a priority queue
-		// The values that should come last are least.
 		priq.score = score
 		priq.a = priq.a[:0]
 
-		// Initialize priority queue with schedulable values.
 		for _, v := range b.Values {
 			if uses[v.ID] == 0 {
 				heap.Push(priq, v)
 			}
 		}
 
-		// Schedule highest priority value, update use counts, repeat.
 		order = order[:0]
 		tuples := make(map[ID][]*Value)
 		for {
-			// Find highest priority schedulable value.
-			// Note that schedule is assembled backwards.
 
 			if priq.Len() == 0 {
 				break
@@ -221,9 +181,6 @@ func schedule(f *Func) {
 
 			v := heap.Pop(priq).(*Value)
 
-			// Add it to the schedule.
-			// Do not emit tuple-reading ops until we're ready to emit the tuple-generating op.
-			//TODO: maybe remove ReadTuple score above, if it does not help on performance
 			switch {
 			case v.Op == OpSelect0:
 				if tuples[v.Args[0].ID] == nil {
@@ -248,21 +205,20 @@ func schedule(f *Func) {
 				order = append(order, v)
 			}
 
-			// Update use counts of arguments.
 			for _, w := range v.Args {
 				if w.Block != b {
 					continue
 				}
 				uses[w.ID]--
 				if uses[w.ID] == 0 {
-					// All uses scheduled, w is now schedulable.
+
 					heap.Push(priq, w)
 				}
 			}
 			for _, w := range additionalArgs[v.ID] {
 				uses[w.ID]--
 				if uses[w.ID] == 0 {
-					// All uses scheduled, w is now schedulable.
+
 					heap.Push(priq, w)
 				}
 			}
@@ -297,35 +253,30 @@ func schedule(f *Func) {
 // Auxiliary data structures are passed in as arguments, so
 // that they can be allocated in the caller and be reused.
 // This function takes care of reset them.
-func storeOrder(values []*Value, sset *sparseSet, storeNumber []int32) []*Value {
+func (psess *PackageSession) storeOrder(values []*Value, sset *sparseSet, storeNumber []int32) []*Value {
 	if len(values) == 0 {
 		return values
 	}
 
 	f := values[0].Block.Func
 
-	// find all stores
-
-	// Members of values that are store values.
-	// A constant bound allows this to be stack-allocated. 64 is
-	// enough to cover almost every storeOrder call.
 	stores := make([]*Value, 0, 64)
 	hasNilCheck := false
-	sset.clear() // sset is the set of stores that are used in other values
+	sset.clear()
 	for _, v := range values {
-		if v.Type.IsMemory() {
+		if v.Type.IsMemory(psess.types) {
 			stores = append(stores, v)
 			if v.Op == OpInitMem || v.Op == OpPhi {
 				continue
 			}
-			sset.add(v.MemoryArg().ID) // record that v's memory arg is used
+			sset.add(v.MemoryArg(psess).ID)
 		}
 		if v.Op == OpNilCheck {
 			hasNilCheck = true
 		}
 	}
 	if len(stores) == 0 || !hasNilCheck && f.pass.name == "nilcheckelim" {
-		// there is no store, the order does not matter
+
 		return values
 	}
 
@@ -340,17 +291,8 @@ func storeOrder(values []*Value, sset *sparseSet, storeNumber []int32) []*Value 
 		}
 	}
 
-	// We assign a store number to each value. Store number is the
-	// index of the latest store that this value transitively depends.
-	// The i-th store in the current block gets store number 3*i. A nil
-	// check that depends on the i-th store gets store number 3*i+1.
-	// Other values that depends on the i-th store gets store number 3*i+2.
-	// Special case: 0 -- unassigned, 1 or 2 -- the latest store it depends
-	// is in the previous block (or no store at all, e.g. value is Const).
-	// First we assign the number to all stores by walking back the store chain,
-	// then assign the number to other values in DFS order.
 	count := make([]int32, 3*(len(stores)+1))
-	sset.clear() // reuse sparse set to ensure that a value is pushed to stack only once
+	sset.clear()
 	for n, w := len(stores), last; n > 0; n-- {
 		storeNumber[w.ID] = int32(3 * n)
 		count[3*n]++
@@ -361,12 +303,12 @@ func storeOrder(values []*Value, sset *sparseSet, storeNumber []int32) []*Value 
 			}
 			break
 		}
-		w = w.MemoryArg()
+		w = w.MemoryArg(psess)
 	}
 	var stack []*Value
 	for _, v := range values {
 		if sset.contains(v.ID) {
-			// in sset means v is a store, or already pushed to stack, or already assigned a store number
+
 			continue
 		}
 		stack = append(stack, v)
@@ -379,15 +321,14 @@ func storeOrder(values []*Value, sset *sparseSet, storeNumber []int32) []*Value 
 				continue
 			}
 			if w.Op == OpPhi {
-				// Phi value doesn't depend on store in the current block.
-				// Do this early to avoid dependency cycle.
+
 				storeNumber[w.ID] = 2
 				count[2]++
 				stack = stack[:len(stack)-1]
 				continue
 			}
 
-			max := int32(0) // latest store dependency
+			max := int32(0)
 			argsdone := true
 			for _, a := range w.Args {
 				if a.Block != w.Block {
@@ -417,7 +358,6 @@ func storeOrder(values []*Value, sset *sparseSet, storeNumber []int32) []*Value 
 		}
 	}
 
-	// convert count to prefix sum of counts: count'[i] = sum_{j<=i} count[i]
 	for i := range count {
 		if i == 0 {
 			continue
@@ -428,7 +368,6 @@ func storeOrder(values []*Value, sset *sparseSet, storeNumber []int32) []*Value 
 		f.Fatalf("storeOrder: value is missing, total count = %d, values = %v", count[len(count)-1], values)
 	}
 
-	// place values in count-indexed bins, which are in the desired store order
 	order := make([]*Value, len(values))
 	for _, v := range values {
 		s := storeNumber[v.ID]

@@ -1,7 +1,3 @@
-// Copyright 2014 The Go Authors.  All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
 package x86asm
 
 import (
@@ -139,7 +135,7 @@ func IntelSyntax(inst Inst, pc uint64, symname SymLookup) string {
 		}
 
 	case 0:
-		// ok
+
 	}
 
 	switch inst.Op {
@@ -543,7 +539,6 @@ var intelReg = [...]string{
 	X14: "xmm14",
 	X15: "xmm15",
 
-	// TODO: Maybe the constants are named wrong.
 	SPB: "spl",
 	BPB: "bpl",
 	SIB: "sil",

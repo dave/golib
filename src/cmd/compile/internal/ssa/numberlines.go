@@ -1,19 +1,14 @@
-// Copyright 2018 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
 package ssa
 
 import (
-	"cmd/internal/obj"
-	"cmd/internal/src"
+	"github.com/dave/golib/src/cmd/internal/obj"
+	"github.com/dave/golib/src/cmd/internal/src"
 	"math"
 )
 
 func isPoorStatementOp(op Op) bool {
 	switch op {
-	// Note that Nilcheck often vanishes, but when it doesn't, you'd love to start the statement there
-	// so that a debugger-user sees the stop before the panic, and can examine the value.
+
 	case OpAddr, OpOffPtr, OpStructSelect, OpConstBool, OpConst8, OpConst16, OpConst32, OpConst64, OpConst32F, OpConst64F:
 		return true
 	}
@@ -25,7 +20,7 @@ func isPoorStatementOp(op Op) bool {
 // TODO: this is an artifact of how funcpctab combines information for instructions at a single PC.
 // Should try to fix it there.
 func LosesStmtMark(as obj.As) bool {
-	// is_stmt does not work for these; it DOES for ANOP even though that generates no code.
+
 	return as == obj.APCDATA || as == obj.AFUNCDATA
 }
 
@@ -35,20 +30,17 @@ func LosesStmtMark(as obj.As) bool {
 // whether the values following i are the same line as v.
 // If a better statement index isn't found, then i is returned.
 func nextGoodStatementIndex(v *Value, i int, b *Block) int {
-	// If the value is the last one in the block, too bad, it will have to do
-	// (this assumes that the value ordering vaguely corresponds to the source
-	// program execution order, which tends to be true directly after ssa is
-	// first built.
+
 	if i >= len(b.Values)-1 {
 		return i
 	}
-	// Only consider the likely-ephemeral/fragile opcodes expected to vanish in a rewrite.
+
 	if !isPoorStatementOp(v.Op) {
 		return i
 	}
-	// Look ahead to see what the line number is on the next thing that could be a boundary.
+
 	for j := i + 1; j < len(b.Values); j++ {
-		if b.Values[j].Pos.IsStmt() == src.PosNotStmt { // ignore non-statements
+		if b.Values[j].Pos.IsStmt() == src.PosNotStmt {
 			continue
 		}
 		if b.Values[j].Pos.Line() == v.Pos.Line() {
@@ -73,11 +65,11 @@ func notStmtBoundary(op Op) bool {
 	return false
 }
 
-func numberLines(f *Func) {
+func (psess *PackageSession) numberLines(f *Func) {
 	po := f.Postorder()
 	endlines := make(map[ID]src.XPos)
-	last := uint(0)              // uint follows type of XPos.Line()
-	first := uint(math.MaxInt32) // unsigned, but large valid int when cast
+	last := uint(0)
+	first := uint(math.MaxInt32)
 	note := func(line uint) {
 		if line < first {
 			first = line
@@ -87,11 +79,10 @@ func numberLines(f *Func) {
 		}
 	}
 
-	// Visit in reverse post order so that all non-loop predecessors come first.
 	for j := len(po) - 1; j >= 0; j-- {
 		b := po[j]
-		// Find the first interesting position and check to see if it differs from any predecessor
-		firstPos := src.NoXPos
+
+		firstPos := psess.src.NoXPos
 		firstPosIndex := -1
 		if b.Pos.IsStmt() != src.PosNotStmt {
 			note(b.Pos.Line())
@@ -100,31 +91,31 @@ func numberLines(f *Func) {
 			v := b.Values[i]
 			if v.Pos.IsStmt() != src.PosNotStmt {
 				note(v.Pos.Line())
-				// skip ahead to better instruction for this line if possible
+
 				i = nextGoodStatementIndex(v, i, b)
 				v = b.Values[i]
 				firstPosIndex = i
 				firstPos = v.Pos
-				v.Pos = firstPos.WithDefaultStmt() // default to default
+				v.Pos = firstPos.WithDefaultStmt()
 				break
 			}
 		}
 
-		if firstPosIndex == -1 { // Effectively empty block, check block's own Pos, consider preds.
+		if firstPosIndex == -1 {
 			if b.Pos.IsStmt() != src.PosNotStmt {
 				b.Pos = b.Pos.WithIsStmt()
 				endlines[b.ID] = b.Pos
 				continue
 			}
-			line := src.NoXPos
+			line := psess.src.NoXPos
 			for _, p := range b.Preds {
 				pbi := p.Block().ID
 				if endlines[pbi] != line {
-					if line == src.NoXPos {
+					if line == psess.src.NoXPos {
 						line = endlines[pbi]
 						continue
 					} else {
-						line = src.NoXPos
+						line = psess.src.NoXPos
 						break
 					}
 
@@ -133,8 +124,8 @@ func numberLines(f *Func) {
 			endlines[b.ID] = line
 			continue
 		}
-		// check predecessors for any difference; if firstPos differs, then it is a boundary.
-		if len(b.Preds) == 0 { // Don't forget the entry block
+
+		if len(b.Preds) == 0 {
 			b.Values[firstPosIndex].Pos = firstPos.WithIsStmt()
 		} else {
 			for _, p := range b.Preds {
@@ -145,14 +136,14 @@ func numberLines(f *Func) {
 				}
 			}
 		}
-		// iterate forward setting each new (interesting) position as a statement boundary.
+
 		for i := firstPosIndex + 1; i < len(b.Values); i++ {
 			v := b.Values[i]
 			if v.Pos.IsStmt() == src.PosNotStmt {
 				continue
 			}
 			note(v.Pos.Line())
-			// skip ahead if possible
+
 			i = nextGoodStatementIndex(v, i, b)
 			v = b.Values[i]
 			if v.Pos.Line() != firstPos.Line() || !v.Pos.SameFile(firstPos) {

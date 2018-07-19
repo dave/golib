@@ -1,39 +1,8 @@
-// cmd/9c/9.out.h from Vita Nuova.
-//
-//	Copyright © 1994-1999 Lucent Technologies Inc.  All rights reserved.
-//	Portions Copyright © 1995-1997 C H Forsyth (forsyth@terzarima.net)
-//	Portions Copyright © 1997-1999 Vita Nuova Limited
-//	Portions Copyright © 2000-2008 Vita Nuova Holdings Limited (www.vitanuova.com)
-//	Portions Copyright © 2004,2006 Bruce Ellis
-//	Portions Copyright © 2005-2007 C H Forsyth (forsyth@terzarima.net)
-//	Revisions Copyright © 2000-2008 Lucent Technologies Inc. and others
-//	Portions Copyright © 2009 The Go Authors. All rights reserved.
-//
-// Permission is hereby granted, free of charge, to any person obtaining a copy
-// of this software and associated documentation files (the "Software"), to deal
-// in the Software without restriction, including without limitation the rights
-// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-// copies of the Software, and to permit persons to whom the Software is
-// furnished to do so, subject to the following conditions:
-//
-// The above copyright notice and this permission notice shall be included in
-// all copies or substantial portions of the Software.
-//
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL THE
-// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-// THE SOFTWARE.
-
 package mips
 
 import (
-	"cmd/internal/obj"
+	"github.com/dave/golib/src/cmd/internal/obj"
 )
-
-//go:generate go run ../stringer.go -i $GOFILE -o anames.go -p mips
 
 /*
  * mips 64
@@ -204,19 +173,21 @@ const (
 // https://llvm.org/svn/llvm-project/llvm/trunk/lib/Target/Mips/MipsRegisterInfo.td search for DwarfRegNum
 // https://gcc.gnu.org/viewcvs/gcc/trunk/gcc/config/mips/mips.c?view=co&revision=258099&content-type=text%2Fplain search for mips_dwarf_regno
 // For now, this is adequate for both 32 and 64 bit.
-var MIPSDWARFRegisters = map[int16]int16{}
 
-func init() {
-	// f assigns dwarfregisters[from:to] = (base):(to-from+base)
+func (psess *PackageSession) init() {
+
 	f := func(from, to, base int16) {
 		for r := int16(from); r <= to; r++ {
-			MIPSDWARFRegisters[r] = (r - from) + base
+			psess.
+				MIPSDWARFRegisters[r] = (r - from) + base
 		}
 	}
 	f(REG_R0, REG_R31, 0)
-	f(REG_F0, REG_F31, 32) // For 32-bit MIPS, compiler only uses even numbered registers --  see cmd/compile/internal/ssa/gen/MIPSOps.go
-	MIPSDWARFRegisters[REG_HI] = 64
-	MIPSDWARFRegisters[REG_LO] = 65
+	f(REG_F0, REG_F31, 32)
+	psess.
+		MIPSDWARFRegisters[REG_HI] = 64
+	psess.
+		MIPSDWARFRegisters[REG_LO] = 65
 }
 
 const (

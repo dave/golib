@@ -1,9 +1,3 @@
-// Copyright 2013 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
-// Parsing of PE executables (Microsoft Windows).
-
 package objfile
 
 import (
@@ -182,8 +176,7 @@ func loadPETable(f *pe.File, sname, ename string) ([]byte, error) {
 }
 
 func (f *peFile) goarch() string {
-	// Not sure how to get the info we want from PE header.
-	// Look in symbol table for telltale rt0 symbol.
+
 	if _, err := findPESymbol(f.pe, "_rt0_386_windows"); err == nil {
 		return "386"
 	}

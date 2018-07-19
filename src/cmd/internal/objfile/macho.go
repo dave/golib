@@ -1,9 +1,3 @@
-// Copyright 2013 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
-// Parsing of Mach-O executables (OS X).
-
 package objfile
 
 import (
@@ -37,7 +31,7 @@ func (f *machoFile) symbols() ([]Sym, error) {
 	// We infer the size of a symbol by looking at where the next symbol begins.
 	var addrs []uint64
 	for _, s := range f.macho.Symtab.Syms {
-		// Skip stab debug info.
+
 		if s.Type&stabTypeMask == 0 {
 			addrs = append(addrs, s.Value)
 		}
@@ -47,7 +41,7 @@ func (f *machoFile) symbols() ([]Sym, error) {
 	var syms []Sym
 	for _, s := range f.macho.Symtab.Syms {
 		if s.Type&stabTypeMask != 0 {
-			// Skip stab debug info.
+
 			continue
 		}
 		sym := Sym{Name: s.Name, Addr: s.Value, Code: '?'}
@@ -113,8 +107,7 @@ func (f *machoFile) goarch() string {
 		return "amd64"
 	case macho.CpuArm:
 		return "arm"
-	case macho.CpuArm64:
-		return "arm64"
+
 	case macho.CpuPpc64:
 		return "ppc64"
 	}

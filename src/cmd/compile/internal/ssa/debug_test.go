@@ -1,14 +1,10 @@
-// Copyright 2017 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
 package ssa_test
 
 import (
 	"bytes"
 	"flag"
 	"fmt"
-	"internal/testenv"
+	"github.com/dave/golib/src/internal/testenv"
 	"io"
 	"io/ioutil"
 	"os"
@@ -46,65 +42,15 @@ var gogcflags = os.Getenv("GO_GCFLAGS")
 // optimizedLibs usually means "not running in a noopt test builder".
 var optimizedLibs = (!strings.Contains(gogcflags, "-N") && !strings.Contains(gogcflags, "-l"))
 
-// TestNexting go-builds a file, then uses a debugger (default gdb, optionally delve)
-// to next through the generated executable, recording each line landed at, and
-// then compares those lines with reference file(s).
-// Flag -u updates the reference file(s).
-// Flag -d changes the debugger to delve (and uses delve-specific reference files)
-// Flag -v is ever-so-slightly verbose.
-// Flag -n is for dry-run, and prints the shell and first debug commands.
-//
-// Because this test (combined with existing compiler deficiencies) is flaky,
-// for gdb-based testing by default inlining is disabled
-// (otherwise output depends on library internals)
-// and for both gdb and dlv by default repeated lines in the next stream are ignored
-// (because this appears to be timing-dependent in gdb, and the cleanest fix is in code common to gdb and dlv).
-//
-// Also by default, any source code outside of .../testdata/ is not mentioned
-// in the debugging histories.  This deals both with inlined library code once
-// the compiler is generating clean inline records, and also deals with
-// runtime code between return from main and process exit.  This is hidden
-// so that those files (in the runtime/library) can change without affecting
-// this test.
-//
-// These choices can be reversed with -i (inlining on) and -r (repeats detected) which
-// will also cause their own failures against the expected outputs.  Note that if the compiler
-// and debugger were behaving properly, the inlined code and repeated lines would not appear,
-// so the expected output is closer to what we hope to see, though it also encodes all our
-// current bugs.
-//
-// The file being tested may contain comments of the form
-// //DBG-TAG=(v1,v2,v3)
-// where DBG = {gdb,dlv} and TAG={dbg,opt}
-// each variable may optionally be followed by a / and one or more of S,A,N,O
-// to indicate normalization of Strings, (hex) addresses, and numbers.
-// "O" is an explicit indication that we expect it to be optimized out.
-// For example:
-/*
-	if len(os.Args) > 1 { //gdb-dbg=(hist/A,cannedInput/A) //dlv-dbg=(hist/A,cannedInput/A)
-*/
-// TODO: not implemented for Delve yet, but this is the plan
-//
-// After a compiler change that causes a difference in the debug behavior, check
-// to see if it is sensible or not, and if it is, update the reference files with
-// go test debug_test.go -args -u
-// (for Delve)
-// go test debug_test.go -args -u -d
-
 func TestNexting(t *testing.T) {
-	skipReasons := "" // Many possible skip reasons, list all that apply
+	skipReasons := ""
 	if testing.Short() {
 		skipReasons = "not run in short mode; "
 	}
 	testenv.MustHaveGoBuild(t)
 
 	if !*useDelve && !*force && !(runtime.GOOS == "linux" && runtime.GOARCH == "amd64") {
-		// Running gdb on OSX/darwin is very flaky.
-		// Sometimes it is called ggdb, depending on how it is installed.
-		// It also sometimes requires an admin password typed into a dialog box.
-		// Various architectures tend to differ slightly sometimes, and keeping them
-		// all in sync is a pain for people who don't have them all at hand,
-		// so limit testing to amd64 (for now)
+
 		skipReasons += "not run unless linux-amd64 or -d (delve) or -f (force); "
 	}
 
@@ -120,7 +66,7 @@ func TestNexting(t *testing.T) {
 			if runtime.GOOS != "darwin" {
 				skipReasons += "not run because gdb not on path; "
 			} else {
-				// On Darwin, MacPorts installs gdb as "ggdb".
+
 				_, err = exec.LookPath("ggdb")
 				if err != nil {
 					skipReasons += "not run because gdb (and also ggdb) not on path; "
@@ -135,11 +81,10 @@ func TestNexting(t *testing.T) {
 		t.Skip(skipReasons[:len(skipReasons)-2])
 	}
 
-	optFlags := "" // Whatever flags are needed to test debugging of optimized code.
+	optFlags := ""
 	dbgFlags := "-N -l"
 	if !*useDelve && !*inlines {
-		// For gdb (default), disable inlining so that a compiler test does not depend on library code.
-		// TODO: Technically not necessary in 1.10, but it causes a largish regression that needs investigation.
+
 		optFlags += " -l"
 	}
 
@@ -164,8 +109,7 @@ func subTest(t *testing.T, tag string, basename string, gcflags string, moreargs
 // optSubTest is the same as subTest except that it skips the test if the runtime and libraries
 // were not compiled with optimization turned on.  (The skip may not be necessary with Go 1.10 and later)
 func optSubTest(t *testing.T, tag string, basename string, gcflags string, moreargs ...string) {
-	// If optimized test is run with unoptimized libraries (compiled with -N -l), it is very likely to fail.
-	// This occurs in the noopt builders (for example).
+
 	t.Run(tag+"-"+basename, func(t *testing.T) {
 		if *force || optimizedLibs {
 			testNexting(t, basename, tag, gcflags, moreargs...)
@@ -176,15 +120,10 @@ func optSubTest(t *testing.T, tag string, basename string, gcflags string, morea
 }
 
 func testNexting(t *testing.T, base, tag, gcflags string, moreArgs ...string) {
-	// (1) In testdata, build sample.go into test-sample.<tag>
-	// (2) Run debugger gathering a history
-	// (3) Read expected history from testdata/sample.<tag>.nexts
-	// optionally, write out testdata/sample.<tag>.nexts
 
 	testbase := filepath.Join("testdata", base) + "." + tag
 	tmpbase := filepath.Join("testdata", "test-"+base+"."+tag)
 
-	// Use a temporary directory unless -f is specified
 	if !*force {
 		tmpdir, err := ioutil.TempDir("", "debug_test")
 		if err != nil {
@@ -223,7 +162,7 @@ func testNexting(t *testing.T, base, tag, gcflags string, moreArgs ...string) {
 		h0 := &nextHist{}
 		h0.read(nextlog)
 		if !h0.equals(h1) {
-			// Be very noisy about exactly what's wrong to simplify debugging.
+
 			h1.write(tmplog)
 			cmd := exec.Command("diff", "-u", nextlog, tmplog)
 			line := asCommandLine("", cmd)
@@ -317,7 +256,7 @@ func (h *nextHist) write(filename string) {
 			lastfile = p.file
 		}
 		fmt.Fprintf(file, "%d:%s\n", p.line, x)
-		// TODO, normalize between gdb and dlv into a common, comparable format.
+
 		for _, y := range h.vars[i] {
 			y = strings.TrimSpace(y)
 			fmt.Fprintf(file, "%s\n", y)
@@ -337,10 +276,10 @@ func (h *nextHist) read(filename string) {
 	for i, l := range lines {
 		if len(l) > 0 && l[0] != '#' {
 			if l[0] == ' ' {
-				// file -- first two characters expected to be "  "
+
 				lastfile = strings.TrimSpace(l)
 			} else if numberColonRe.MatchString(l) {
-				// line number -- <number>:<line>
+
 				colonPos := strings.Index(l, ":")
 				if colonPos == -1 {
 					panic(fmt.Sprintf("Line %d (%s) in file %s expected to contain '<number>:' but does not.\n", i+1, l, filename))
@@ -358,7 +297,7 @@ func (h *nextHist) read(filename string) {
 // and provided that the file is within the testdata directory.  The return
 // value indicates whether the append occurred.
 func (h *nextHist) add(file, line, text string) bool {
-	// Only record source code in testdata unless the inlines flag is set
+
 	if !*inlines && !strings.Contains(file, "/testdata/") {
 		return false
 	}
@@ -451,8 +390,6 @@ func canonFileName(f string) string {
 	return f
 }
 
-/* Delve */
-
 type delveState struct {
 	cmd  *exec.Cmd
 	tagg string
@@ -472,8 +409,7 @@ func newDelve(tag, executable string, args ...string) dbgr {
 		cmd.Args = append(cmd.Args, args...)
 	}
 	s := &delveState{tagg: tag, cmd: cmd}
-	// HAHA Delve has control characters embedded to change the color of the => and the line number
-	// that would be '(\\x1b\\[[0-9;]+m)?' OR TERM=dumb
+
 	s.atLineRe = regexp.MustCompile("\n=>[[:space:]]+[0-9]+:(.*)")
 	s.funcFileLinePCre = regexp.MustCompile("> ([^ ]+) ([^:]+):([0-9]+) .*[(]PC: (0x[a-z0-9]+)[)]\n")
 	s.ioState = newIoState(s.cmd)
@@ -496,7 +432,7 @@ func (s *delveState) stepnext(ss string) bool {
 		fn := canonFileName(locations[2])
 		if *verbose {
 			if s.file != fn {
-				fmt.Printf("%s\n", locations[2]) // don't canonocalize verbose logging
+				fmt.Printf("%s\n", locations[2])
 			}
 			fmt.Printf("  %s\n", locations[3])
 		}
@@ -504,8 +440,7 @@ func (s *delveState) stepnext(ss string) bool {
 		s.file = fn
 		s.function = locations[1]
 		s.ioState.history.add(s.file, s.line, excerpt)
-		// TODO: here is where variable processing will be added.  See gdbState.stepnext as a guide.
-		// Adding this may require some amount of normalization so that logs are comparable.
+
 		return true
 	}
 	if *verbose {
@@ -535,8 +470,6 @@ func (s *delveState) quit() {
 	expect("", s.ioState.writeRead("q\n"))
 }
 
-/* Gdb */
-
 type gdbState struct {
 	cmd  *exec.Cmd
 	tagg string
@@ -550,7 +483,7 @@ type gdbState struct {
 }
 
 func newGdb(tag, executable string, args ...string) dbgr {
-	// Turn off shell, necessary for Darwin apparently
+
 	cmd := exec.Command(gdb, "-nx",
 		"-iex", fmt.Sprintf("add-auto-load-safe-path %s/src/runtime", runtime.GOROOT()),
 		"-ex", "set startup-with-shell off", executable)
@@ -559,9 +492,7 @@ func newGdb(tag, executable string, args ...string) dbgr {
 	s.atLineRe = regexp.MustCompile("(^|\n)([0-9]+)(.*)")
 	s.funcFileLinePCre = regexp.MustCompile(
 		"([^ ]+) [(][^)]*[)][ \\t\\n]+at ([^:]+):([0-9]+)")
-	// runtime.main () at /Users/drchase/GoogleDrive/work/go/src/runtime/proc.go:201
-	//                                    function              file    line
-	// Thread 2 hit Breakpoint 1, main.main () at /Users/drchase/GoogleDrive/work/debug/hist.go:18
+
 	s.ioState = newIoState(s.cmd)
 	return s
 }
@@ -573,7 +504,7 @@ func (s *gdbState) tag() string {
 func (s *gdbState) start() {
 	run := "run"
 	for _, a := range s.args {
-		run += " " + a // Can't quote args for gdb, it will pass them through including the quotes
+		run += " " + a
 	}
 	if *dryrun {
 		fmt.Printf("%s\n", asCommandLine("", s.cmd))
@@ -629,10 +560,10 @@ func (s *gdbState) stepnext(ss string) bool {
 	}
 
 	if !addedLine {
-		// True if this was a repeat line
+
 		return true
 	}
-	// Look for //gdb-<tag>=(v1,v2,v3) and print v1, v2, v3
+
 	vars := varsToPrint(excerpt, "//"+s.tag()+"=(")
 	for _, v := range vars {
 		response := printVariableAndNormalize(v, func(v string) string {
@@ -654,13 +585,13 @@ func printVariableAndNormalize(v string, printer func(v string) string) string {
 		v = v[:slashIndex]
 	}
 	response := printer(v)
-	// expect something like "$1 = ..."
+
 	dollar := strings.Index(response, "$")
 	cr := strings.Index(response, "\n")
 
-	if dollar == -1 { // some not entirely expected response, whine and carry on.
+	if dollar == -1 {
 		if cr == -1 {
-			response = strings.TrimSpace(response) // discards trailing newline
+			response = strings.TrimSpace(response)
 			response = strings.Replace(response, "\n", "<BR>", -1)
 			return "$ Malformed response " + response
 		}
@@ -670,12 +601,10 @@ func printVariableAndNormalize(v string, printer func(v string) string) string {
 	if cr == -1 {
 		cr = len(response)
 	}
-	// Convert the leading $<number> into the variable name to enhance readability
-	// and reduce scope of diffs if an earlier print-variable is added.
+
 	response = strings.TrimSpace(response[dollar:cr])
 	response = leadingDollarNumberRe.ReplaceAllString(response, v)
 
-	// Normalize value as requested.
 	if strings.Contains(substitutions, "A") {
 		response = hexRe.ReplaceAllString(response, "<A>")
 	}
@@ -909,7 +838,7 @@ func asCommandLine(cwd string, cmd *exec.Cmd) string {
 func escape(s string) string {
 	s = strings.Replace(s, "\\", "\\\\", -1)
 	s = strings.Replace(s, "'", "\\'", -1)
-	// Conservative guess at characters that will force quoting
+
 	if strings.ContainsAny(s, "\\ ;#*&$~?!|[]()<>{}`") {
 		s = " '" + s + "'"
 	} else {

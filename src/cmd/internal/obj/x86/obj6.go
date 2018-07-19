@@ -1,52 +1,17 @@
-// Inferno utils/6l/pass.c
-// https://bitbucket.org/inferno-os/inferno-os/src/default/utils/6l/pass.c
-//
-//	Copyright © 1994-1999 Lucent Technologies Inc.  All rights reserved.
-//	Portions Copyright © 1995-1997 C H Forsyth (forsyth@terzarima.net)
-//	Portions Copyright © 1997-1999 Vita Nuova Limited
-//	Portions Copyright © 2000-2007 Vita Nuova Holdings Limited (www.vitanuova.com)
-//	Portions Copyright © 2004,2006 Bruce Ellis
-//	Portions Copyright © 2005-2007 C H Forsyth (forsyth@terzarima.net)
-//	Revisions Copyright © 2000-2007 Lucent Technologies Inc. and others
-//	Portions Copyright © 2009 The Go Authors. All rights reserved.
-//
-// Permission is hereby granted, free of charge, to any person obtaining a copy
-// of this software and associated documentation files (the "Software"), to deal
-// in the Software without restriction, including without limitation the rights
-// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-// copies of the Software, and to permit persons to whom the Software is
-// furnished to do so, subject to the following conditions:
-//
-// The above copyright notice and this permission notice shall be included in
-// all copies or substantial portions of the Software.
-//
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL THE
-// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-// THE SOFTWARE.
-
 package x86
 
 import (
-	"cmd/internal/obj"
-	"cmd/internal/objabi"
-	"cmd/internal/src"
-	"cmd/internal/sys"
+	"github.com/dave/golib/src/cmd/internal/obj"
+	"github.com/dave/golib/src/cmd/internal/objabi"
+	"github.com/dave/golib/src/cmd/internal/src"
+	"github.com/dave/golib/src/cmd/internal/sys"
 	"math"
 	"strings"
 )
 
-func CanUse1InsnTLS(ctxt *obj.Link) bool {
-	if isAndroid {
-		// For android, we use a disgusting hack that assumes
-		// the thread-local storage slot for g is allocated
-		// using pthread_key_create with a fixed offset
-		// (see src/runtime/cgo/gcc_android_amd64.c).
-		// This makes access to the TLS storage (for g) doable
-		// with 1 instruction.
+func (psess *PackageSession) CanUse1InsnTLS(ctxt *obj.Link) bool {
+	if psess.isAndroid {
+
 		return true
 	}
 
@@ -72,59 +37,10 @@ func CanUse1InsnTLS(ctxt *obj.Link) bool {
 	return true
 }
 
-func progedit(ctxt *obj.Link, p *obj.Prog, newprog obj.ProgAlloc) {
-	// Thread-local storage references use the TLS pseudo-register.
-	// As a register, TLS refers to the thread-local storage base, and it
-	// can only be loaded into another register:
-	//
-	//         MOVQ TLS, AX
-	//
-	// An offset from the thread-local storage base is written off(reg)(TLS*1).
-	// Semantically it is off(reg), but the (TLS*1) annotation marks this as
-	// indexing from the loaded TLS base. This emits a relocation so that
-	// if the linker needs to adjust the offset, it can. For example:
-	//
-	//         MOVQ TLS, AX
-	//         MOVQ 0(AX)(TLS*1), CX // load g into CX
-	//
-	// On systems that support direct access to the TLS memory, this
-	// pair of instructions can be reduced to a direct TLS memory reference:
-	//
-	//         MOVQ 0(TLS), CX // load g into CX
-	//
-	// The 2-instruction and 1-instruction forms correspond to the two code
-	// sequences for loading a TLS variable in the local exec model given in "ELF
-	// Handling For Thread-Local Storage".
-	//
-	// We apply this rewrite on systems that support the 1-instruction form.
-	// The decision is made using only the operating system and the -shared flag,
-	// not the link mode. If some link modes on a particular operating system
-	// require the 2-instruction form, then all builds for that operating system
-	// will use the 2-instruction form, so that the link mode decision can be
-	// delayed to link time.
-	//
-	// In this way, all supported systems use identical instructions to
-	// access TLS, and they are rewritten appropriately first here in
-	// liblink and then finally using relocations in the linker.
-	//
-	// When -shared is passed, we leave the code in the 2-instruction form but
-	// assemble (and relocate) them in different ways to generate the initial
-	// exec code sequence. It's a bit of a fluke that this is possible without
-	// rewriting the instructions more comprehensively, and it only does because
-	// we only support a single TLS variable (g).
+func (psess *PackageSession) progedit(ctxt *obj.Link, p *obj.Prog, newprog obj.ProgAlloc) {
 
-	if CanUse1InsnTLS(ctxt) {
-		// Reduce 2-instruction sequence to 1-instruction sequence.
-		// Sequences like
-		//	MOVQ TLS, BX
-		//	... off(BX)(TLS*1) ...
-		// become
-		//	NOP
-		//	... off(TLS) ...
-		//
-		// TODO(rsc): Remove the Hsolaris special case. It exists only to
-		// guarantee we are producing byte-identical binaries as before this code.
-		// But it should be unnecessary.
+	if psess.CanUse1InsnTLS(ctxt) {
+
 		if (p.As == AMOVQ || p.As == AMOVL) && p.From.Type == obj.TYPE_REG && p.From.Reg == REG_TLS && p.To.Type == obj.TYPE_REG && REG_AX <= p.To.Reg && p.To.Reg <= REG_R15 && ctxt.Headtype != objabi.Hsolaris {
 			obj.Nopout(p)
 		}
@@ -140,12 +56,7 @@ func progedit(ctxt *obj.Link, p *obj.Prog, newprog obj.ProgAlloc) {
 			p.To.Index = REG_NONE
 		}
 	} else {
-		// load_g_cx, below, always inserts the 1-instruction sequence. Rewrite it
-		// as the 2-instruction sequence if necessary.
-		//	MOVQ 0(TLS), BX
-		// becomes
-		//	MOVQ TLS, BX
-		//	MOVQ 0(BX)(TLS*1), BX
+
 		if (p.As == AMOVQ || p.As == AMOVL) && p.From.Type == obj.TYPE_MEM && p.From.Reg == REG_TLS && p.To.Type == obj.TYPE_REG && REG_AX <= p.To.Reg && p.To.Reg <= REG_R15 {
 			q := obj.Appendp(p, newprog)
 			q.As = p.As
@@ -153,7 +64,7 @@ func progedit(ctxt *obj.Link, p *obj.Prog, newprog obj.ProgAlloc) {
 			q.From.Type = obj.TYPE_MEM
 			q.From.Reg = p.To.Reg
 			q.From.Index = REG_TLS
-			q.From.Scale = 2 // TODO: use 1
+			q.From.Scale = 2
 			q.To = p.To
 			p.From.Type = obj.TYPE_REG
 			p.From.Reg = REG_TLS
@@ -162,7 +73,6 @@ func progedit(ctxt *obj.Link, p *obj.Prog, newprog obj.ProgAlloc) {
 		}
 	}
 
-	// TODO: Remove.
 	if ctxt.Headtype == objabi.Hwindows && ctxt.Arch.Family == sys.AMD64 || ctxt.Headtype == objabi.Hplan9 {
 		if p.From.Scale == 1 && p.From.Index == REG_TLS {
 			p.From.Scale = 2
@@ -172,8 +82,6 @@ func progedit(ctxt *obj.Link, p *obj.Prog, newprog obj.ProgAlloc) {
 		}
 	}
 
-	// Rewrite 0 to $0 in 3rd argument to CMPPS etc.
-	// That's what the tables expect.
 	switch p.As {
 	case ACMPPD, ACMPPS, ACMPSD, ACMPSS:
 		if p.To.Type == obj.TYPE_MEM && p.To.Name == obj.NAME_NONE && p.To.Reg == REG_NONE && p.To.Index == REG_NONE && p.To.Sym == nil {
@@ -181,7 +89,6 @@ func progedit(ctxt *obj.Link, p *obj.Prog, newprog obj.ProgAlloc) {
 		}
 	}
 
-	// Rewrite CALL/JMP/RET to symbol as TYPE_BRANCH.
 	switch p.As {
 	case obj.ACALL, obj.AJMP, obj.ARET:
 		if p.To.Type == obj.TYPE_MEM && (p.To.Name == obj.NAME_EXTERN || p.To.Name == obj.NAME_STATIC) && p.To.Sym != nil {
@@ -189,7 +96,6 @@ func progedit(ctxt *obj.Link, p *obj.Prog, newprog obj.ProgAlloc) {
 		}
 	}
 
-	// Rewrite MOVL/MOVQ $XXX(FP/SP) as LEAL/LEAQ.
 	if p.From.Type == obj.TYPE_ADDR && (ctxt.Arch.Family == sys.AMD64 || p.From.Name != obj.NAME_EXTERN && p.From.Name != obj.NAME_STATIC) {
 		switch p.As {
 		case AMOVL:
@@ -209,12 +115,11 @@ func progedit(ctxt *obj.Link, p *obj.Prog, newprog obj.ProgAlloc) {
 		nacladdr(ctxt, p, &p.To)
 	}
 
-	// Rewrite float constants to values stored in memory.
 	switch p.As {
-	// Convert AMOVSS $(0), Xx to AXORPS Xx, Xx
+
 	case AMOVSS:
 		if p.From.Type == obj.TYPE_FCONST {
-			//  f == 0 can't be used here due to -0, so use Float64bits
+
 			if f := p.From.Val.(float64); math.Float64bits(f) == 0 {
 				if p.To.Type == obj.TYPE_REG && REG_X0 <= p.To.Reg && p.To.Reg <= REG_X15 {
 					p.As = AXORPS
@@ -249,9 +154,9 @@ func progedit(ctxt *obj.Link, p *obj.Prog, newprog obj.ProgAlloc) {
 		}
 
 	case AMOVSD:
-		// Convert AMOVSD $(0), Xx to AXORPS Xx, Xx
+
 		if p.From.Type == obj.TYPE_FCONST {
-			//  f == 0 can't be used here due to -0, so use Float64bits
+
 			if f := p.From.Val.(float64); math.Float64bits(f) == 0 {
 				if p.To.Type == obj.TYPE_REG && REG_X0 <= p.To.Reg && p.To.Reg <= REG_X15 {
 					p.As = AXORPS
@@ -291,7 +196,8 @@ func progedit(ctxt *obj.Link, p *obj.Prog, newprog obj.ProgAlloc) {
 	}
 
 	if ctxt.Flag_shared && ctxt.Arch.Family == sys.I386 {
-		rewriteToPcrel(ctxt, p, newprog)
+		psess.
+			rewriteToPcrel(ctxt, p, newprog)
 	}
 }
 
@@ -308,10 +214,7 @@ func rewriteToUseGot(ctxt *obj.Link, p *obj.Prog, newprog obj.ProgAlloc) {
 		mov = AMOVL
 		reg = REG_CX
 		if p.As == ALEAL && p.To.Reg != p.From.Reg && p.To.Reg != p.From.Index {
-			// Special case: clobber the destination register with
-			// the PC so we don't have to clobber CX.
-			// The SSA backend depends on CX not being clobbered across LEAL.
-			// See cmd/compile/internal/ssa/gen/386.rules (search for Flag_shared).
+
 			reg = p.To.Reg
 		}
 	}
@@ -352,18 +255,13 @@ func rewriteToUseGot(ctxt *obj.Link, p *obj.Prog, newprog obj.ProgAlloc) {
 		p2.To.Reg = reg
 	}
 
-	// We only care about global data: NAME_EXTERN means a global
-	// symbol in the Go sense, and p.Sym.Local is true for a few
-	// internally defined symbols.
 	if p.As == lea && p.From.Type == obj.TYPE_MEM && p.From.Name == obj.NAME_EXTERN && !p.From.Sym.Local() {
-		// $LEA sym, Rx becomes $MOV $sym, Rx which will be rewritten below
+
 		p.As = mov
 		p.From.Type = obj.TYPE_ADDR
 	}
 	if p.From.Type == obj.TYPE_ADDR && p.From.Name == obj.NAME_EXTERN && !p.From.Sym.Local() {
-		// $MOV $sym, Rx becomes $MOV sym@GOT, Rx
-		// $MOV $sym+<off>, Rx becomes $MOV sym@GOT, Rx; $LEA <off>(Rx), Rx
-		// On 386 only, more complicated things like PUSHL $sym become $MOV sym@GOT, CX; PUSHL CX
+
 		cmplxdest := false
 		pAs := p.As
 		var dest obj.Addr
@@ -403,9 +301,7 @@ func rewriteToUseGot(ctxt *obj.Link, p *obj.Prog, newprog obj.ProgAlloc) {
 		ctxt.Diag("don't know how to handle %v with -dynlink", p)
 	}
 	var source *obj.Addr
-	// MOVx sym, Ry becomes $MOV sym@GOT, R15; MOVx (R15), Ry
-	// MOVx Ry, sym becomes $MOV sym@GOT, R15; MOVx Ry, (R15)
-	// An addition may be inserted between the two MOVs if there is an offset.
+
 	if p.From.Name == obj.NAME_EXTERN && !p.From.Sym.Local() {
 		if p.To.Name == obj.NAME_EXTERN && !p.To.Sym.Local() {
 			ctxt.Diag("cannot handle NAME_EXTERN on both sides in %v with -dynlink", p)
@@ -417,10 +313,7 @@ func rewriteToUseGot(ctxt *obj.Link, p *obj.Prog, newprog obj.ProgAlloc) {
 		return
 	}
 	if p.As == obj.ACALL {
-		// When dynlinking on 386, almost any call might end up being a call
-		// to a PLT, so make sure the GOT pointer is loaded into BX.
-		// RegTo2 is set on the replacement call insn to stop it being
-		// processed when it is in turn passed to progedit.
+
 		if ctxt.Arch.Family == sys.AMD64 || (p.To.Sym != nil && p.To.Sym.Local()) || p.RegTo2 != 0 {
 			return
 		}
@@ -442,9 +335,7 @@ func rewriteToUseGot(ctxt *obj.Link, p *obj.Prog, newprog obj.ProgAlloc) {
 		}
 		p2.Reg = p.Reg
 		p2.To = p.To
-		// p.To.Type was set to TYPE_BRANCH above, but that makes checkaddr
-		// in ../pass.go complain, so set it back to TYPE_MEM here, until p2
-		// itself gets passed to progedit.
+
 		p2.To.Type = obj.TYPE_MEM
 		p2.RegTo2 = 1
 
@@ -485,18 +376,15 @@ func rewriteToUseGot(ctxt *obj.Link, p *obj.Prog, newprog obj.ProgAlloc) {
 	obj.Nopout(p)
 }
 
-func rewriteToPcrel(ctxt *obj.Link, p *obj.Prog, newprog obj.ProgAlloc) {
-	// RegTo2 is set on the instructions we insert here so they don't get
-	// processed twice.
+func (psess *PackageSession) rewriteToPcrel(ctxt *obj.Link, p *obj.Prog, newprog obj.ProgAlloc) {
+
 	if p.RegTo2 != 0 {
 		return
 	}
 	if p.As == obj.ATEXT || p.As == obj.AFUNCDATA || p.As == obj.ACALL || p.As == obj.ARET || p.As == obj.AJMP {
 		return
 	}
-	// Any Prog (aside from the above special cases) with an Addr with Name ==
-	// NAME_EXTERN, NAME_STATIC or NAME_GOTREF has a CALL __x86.get_pc_thunk.XX
-	// inserted before it.
+
 	isName := func(a *obj.Addr) bool {
 		if a.Sym == nil || (a.Type != obj.TYPE_MEM && a.Type != obj.TYPE_ADDR) || a.Reg != 0 {
 			return false
@@ -508,9 +396,7 @@ func rewriteToPcrel(ctxt *obj.Link, p *obj.Prog, newprog obj.ProgAlloc) {
 	}
 
 	if isName(&p.From) && p.From.Type == obj.TYPE_ADDR {
-		// Handle things like "MOVL $sym, (SP)" or "PUSHL $sym" by rewriting
-		// to "MOVL $sym, CX; MOVL CX, (SP)" or "MOVL $sym, CX; PUSHL CX"
-		// respectively.
+
 		if p.To.Type != obj.TYPE_REG {
 			q := obj.Appendp(p, newprog)
 			q.As = p.As
@@ -531,15 +417,14 @@ func rewriteToPcrel(ctxt *obj.Link, p *obj.Prog, newprog obj.ProgAlloc) {
 	var dst int16 = REG_CX
 	if (p.As == ALEAL || p.As == AMOVL) && p.To.Reg != p.From.Reg && p.To.Reg != p.From.Index {
 		dst = p.To.Reg
-		// Why? See the comment near the top of rewriteToUseGot above.
-		// AMOVLs might be introduced by the GOT rewrites.
+
 	}
 	q := obj.Appendp(p, newprog)
 	q.RegTo2 = 1
 	r := obj.Appendp(q, newprog)
 	r.RegTo2 = 1
 	q.As = obj.ACALL
-	thunkname := "__x86.get_pc_thunk." + strings.ToLower(rconv(int(dst)))
+	thunkname := "__x86.get_pc_thunk." + strings.ToLower(psess.rconv(int(dst)))
 	q.To.Sym = ctxt.LookupInit(thunkname, func(s *obj.LSym) { s.Set(obj.AttrLocal, true) })
 	q.To.Type = obj.TYPE_MEM
 	q.To.Name = obj.NAME_EXTERN
@@ -576,7 +461,7 @@ func nacladdr(ctxt *obj.Link, p *obj.Prog, a *obj.Addr) {
 	}
 	if a.Type == obj.TYPE_MEM && a.Name == obj.NAME_NONE {
 		switch a.Reg {
-		// all ok
+
 		case REG_BP, REG_SP, REG_R15:
 			break
 
@@ -593,7 +478,7 @@ func nacladdr(ctxt *obj.Link, p *obj.Prog, a *obj.Addr) {
 	}
 }
 
-func preprocess(ctxt *obj.Link, cursym *obj.LSym, newprog obj.ProgAlloc) {
+func (psess *PackageSession) preprocess(ctxt *obj.Link, cursym *obj.LSym, newprog obj.ProgAlloc) {
 	if cursym.Func.Text == nil || cursym.Func.Text.Link == nil {
 		return
 	}
@@ -614,17 +499,10 @@ func preprocess(ctxt *obj.Link, cursym *obj.LSym, newprog obj.ProgAlloc) {
 
 	var bpsize int
 	if ctxt.Arch.Family == sys.AMD64 && ctxt.Framepointer_enabled &&
-		!p.From.Sym.NoFrame() && // (1) below
-		!(autoffset == 0 && p.From.Sym.NoSplit()) && // (2) below
-		!(autoffset == 0 && !hasCall) { // (3) below
-		// Make room to save a base pointer.
-		// There are 2 cases we must avoid:
-		// 1) If noframe is set (which we do for functions which tail call).
-		// 2) Scary runtime internals which would be all messed up by frame pointers.
-		//    We detect these using a heuristic: frameless nosplit functions.
-		//    TODO: Maybe someday we label them all with NOFRAME and get rid of this heuristic.
-		// For performance, we also want to avoid:
-		// 3) Frameless leaf functions
+		!p.From.Sym.NoFrame() &&
+		!(autoffset == 0 && p.From.Sym.NoSplit()) &&
+		!(autoffset == 0 && !hasCall) {
+
 		bpsize = ctxt.Arch.PtrSize
 		autoffset += int32(bpsize)
 		p.To.Offset += int64(bpsize)
@@ -636,20 +514,17 @@ func preprocess(ctxt *obj.Link, cursym *obj.LSym, newprog obj.ProgAlloc) {
 	cursym.Func.Args = int32(textarg)
 	cursym.Func.Locals = int32(p.To.Offset)
 
-	// TODO(rsc): Remove.
 	if ctxt.Arch.Family == sys.I386 && cursym.Func.Locals < 0 {
 		cursym.Func.Locals = 0
 	}
 
-	// TODO(rsc): Remove 'ctxt.Arch.Family == sys.AMD64 &&'.
 	if ctxt.Arch.Family == sys.AMD64 && autoffset < objabi.StackSmall && !p.From.Sym.NoSplit() {
 		leaf := true
 	LeafSearch:
 		for q := p; q != nil; q = q.Link {
 			switch q.As {
 			case obj.ACALL:
-				// Treat common runtime calls that take no arguments
-				// the same as duffcopy and duffzero.
+
 				if !isZeroArgRuntimeCall(q.To.Sym) {
 					leaf = false
 					break LeafSearch
@@ -670,15 +545,13 @@ func preprocess(ctxt *obj.Link, cursym *obj.LSym, newprog obj.ProgAlloc) {
 
 	if !p.From.Sym.NoSplit() || p.From.Sym.Wrapper() {
 		p = obj.Appendp(p, newprog)
-		p = load_g_cx(ctxt, p, newprog) // load g into CX
+		p = psess.load_g_cx(ctxt, p, newprog)
 	}
 
 	if !cursym.Func.Text.From.Sym.NoSplit() {
-		p = stacksplit(ctxt, cursym, p, newprog, autoffset, int32(textarg)) // emit split check
+		p = psess.stacksplit(ctxt, cursym, p, newprog, autoffset, int32(textarg))
 	}
 
-	// Delve debugger would like the next instruction to be noted as the end of the function prologue.
-	// TODO: are there other cases (e.g., wrapper functions) that need marking?
 	markedPrologue := false
 
 	if autoffset != 0 {
@@ -697,7 +570,7 @@ func preprocess(ctxt *obj.Link, cursym *obj.LSym, newprog obj.ProgAlloc) {
 	deltasp := autoffset
 
 	if bpsize > 0 {
-		// Save caller's BP
+
 		p = obj.Appendp(p, newprog)
 
 		p.As = AMOVQ
@@ -711,7 +584,6 @@ func preprocess(ctxt *obj.Link, cursym *obj.LSym, newprog obj.ProgAlloc) {
 			p.Pos = p.Pos.WithXlogue(src.PosPrologueEnd)
 		}
 
-		// Move current frame to BP
 		p = obj.Appendp(p, newprog)
 
 		p.As = ALEAQ
@@ -724,35 +596,12 @@ func preprocess(ctxt *obj.Link, cursym *obj.LSym, newprog obj.ProgAlloc) {
 	}
 
 	if cursym.Func.Text.From.Sym.Wrapper() {
-		// if g._panic != nil && g._panic.argp == FP {
-		//   g._panic.argp = bottom-of-frame
-		// }
-		//
-		//	MOVQ g_panic(CX), BX
-		//	TESTQ BX, BX
-		//	JNE checkargp
-		// end:
-		//	NOP
-		//  ... rest of function ...
-		// checkargp:
-		//	LEAQ (autoffset+8)(SP), DI
-		//	CMPQ panic_argp(BX), DI
-		//	JNE end
-		//  MOVQ SP, panic_argp(BX)
-		//  JMP end
-		//
-		// The NOP is needed to give the jumps somewhere to land.
-		// It is a liblink NOP, not an x86 NOP: it encodes to 0 instruction bytes.
-		//
-		// The layout is chosen to help static branch prediction:
-		// Both conditional jumps are unlikely, so they are arranged to be forward jumps.
 
-		// MOVQ g_panic(CX), BX
 		p = obj.Appendp(p, newprog)
 		p.As = AMOVQ
 		p.From.Type = obj.TYPE_MEM
 		p.From.Reg = REG_CX
-		p.From.Offset = 4 * int64(ctxt.Arch.PtrSize) // g_panic
+		p.From.Offset = 4 * int64(ctxt.Arch.PtrSize)
 		p.To.Type = obj.TYPE_REG
 		p.To.Reg = REG_BX
 		if ctxt.Headtype == objabi.Hnacl && ctxt.Arch.Family == sys.AMD64 {
@@ -766,7 +615,6 @@ func preprocess(ctxt *obj.Link, cursym *obj.LSym, newprog obj.ProgAlloc) {
 			p.As = AMOVL
 		}
 
-		// TESTQ BX, BX
 		p = obj.Appendp(p, newprog)
 		p.As = ATESTQ
 		p.From.Type = obj.TYPE_REG
@@ -777,13 +625,10 @@ func preprocess(ctxt *obj.Link, cursym *obj.LSym, newprog obj.ProgAlloc) {
 			p.As = ATESTL
 		}
 
-		// JNE checkargp (checkargp to be resolved later)
 		jne := obj.Appendp(p, newprog)
 		jne.As = AJNE
 		jne.To.Type = obj.TYPE_BRANCH
 
-		// end:
-		//  NOP
 		end := obj.Appendp(jne, newprog)
 		end.As = obj.ANOP
 
@@ -792,7 +637,6 @@ func preprocess(ctxt *obj.Link, cursym *obj.LSym, newprog obj.ProgAlloc) {
 		for last = end; last.Link != nil; last = last.Link {
 		}
 
-		// LEAQ (autoffset+8)(SP), DI
 		p = obj.Appendp(last, newprog)
 		p.As = ALEAQ
 		p.From.Type = obj.TYPE_MEM
@@ -804,15 +648,13 @@ func preprocess(ctxt *obj.Link, cursym *obj.LSym, newprog obj.ProgAlloc) {
 			p.As = ALEAL
 		}
 
-		// Set jne branch target.
 		jne.Pcond = p
 
-		// CMPQ panic_argp(BX), DI
 		p = obj.Appendp(p, newprog)
 		p.As = ACMPQ
 		p.From.Type = obj.TYPE_MEM
 		p.From.Reg = REG_BX
-		p.From.Offset = 0 // Panic.argp
+		p.From.Offset = 0
 		p.To.Type = obj.TYPE_REG
 		p.To.Reg = REG_DI
 		if ctxt.Headtype == objabi.Hnacl && ctxt.Arch.Family == sys.AMD64 {
@@ -826,20 +668,18 @@ func preprocess(ctxt *obj.Link, cursym *obj.LSym, newprog obj.ProgAlloc) {
 			p.As = ACMPL
 		}
 
-		// JNE end
 		p = obj.Appendp(p, newprog)
 		p.As = AJNE
 		p.To.Type = obj.TYPE_BRANCH
 		p.Pcond = end
 
-		// MOVQ SP, panic_argp(BX)
 		p = obj.Appendp(p, newprog)
 		p.As = AMOVQ
 		p.From.Type = obj.TYPE_REG
 		p.From.Reg = REG_SP
 		p.To.Type = obj.TYPE_MEM
 		p.To.Reg = REG_BX
-		p.To.Offset = 0 // Panic.argp
+		p.To.Offset = 0
 		if ctxt.Headtype == objabi.Hnacl && ctxt.Arch.Family == sys.AMD64 {
 			p.As = AMOVL
 			p.To.Type = obj.TYPE_MEM
@@ -851,13 +691,11 @@ func preprocess(ctxt *obj.Link, cursym *obj.LSym, newprog obj.ProgAlloc) {
 			p.As = AMOVL
 		}
 
-		// JMP end
 		p = obj.Appendp(p, newprog)
 		p.As = obj.AJMP
 		p.To.Type = obj.TYPE_BRANCH
 		p.Pcond = end
 
-		// Reset p for following code.
 		p = end
 	}
 
@@ -919,7 +757,7 @@ func preprocess(ctxt *obj.Link, cursym *obj.LSym, newprog obj.ProgAlloc) {
 			continue
 
 		case obj.ARET:
-			// do nothing
+
 		}
 
 		if autoffset != deltasp {
@@ -927,10 +765,10 @@ func preprocess(ctxt *obj.Link, cursym *obj.LSym, newprog obj.ProgAlloc) {
 		}
 
 		if autoffset != 0 {
-			to := p.To // Keep To attached to RET for retjmp below
+			to := p.To
 			p.To = obj.Addr{}
 			if bpsize > 0 {
-				// Restore caller's BP
+
 				p.As = AMOVQ
 
 				p.From.Type = obj.TYPE_MEM
@@ -950,14 +788,10 @@ func preprocess(ctxt *obj.Link, cursym *obj.LSym, newprog obj.ProgAlloc) {
 			p.As = obj.ARET
 			p.To = to
 
-			// If there are instructions following
-			// this ARET, they come from a branch
-			// with the same stackframe, so undo
-			// the cleanup.
 			p.Spadj = +autoffset
 		}
 
-		if p.To.Sym != nil { // retjmp
+		if p.To.Sym != nil {
 			p.As = obj.AJMP
 		}
 	}
@@ -992,7 +826,7 @@ func indir_cx(ctxt *obj.Link, a *obj.Addr) {
 // Overwriting p is unusual but it lets use this in both the
 // prologue (caller must call appendp first) and in the epilogue.
 // Returns last new instruction.
-func load_g_cx(ctxt *obj.Link, p *obj.Prog, newprog obj.ProgAlloc) *obj.Prog {
+func (psess *PackageSession) load_g_cx(ctxt *obj.Link, p *obj.Prog, newprog obj.ProgAlloc) *obj.Prog {
 	p.As = AMOVQ
 	if ctxt.Arch.PtrSize == 4 {
 		p.As = AMOVL
@@ -1004,7 +838,8 @@ func load_g_cx(ctxt *obj.Link, p *obj.Prog, newprog obj.ProgAlloc) *obj.Prog {
 	p.To.Reg = REG_CX
 
 	next := p.Link
-	progedit(ctxt, p, newprog)
+	psess.
+		progedit(ctxt, p, newprog)
 	for p.Link != next {
 		p = p.Link
 	}
@@ -1020,7 +855,7 @@ func load_g_cx(ctxt *obj.Link, p *obj.Prog, newprog obj.ProgAlloc) *obj.Prog {
 // Appends to (does not overwrite) p.
 // Assumes g is in CX.
 // Returns last new instruction.
-func stacksplit(ctxt *obj.Link, cursym *obj.LSym, p *obj.Prog, newprog obj.ProgAlloc, framesize int32, textarg int32) *obj.Prog {
+func (psess *PackageSession) stacksplit(ctxt *obj.Link, cursym *obj.LSym, p *obj.Prog, newprog obj.ProgAlloc, framesize int32, textarg int32) *obj.Prog {
 	cmp := ACMPQ
 	lea := ALEAQ
 	mov := AMOVQ
@@ -1035,22 +870,19 @@ func stacksplit(ctxt *obj.Link, cursym *obj.LSym, p *obj.Prog, newprog obj.ProgA
 
 	var q1 *obj.Prog
 	if framesize <= objabi.StackSmall {
-		// small stack: SP <= stackguard
-		//	CMPQ SP, stackguard
+
 		p = obj.Appendp(p, newprog)
 
 		p.As = cmp
 		p.From.Type = obj.TYPE_REG
 		p.From.Reg = REG_SP
 		indir_cx(ctxt, &p.To)
-		p.To.Offset = 2 * int64(ctxt.Arch.PtrSize) // G.stackguard0
+		p.To.Offset = 2 * int64(ctxt.Arch.PtrSize)
 		if cursym.CFunc() {
-			p.To.Offset = 3 * int64(ctxt.Arch.PtrSize) // G.stackguard1
+			p.To.Offset = 3 * int64(ctxt.Arch.PtrSize)
 		}
 	} else if framesize <= objabi.StackBig {
-		// large stack: SP-framesize <= stackguard-StackSmall
-		//	LEAQ -xxx(SP), AX
-		//	CMPQ AX, stackguard
+
 		p = obj.Appendp(p, newprog)
 
 		p.As = lea
@@ -1065,33 +897,19 @@ func stacksplit(ctxt *obj.Link, cursym *obj.LSym, p *obj.Prog, newprog obj.ProgA
 		p.From.Type = obj.TYPE_REG
 		p.From.Reg = REG_AX
 		indir_cx(ctxt, &p.To)
-		p.To.Offset = 2 * int64(ctxt.Arch.PtrSize) // G.stackguard0
+		p.To.Offset = 2 * int64(ctxt.Arch.PtrSize)
 		if cursym.CFunc() {
-			p.To.Offset = 3 * int64(ctxt.Arch.PtrSize) // G.stackguard1
+			p.To.Offset = 3 * int64(ctxt.Arch.PtrSize)
 		}
 	} else {
-		// Such a large stack we need to protect against wraparound.
-		// If SP is close to zero:
-		//	SP-stackguard+StackGuard <= framesize + (StackGuard-StackSmall)
-		// The +StackGuard on both sides is required to keep the left side positive:
-		// SP is allowed to be slightly below stackguard. See stack.h.
-		//
-		// Preemption sets stackguard to StackPreempt, a very large value.
-		// That breaks the math above, so we have to check for that explicitly.
-		//	MOVQ	stackguard, CX
-		//	CMPQ	CX, $StackPreempt
-		//	JEQ	label-of-call-to-morestack
-		//	LEAQ	StackGuard(SP), AX
-		//	SUBQ	CX, AX
-		//	CMPQ	AX, $(framesize+(StackGuard-StackSmall))
 
 		p = obj.Appendp(p, newprog)
 
 		p.As = mov
 		indir_cx(ctxt, &p.From)
-		p.From.Offset = 2 * int64(ctxt.Arch.PtrSize) // G.stackguard0
+		p.From.Offset = 2 * int64(ctxt.Arch.PtrSize)
 		if cursym.CFunc() {
-			p.From.Offset = 3 * int64(ctxt.Arch.PtrSize) // G.stackguard1
+			p.From.Offset = 3 * int64(ctxt.Arch.PtrSize)
 		}
 		p.To.Type = obj.TYPE_REG
 		p.To.Reg = REG_SI
@@ -1134,7 +952,6 @@ func stacksplit(ctxt *obj.Link, cursym *obj.LSym, p *obj.Prog, newprog obj.ProgA
 		p.To.Offset = int64(framesize) + (objabi.StackGuard - objabi.StackSmall)
 	}
 
-	// common
 	jls := obj.Appendp(p, newprog)
 	jls.As = AJLS
 	jls.To.Type = obj.TYPE_BRANCH
@@ -1143,9 +960,6 @@ func stacksplit(ctxt *obj.Link, cursym *obj.LSym, p *obj.Prog, newprog obj.ProgA
 	for last = cursym.Func.Text; last.Link != nil; last = last.Link {
 	}
 
-	// Now we are at the end of the function, but logically
-	// we are still in function prologue. We need to fix the
-	// SP data and PCDATA.
 	spfix := obj.Appendp(last, newprog)
 	spfix.As = obj.ANOP
 	spfix.Spadj = -framesize
@@ -1165,14 +979,13 @@ func stacksplit(ctxt *obj.Link, cursym *obj.LSym, p *obj.Prog, newprog obj.ProgA
 		morestack = "runtime.morestack_noctxt"
 	}
 	call.To.Sym = ctxt.Lookup(morestack)
-	// When compiling 386 code for dynamic linking, the call needs to be adjusted
-	// to follow PIC rules. This in turn can insert more instructions, so we need
-	// to keep track of the start of the call (where the jump will be to) and the
-	// end (which following instructions are appended to).
+
 	callend := call
-	progedit(ctxt, callend, newprog)
+	psess.
+		progedit(ctxt, callend, newprog)
 	for ; callend.Link != nil; callend = callend.Link {
-		progedit(ctxt, callend.Link, newprog)
+		psess.
+			progedit(ctxt, callend.Link, newprog)
 	}
 
 	jmp := obj.Appendp(callend, newprog)
@@ -1187,118 +1000,4 @@ func stacksplit(ctxt *obj.Link, cursym *obj.LSym, p *obj.Prog, newprog obj.ProgA
 	}
 
 	return jls
-}
-
-var unaryDst = map[obj.As]bool{
-	ABSWAPL:     true,
-	ABSWAPQ:     true,
-	ABSWAPW:     true,
-	ACLFLUSH:    true,
-	ACLFLUSHOPT: true,
-	ACMPXCHG16B: true,
-	ACMPXCHG8B:  true,
-	ADECB:       true,
-	ADECL:       true,
-	ADECQ:       true,
-	ADECW:       true,
-	AFBSTP:      true,
-	AFFREE:      true,
-	AFLDENV:     true,
-	AFSAVE:      true,
-	AFSTCW:      true,
-	AFSTENV:     true,
-	AFSTSW:      true,
-	AFXSAVE64:   true,
-	AFXSAVE:     true,
-	AINCB:       true,
-	AINCL:       true,
-	AINCQ:       true,
-	AINCW:       true,
-	ANEGB:       true,
-	ANEGL:       true,
-	ANEGQ:       true,
-	ANEGW:       true,
-	ANOTB:       true,
-	ANOTL:       true,
-	ANOTQ:       true,
-	ANOTW:       true,
-	APOPL:       true,
-	APOPQ:       true,
-	APOPW:       true,
-	ARDFSBASEL:  true,
-	ARDFSBASEQ:  true,
-	ARDGSBASEL:  true,
-	ARDGSBASEQ:  true,
-	ARDRANDL:    true,
-	ARDRANDQ:    true,
-	ARDRANDW:    true,
-	ARDSEEDL:    true,
-	ARDSEEDQ:    true,
-	ARDSEEDW:    true,
-	ASETCC:      true,
-	ASETCS:      true,
-	ASETEQ:      true,
-	ASETGE:      true,
-	ASETGT:      true,
-	ASETHI:      true,
-	ASETLE:      true,
-	ASETLS:      true,
-	ASETLT:      true,
-	ASETMI:      true,
-	ASETNE:      true,
-	ASETOC:      true,
-	ASETOS:      true,
-	ASETPC:      true,
-	ASETPL:      true,
-	ASETPS:      true,
-	ASGDT:       true,
-	ASIDT:       true,
-	ASLDTL:      true,
-	ASLDTQ:      true,
-	ASLDTW:      true,
-	ASMSWL:      true,
-	ASMSWQ:      true,
-	ASMSWW:      true,
-	ASTMXCSR:    true,
-	ASTRL:       true,
-	ASTRQ:       true,
-	ASTRW:       true,
-	AXSAVE64:    true,
-	AXSAVE:      true,
-	AXSAVEC64:   true,
-	AXSAVEC:     true,
-	AXSAVEOPT64: true,
-	AXSAVEOPT:   true,
-	AXSAVES64:   true,
-	AXSAVES:     true,
-}
-
-var Linkamd64 = obj.LinkArch{
-	Arch:           sys.ArchAMD64,
-	Init:           instinit,
-	Preprocess:     preprocess,
-	Assemble:       span6,
-	Progedit:       progedit,
-	UnaryDst:       unaryDst,
-	DWARFRegisters: AMD64DWARFRegisters,
-}
-
-var Linkamd64p32 = obj.LinkArch{
-	Arch:           sys.ArchAMD64P32,
-	Init:           instinit,
-	Preprocess:     preprocess,
-	Assemble:       span6,
-	Progedit:       progedit,
-	UnaryDst:       unaryDst,
-	DWARFRegisters: AMD64DWARFRegisters,
-}
-
-var Link386 = obj.LinkArch{
-	Arch:           sys.Arch386,
-	Init:           instinit,
-	Preprocess:     preprocess,
-	Assemble:       span6,
-	Progedit:       progedit,
-	UnaryDst:       unaryDst,
-	DWARFRegisters: X86DWARFRegisters,
 }

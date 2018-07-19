@@ -1,18 +1,14 @@
-// Copyright 2017 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
 // Package loadmacho implements a Mach-O file reader.
 package loadmacho
 
 import (
 	"bytes"
-	"cmd/internal/bio"
-	"cmd/internal/objabi"
-	"cmd/internal/sys"
-	"cmd/link/internal/sym"
 	"encoding/binary"
 	"fmt"
+	"github.com/dave/golib/src/cmd/internal/bio"
+	"github.com/dave/golib/src/cmd/internal/objabi"
+	"github.com/dave/golib/src/cmd/internal/sys"
+	"github.com/dave/golib/src/cmd/link/internal/sym"
 	"io"
 	"sort"
 )
@@ -266,7 +262,6 @@ func unpackcmd(p []byte, m *ldMachoObj, c *ldMachoCmd, type_ uint, sz uint) int 
 			s.res1 = e4(p[68:])
 			s.res2 = e4(p[72:])
 
-			// p+76 is reserved
 			p = p[80:]
 		}
 
@@ -324,9 +319,8 @@ func macholoadrel(m *ldMachoObj, sect *ldMachoSect) int {
 		p := buf[i*8:]
 		r.addr = m.e.Uint32(p)
 
-		// TODO(rsc): Wrong interpretation for big-endian bitfields?
 		if r.addr&0x80000000 != 0 {
-			// scatterbrained relocation
+
 			r.scattered = 1
 
 			v := r.addr >> 24
@@ -455,7 +449,7 @@ func Load(arch *sys.Arch, syms *sym.Symbols, f *bio.Reader, pkg string, length i
 	}
 
 	if is64 {
-		f.Seek(4, 1) // skip reserved word in header
+		f.Seek(4, 1)
 	}
 
 	m := &ldMachoObj{
@@ -530,16 +524,12 @@ func Load(arch *sys.Arch, syms *sym.Symbols, f *bio.Reader, pkg string, length i
 		}
 	}
 
-	// load text and data segments into memory.
-	// they are not as small as the load commands, but we'll need
-	// the memory anyway for the symbol images, so we might
-	// as well use one large chunk.
 	if c == nil {
 		return errorf("no load command")
 	}
 
 	if symtab == nil {
-		// our work is done here - no symbols means nothing can refer to this file
+
 		return
 	}
 
@@ -569,7 +559,7 @@ func Load(arch *sys.Arch, syms *sym.Symbols, f *bio.Reader, pkg string, length i
 			return errorf("duplicate %s/%s", sect.segname, sect.name)
 		}
 
-		if sect.flags&0xff == 1 { // S_ZEROFILL
+		if sect.flags&0xff == 1 {
 			s.P = make([]byte, sect.size)
 		} else {
 			s.P = dat[sect.addr-c.seg.vmaddr:][:sect.size]
@@ -594,15 +584,12 @@ func Load(arch *sys.Arch, syms *sym.Symbols, f *bio.Reader, pkg string, length i
 		sect.sym = s
 	}
 
-	// enter sub-symbols into symbol table.
-	// have to guess sizes from next symbol.
 	for i := uint32(0); i < symtab.nsym; i++ {
 		machsym := &symtab.sym[i]
 		if machsym.type_&N_STAB != 0 {
 			continue
 		}
 
-		// TODO: check sym->type against outer->type.
 		name := machsym.name
 
 		if name[0] == '_' && name[1] != '\x00' {
@@ -617,7 +604,7 @@ func Load(arch *sys.Arch, syms *sym.Symbols, f *bio.Reader, pkg string, length i
 			s.Attr |= sym.AttrDuplicateOK
 		}
 		machsym.sym = s
-		if machsym.sectnum == 0 { // undefined
+		if machsym.sectnum == 0 {
 			continue
 		}
 		if uint32(machsym.sectnum) > c.seg.nsect {
@@ -627,7 +614,7 @@ func Load(arch *sys.Arch, syms *sym.Symbols, f *bio.Reader, pkg string, length i
 		sect := &c.seg.sect[machsym.sectnum-1]
 		outer := sect.sym
 		if outer == nil {
-			continue // ignore reference to invalid section
+			continue
 		}
 
 		if s.Outer != nil {
@@ -644,7 +631,7 @@ func Load(arch *sys.Arch, syms *sym.Symbols, f *bio.Reader, pkg string, length i
 		s.Outer = outer
 		s.Value = int64(machsym.value - sect.addr)
 		if !s.Attr.CgoExportDynamic() {
-			s.Dynimplib = "" // satisfy dynimport
+			s.Dynimplib = ""
 		}
 		if outer.Type == sym.STEXT {
 			if s.Attr.External() && !s.Attr.DuplicateOK() {
@@ -656,8 +643,6 @@ func Load(arch *sys.Arch, syms *sym.Symbols, f *bio.Reader, pkg string, length i
 		machsym.sym = s
 	}
 
-	// Sort outer lists by address, adding to textp.
-	// This keeps textp in increasing address order.
 	for i := 0; uint32(i) < c.seg.nsect; i++ {
 		sect := &c.seg.sect[i]
 		s := sect.sym
@@ -667,7 +652,6 @@ func Load(arch *sys.Arch, syms *sym.Symbols, f *bio.Reader, pkg string, length i
 		if s.Sub != nil {
 			s.Sub = sym.SortSub(s.Sub)
 
-			// assign sizes, now that we know symbols in sorted order.
 			for s1 := s.Sub; s1 != nil; s1 = s1.Sub {
 				if s1.Sub != nil {
 					s1.Size = s1.Sub.Value - s1.Value
@@ -693,7 +677,6 @@ func Load(arch *sys.Arch, syms *sym.Symbols, f *bio.Reader, pkg string, length i
 		}
 	}
 
-	// load relocations
 	for i := 0; uint32(i) < c.seg.nsect; i++ {
 		sect := &c.seg.sect[i]
 		s := sect.sym
@@ -712,15 +695,10 @@ func Load(arch *sys.Arch, syms *sym.Symbols, f *bio.Reader, pkg string, length i
 			rel := &sect.rel[j]
 			if rel.scattered != 0 {
 				if arch.Family != sys.I386 {
-					// mach-o only uses scattered relocation on 32-bit platforms
+
 					return errorf("%v: unexpected scattered relocation", s)
 				}
 
-				// on 386, rewrite scattered 4/1 relocation and some
-				// scattered 2/1 relocation into the pseudo-pc-relative
-				// reference that it is.
-				// assume that the second in the pair is in this section
-				// and use that as the pc-relative base.
 				if j+1 >= sect.nreloc {
 					return errorf("unsupported scattered relocation %d", int(rel.type_))
 				}
@@ -732,24 +710,12 @@ func Load(arch *sys.Arch, syms *sym.Symbols, f *bio.Reader, pkg string, length i
 				rp.Siz = rel.length
 				rp.Off = int32(rel.addr)
 
-				// NOTE(rsc): I haven't worked out why (really when)
-				// we should ignore the addend on a
-				// scattered relocation, but it seems that the
-				// common case is we ignore it.
-				// It's likely that this is not strictly correct
-				// and that the math should look something
-				// like the non-scattered case below.
 				rp.Add = 0
 
-				// want to make it pc-relative aka relative to rp->off+4
-				// but the scatter asks for relative to off = sect->rel[j+1].value - sect->addr.
-				// adjust rp->add accordingly.
 				rp.Type = objabi.R_PCREL
 
 				rp.Add += int64(uint64(int64(rp.Off)+4) - (uint64(sect.rel[j+1].value) - sect.addr))
 
-				// now consider the desired symbol.
-				// find the section where it lives.
 				for k := 0; uint32(k) < c.seg.nsect; k++ {
 					ks := &c.seg.sect[k]
 					if ks.addr <= uint64(rel.value) && uint64(rel.value) < ks.addr+ks.size {
@@ -757,16 +723,11 @@ func Load(arch *sys.Arch, syms *sym.Symbols, f *bio.Reader, pkg string, length i
 							rp.Sym = ks.sym
 							rp.Add += int64(uint64(rel.value) - ks.addr)
 						} else if ks.segname == "__IMPORT" && ks.name == "__pointers" {
-							// handle reference to __IMPORT/__pointers.
-							// how much worse can this get?
-							// why are we supporting 386 on the mac anyway?
+
 							rp.Type = 512 + MACHO_FAKE_GOTPCREL
 
-							// figure out which pointer this is a reference to.
 							k = int(uint64(ks.res1) + (uint64(rel.value)-ks.addr)/4)
 
-							// load indirect table for __pointers
-							// fetch symbol number
 							if dsymtab == nil || k < 0 || uint32(k) >= dsymtab.nindirectsyms || dsymtab.indir == nil {
 								return errorf("invalid scattered relocation: indirect symbol reference out of range")
 							}
@@ -783,7 +744,6 @@ func Load(arch *sys.Arch, syms *sym.Symbols, f *bio.Reader, pkg string, length i
 
 						rpi++
 
-						// skip #1 of 2 rel; continue skips #2 of 2.
 						j++
 
 						continue Reloc
@@ -797,23 +757,8 @@ func Load(arch *sys.Arch, syms *sym.Symbols, f *bio.Reader, pkg string, length i
 			rp.Type = 512 + (objabi.RelocType(rel.type_) << 1) + objabi.RelocType(rel.pcrel)
 			rp.Off = int32(rel.addr)
 
-			// Handle X86_64_RELOC_SIGNED referencing a section (rel->extrn == 0).
 			if arch.Family == sys.AMD64 && rel.extrn == 0 && rel.type_ == MACHO_X86_64_RELOC_SIGNED {
-				// Calculate the addend as the offset into the section.
-				//
-				// The rip-relative offset stored in the object file is encoded
-				// as follows:
-				//
-				//    movsd	0x00000360(%rip),%xmm0
-				//
-				// To get the absolute address of the value this rip-relative address is pointing
-				// to, we must add the address of the next instruction to it. This is done by
-				// taking the address of the relocation and adding 4 to it (since the rip-relative
-				// offset can at most be 32 bits long).  To calculate the offset into the section the
-				// relocation is referencing, we subtract the vaddr of the start of the referenced
-				// section found in the original object file.
-				//
-				// [For future reference, see Darwin's /usr/include/mach-o/x86_64/reloc.h]
+
 				secaddr := c.seg.sect[rel.symnum-1].addr
 
 				rp.Add = int64(uint64(int64(int32(e.Uint32(s.P[rp.Off:])))+int64(rp.Off)+4) - secaddr)
@@ -821,16 +766,11 @@ func Load(arch *sys.Arch, syms *sym.Symbols, f *bio.Reader, pkg string, length i
 				rp.Add = int64(int32(e.Uint32(s.P[rp.Off:])))
 			}
 
-			// An unsigned internal relocation has a value offset
-			// by the section address.
 			if arch.Family == sys.AMD64 && rel.extrn == 0 && rel.type_ == MACHO_X86_64_RELOC_UNSIGNED {
 				secaddr := c.seg.sect[rel.symnum-1].addr
 				rp.Add -= int64(secaddr)
 			}
 
-			// For i386 Mach-O PC-relative, the addend is written such that
-			// it *is* the PC being subtracted. Use that to make
-			// it match our version of PC-relative.
 			if rel.pcrel != 0 && arch.Family == sys.I386 {
 				rp.Add += int64(rp.Off) + int64(rp.Siz)
 			}
@@ -844,10 +784,6 @@ func Load(arch *sys.Arch, syms *sym.Symbols, f *bio.Reader, pkg string, length i
 					return errorf("invalid relocation: %s", c.seg.sect[rel.symnum-1].name)
 				}
 
-				// References to symbols in other sections
-				// include that information in the addend.
-				// We only care about the delta from the
-				// section base.
 				if arch.Family == sys.I386 {
 					rp.Add -= int64(c.seg.sect[rel.symnum-1].addr)
 				}

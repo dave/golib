@@ -1,16 +1,11 @@
-// Copyright 2018 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
 package wasm
 
 import (
 	"bytes"
-	"cmd/internal/objabi"
-	"cmd/link/internal/ld"
-	"cmd/link/internal/sym"
+	"github.com/dave/golib/src/cmd/internal/objabi"
+	"github.com/dave/golib/src/cmd/link/internal/ld"
+	"github.com/dave/golib/src/cmd/link/internal/sym"
 	"io"
-	"regexp"
 )
 
 const (
@@ -52,56 +47,26 @@ type wasmFuncType struct {
 	Results []byte
 }
 
-var wasmFuncTypes = map[string]*wasmFuncType{
-	"_rt0_wasm_js":           &wasmFuncType{Params: []byte{I32, I32}},                                 // argc, argv
-	"runtime.wasmMove":       &wasmFuncType{Params: []byte{I32, I32, I32}},                            // dst, src, len
-	"runtime.wasmZero":       &wasmFuncType{Params: []byte{I32, I32}},                                 // ptr, len
-	"runtime.wasmDiv":        &wasmFuncType{Params: []byte{I64, I64}, Results: []byte{I64}},           // x, y -> x/y
-	"runtime.wasmTruncS":     &wasmFuncType{Params: []byte{F64}, Results: []byte{I64}},                // x -> int(x)
-	"runtime.wasmTruncU":     &wasmFuncType{Params: []byte{F64}, Results: []byte{I64}},                // x -> uint(x)
-	"runtime.gcWriteBarrier": &wasmFuncType{Params: []byte{I64, I64}},                                 // ptr, val
-	"cmpbody":                &wasmFuncType{Params: []byte{I64, I64, I64, I64}, Results: []byte{I64}}, // a, alen, b, blen -> -1/0/1
-	"memeqbody":              &wasmFuncType{Params: []byte{I64, I64, I64}, Results: []byte{I64}},      // a, b, len -> 0/1
-	"memcmp":                 &wasmFuncType{Params: []byte{I32, I32, I32}, Results: []byte{I32}},      // a, b, len -> <0/0/>0
-	"memchr":                 &wasmFuncType{Params: []byte{I32, I32, I32}, Results: []byte{I32}},      // s, c, len -> index
-}
-
 func assignAddress(ctxt *ld.Link, sect *sym.Section, n int, s *sym.Symbol, va uint64, isTramp bool) (*sym.Section, int, uint64) {
-	// WebAssembly functions do not live in the same address space as the linear memory.
-	// Instead, WebAssembly automatically assigns indices. Imported functions (section "import")
-	// have indices 0 to n. They are followed by native functions (sections "function" and "code")
-	// with indices n+1 and following.
-	//
-	// The following rules describe how wasm handles function indices and addresses:
-	//   PC_F = funcValueOffset + WebAssembly function index (not including the imports)
-	//   s.Value = PC = PC_F<<16 + PC_B
-	//
-	// The funcValueOffset is necessary to avoid conflicts with expectations
-	// that the Go runtime has about function addresses.
-	// The field "s.Value" corresponds to the concept of PC at runtime.
-	// However, there is no PC register, only PC_F and PC_B. PC_F denotes the function,
-	// PC_B the resume point inside of that function. The entry of the function has PC_B = 0.
+
 	s.Sect = sect
-	s.Value = int64(funcValueOffset+va/ld.MINFUNC) << 16 // va starts at zero
+	s.Value = int64(funcValueOffset+va/ld.MINFUNC) << 16
 	va += uint64(ld.MINFUNC)
 	return sect, n, va
 }
 
 // asmb writes the final WebAssembly module binary.
 // Spec: https://webassembly.github.io/spec/core/binary/modules.html
-func asmb(ctxt *ld.Link) {
+func (psess *PackageSession) asmb(ctxt *ld.Link) {
 	if ctxt.Debugvlog != 0 {
-		ctxt.Logf("%5.2f asmb\n", ld.Cputime())
+		ctxt.Logf("%5.2f asmb\n", psess.ld.Cputime())
 	}
 
 	types := []*wasmFuncType{
-		// For normal Go functions the return value is
-		// 0 if the function returned normally or
-		// 1 if the stack needs to be unwound.
+
 		&wasmFuncType{Results: []byte{I32}},
 	}
 
-	// collect host imports (functions that get imported from the WebAssembly host, usually JavaScript)
 	hostImports := []*wasmFunc{
 		&wasmFunc{
 			Name: "debug",
@@ -127,12 +92,12 @@ func asmb(ctxt *ld.Link) {
 	for i, fn := range ctxt.Textp {
 		wfn := new(bytes.Buffer)
 		if fn.Name == "go.buildid" {
-			writeUleb128(wfn, 0) // number of sets of locals
+			writeUleb128(wfn, 0)
 			writeI32Const(wfn, 0)
-			wfn.WriteByte(0x0b) // end
+			wfn.WriteByte(0x0b)
 			buildid = fn.P
 		} else {
-			// Relocations have variable length, handle them here.
+
 			off := int32(0)
 			for _, r := range fn.R {
 				wfn.Write(fn.P[off:r.Off])
@@ -145,7 +110,8 @@ func asmb(ctxt *ld.Link) {
 				case objabi.R_WASMIMPORT:
 					writeSleb128(wfn, hostImportMap[r.Sym])
 				default:
-					ld.Errorf(fn, "bad reloc type %d (%s)", r.Type, sym.RelocName(ctxt.Arch, r.Type))
+					psess.ld.
+						Errorf(fn, "bad reloc type %d (%s)", r.Type, psess.sym.RelocName(ctxt.Arch, r.Type))
 					continue
 				}
 			}
@@ -153,40 +119,49 @@ func asmb(ctxt *ld.Link) {
 		}
 
 		typ := uint32(0)
-		if sig, ok := wasmFuncTypes[fn.Name]; ok {
+		if sig, ok := psess.wasmFuncTypes[fn.Name]; ok {
 			typ = lookupType(sig, &types)
 		}
 
-		name := nameRegexp.ReplaceAllString(fn.Name, "_")
+		name := psess.nameRegexp.ReplaceAllString(fn.Name, "_")
 		fns[i] = &wasmFunc{Name: name, Type: typ, Code: wfn.Bytes()}
 	}
 
-	// look up program entry point
 	rt0 := uint32(len(hostImports)) + uint32(ctxt.Syms.ROLookup("_rt0_wasm_js", 0).Value>>16) - funcValueOffset
 
-	ctxt.Out.Write([]byte{0x00, 0x61, 0x73, 0x6d}) // magic
-	ctxt.Out.Write([]byte{0x01, 0x00, 0x00, 0x00}) // version
+	ctxt.Out.Write([]byte{0x00, 0x61, 0x73, 0x6d})
+	ctxt.Out.Write([]byte{0x01, 0x00, 0x00, 0x00})
 
-	// Add any buildid early in the binary:
 	if len(buildid) != 0 {
-		writeBuildID(ctxt, buildid)
+		psess.
+			writeBuildID(ctxt, buildid)
+	}
+	psess.
+		writeTypeSec(ctxt, types)
+	psess.
+		writeImportSec(ctxt, hostImports)
+	psess.
+		writeFunctionSec(ctxt, fns)
+	psess.
+		writeTableSec(ctxt, fns)
+	psess.
+		writeMemorySec(ctxt)
+	psess.
+		writeGlobalSec(ctxt)
+	psess.
+		writeExportSec(ctxt, rt0)
+	psess.
+		writeElementSec(ctxt, uint64(len(hostImports)), uint64(len(fns)))
+	psess.
+		writeCodeSec(ctxt, fns)
+	psess.
+		writeDataSec(ctxt)
+	if !*psess.ld.FlagS {
+		psess.
+			writeNameSec(ctxt, len(hostImports), fns)
 	}
 
-	writeTypeSec(ctxt, types)
-	writeImportSec(ctxt, hostImports)
-	writeFunctionSec(ctxt, fns)
-	writeTableSec(ctxt, fns)
-	writeMemorySec(ctxt)
-	writeGlobalSec(ctxt)
-	writeExportSec(ctxt, rt0)
-	writeElementSec(ctxt, uint64(len(hostImports)), uint64(len(fns)))
-	writeCodeSec(ctxt, fns)
-	writeDataSec(ctxt)
-	if !*ld.FlagS {
-		writeNameSec(ctxt, len(hostImports), fns)
-	}
-
-	ctxt.Out.Flush()
+	ctxt.Out.Flush(psess.ld)
 }
 
 func lookupType(sig *wasmFuncType, types *[]*wasmFuncType) uint32 {
@@ -202,33 +177,34 @@ func lookupType(sig *wasmFuncType, types *[]*wasmFuncType) uint32 {
 func writeSecHeader(ctxt *ld.Link, id uint8) int64 {
 	ctxt.Out.WriteByte(id)
 	sizeOffset := ctxt.Out.Offset()
-	ctxt.Out.Write(make([]byte, 5)) // placeholder for length
+	ctxt.Out.Write(make([]byte, 5))
 	return sizeOffset
 }
 
-func writeSecSize(ctxt *ld.Link, sizeOffset int64) {
+func (psess *PackageSession) writeSecSize(ctxt *ld.Link, sizeOffset int64) {
 	endOffset := ctxt.Out.Offset()
-	ctxt.Out.SeekSet(sizeOffset)
+	ctxt.Out.SeekSet(psess.ld, sizeOffset)
 	writeUleb128FixedLength(ctxt.Out, uint64(endOffset-sizeOffset-5), 5)
-	ctxt.Out.SeekSet(endOffset)
+	ctxt.Out.SeekSet(psess.ld, endOffset)
 }
 
-func writeBuildID(ctxt *ld.Link, buildid []byte) {
+func (psess *PackageSession) writeBuildID(ctxt *ld.Link, buildid []byte) {
 	sizeOffset := writeSecHeader(ctxt, sectionCustom)
 	writeName(ctxt.Out, "go.buildid")
 	ctxt.Out.Write(buildid)
-	writeSecSize(ctxt, sizeOffset)
+	psess.
+		writeSecSize(ctxt, sizeOffset)
 }
 
 // writeTypeSec writes the section that declares all function types
 // so they can be referenced by index.
-func writeTypeSec(ctxt *ld.Link, types []*wasmFuncType) {
+func (psess *PackageSession) writeTypeSec(ctxt *ld.Link, types []*wasmFuncType) {
 	sizeOffset := writeSecHeader(ctxt, sectionType)
 
 	writeUleb128(ctxt.Out, uint64(len(types)))
 
 	for _, t := range types {
-		ctxt.Out.WriteByte(0x60) // functype
+		ctxt.Out.WriteByte(0x60)
 		writeUleb128(ctxt.Out, uint64(len(t.Params)))
 		for _, v := range t.Params {
 			ctxt.Out.WriteByte(byte(v))
@@ -238,160 +214,154 @@ func writeTypeSec(ctxt *ld.Link, types []*wasmFuncType) {
 			ctxt.Out.WriteByte(byte(v))
 		}
 	}
-
-	writeSecSize(ctxt, sizeOffset)
+	psess.
+		writeSecSize(ctxt, sizeOffset)
 }
 
 // writeImportSec writes the section that lists the functions that get
 // imported from the WebAssembly host, usually JavaScript.
-func writeImportSec(ctxt *ld.Link, hostImports []*wasmFunc) {
+func (psess *PackageSession) writeImportSec(ctxt *ld.Link, hostImports []*wasmFunc) {
 	sizeOffset := writeSecHeader(ctxt, sectionImport)
 
-	writeUleb128(ctxt.Out, uint64(len(hostImports))) // number of imports
+	writeUleb128(ctxt.Out, uint64(len(hostImports)))
 	for _, fn := range hostImports {
-		writeName(ctxt.Out, "go") // provided by the import object in wasm_exec.js
+		writeName(ctxt.Out, "go")
 		writeName(ctxt.Out, fn.Name)
-		ctxt.Out.WriteByte(0x00) // func import
+		ctxt.Out.WriteByte(0x00)
 		writeUleb128(ctxt.Out, uint64(fn.Type))
 	}
-
-	writeSecSize(ctxt, sizeOffset)
+	psess.
+		writeSecSize(ctxt, sizeOffset)
 }
 
 // writeFunctionSec writes the section that declares the types of functions.
 // The bodies of these functions will later be provided in the "code" section.
-func writeFunctionSec(ctxt *ld.Link, fns []*wasmFunc) {
+func (psess *PackageSession) writeFunctionSec(ctxt *ld.Link, fns []*wasmFunc) {
 	sizeOffset := writeSecHeader(ctxt, sectionFunction)
 
 	writeUleb128(ctxt.Out, uint64(len(fns)))
 	for _, fn := range fns {
 		writeUleb128(ctxt.Out, uint64(fn.Type))
 	}
-
-	writeSecSize(ctxt, sizeOffset)
+	psess.
+		writeSecSize(ctxt, sizeOffset)
 }
 
 // writeTableSec writes the section that declares tables. Currently there is only a single table
 // that is used by the CallIndirect operation to dynamically call any function.
 // The contents of the table get initialized by the "element" section.
-func writeTableSec(ctxt *ld.Link, fns []*wasmFunc) {
+func (psess *PackageSession) writeTableSec(ctxt *ld.Link, fns []*wasmFunc) {
 	sizeOffset := writeSecHeader(ctxt, sectionTable)
 
 	numElements := uint64(funcValueOffset + len(fns))
-	writeUleb128(ctxt.Out, 1)           // number of tables
-	ctxt.Out.WriteByte(0x70)            // type: anyfunc
-	ctxt.Out.WriteByte(0x00)            // no max
-	writeUleb128(ctxt.Out, numElements) // min
-
-	writeSecSize(ctxt, sizeOffset)
+	writeUleb128(ctxt.Out, 1)
+	ctxt.Out.WriteByte(0x70)
+	ctxt.Out.WriteByte(0x00)
+	writeUleb128(ctxt.Out, numElements)
+	psess.
+		writeSecSize(ctxt, sizeOffset)
 }
 
 // writeMemorySec writes the section that declares linear memories. Currently one linear memory is being used.
-func writeMemorySec(ctxt *ld.Link) {
+func (psess *PackageSession) writeMemorySec(ctxt *ld.Link) {
 	sizeOffset := writeSecHeader(ctxt, sectionMemory)
 
-	// Linear memory always starts at address zero.
-	// The unit of the sizes is "WebAssembly page size", which is 64Ki.
-	// The minimum is currently set to 1GB, which is a lot.
-	// More memory can be requested with the grow_memory instruction,
-	// but this operation currently is rather slow, so we avoid it for now.
-	// TODO(neelance): Use lower initial memory size.
-	writeUleb128(ctxt.Out, 1)       // number of memories
-	ctxt.Out.WriteByte(0x00)        // no maximum memory size
-	writeUleb128(ctxt.Out, 1024*16) // minimum (initial) memory size
-
-	writeSecSize(ctxt, sizeOffset)
+	writeUleb128(ctxt.Out, 1)
+	ctxt.Out.WriteByte(0x00)
+	writeUleb128(ctxt.Out, 1024*16)
+	psess.
+		writeSecSize(ctxt, sizeOffset)
 }
 
 // writeGlobalSec writes the section that declares global variables.
-func writeGlobalSec(ctxt *ld.Link) {
+func (psess *PackageSession) writeGlobalSec(ctxt *ld.Link) {
 	sizeOffset := writeSecHeader(ctxt, sectionGlobal)
 
 	globalRegs := []byte{
-		I32, // 0: PC_F
-		I32, // 1: PC_B
-		I32, // 2: SP
-		I64, // 3: CTXT
-		I64, // 4: g
-		I64, // 5: RET0
-		I64, // 6: RET1
-		I64, // 7: RET2
-		I64, // 8: RET3
-		I32, // 9: RUN
+		I32,
+		I32,
+		I32,
+		I64,
+		I64,
+		I64,
+		I64,
+		I64,
+		I64,
+		I32,
 	}
 
-	writeUleb128(ctxt.Out, uint64(len(globalRegs))) // number of globals
+	writeUleb128(ctxt.Out, uint64(len(globalRegs)))
 
 	for _, typ := range globalRegs {
 		ctxt.Out.WriteByte(typ)
-		ctxt.Out.WriteByte(0x01) // var
+		ctxt.Out.WriteByte(0x01)
 		switch typ {
 		case I32:
 			writeI32Const(ctxt.Out, 0)
 		case I64:
 			writeI64Const(ctxt.Out, 0)
 		}
-		ctxt.Out.WriteByte(0x0b) // end
+		ctxt.Out.WriteByte(0x0b)
 	}
-
-	writeSecSize(ctxt, sizeOffset)
+	psess.
+		writeSecSize(ctxt, sizeOffset)
 }
 
 // writeExportSec writes the section that declares exports.
 // Exports can be accessed by the WebAssembly host, usually JavaScript.
 // Currently _rt0_wasm_js (program entry point) and the linear memory get exported.
-func writeExportSec(ctxt *ld.Link, rt0 uint32) {
+func (psess *PackageSession) writeExportSec(ctxt *ld.Link, rt0 uint32) {
 	sizeOffset := writeSecHeader(ctxt, sectionExport)
 
-	writeUleb128(ctxt.Out, 2) // number of exports
+	writeUleb128(ctxt.Out, 2)
 
-	writeName(ctxt.Out, "run")          // inst.exports.run in wasm_exec.js
-	ctxt.Out.WriteByte(0x00)            // func export
-	writeUleb128(ctxt.Out, uint64(rt0)) // funcidx
+	writeName(ctxt.Out, "run")
+	ctxt.Out.WriteByte(0x00)
+	writeUleb128(ctxt.Out, uint64(rt0))
 
-	writeName(ctxt.Out, "mem") // inst.exports.mem in wasm_exec.js
-	ctxt.Out.WriteByte(0x02)   // mem export
-	writeUleb128(ctxt.Out, 0)  // memidx
-
-	writeSecSize(ctxt, sizeOffset)
+	writeName(ctxt.Out, "mem")
+	ctxt.Out.WriteByte(0x02)
+	writeUleb128(ctxt.Out, 0)
+	psess.
+		writeSecSize(ctxt, sizeOffset)
 }
 
 // writeElementSec writes the section that initializes the tables declared by the "table" section.
 // The table for CallIndirect gets initialized in a very simple way so that each table index (PC_F value)
 // maps linearly to the function index (numImports + PC_F).
-func writeElementSec(ctxt *ld.Link, numImports, numFns uint64) {
+func (psess *PackageSession) writeElementSec(ctxt *ld.Link, numImports, numFns uint64) {
 	sizeOffset := writeSecHeader(ctxt, sectionElement)
 
-	writeUleb128(ctxt.Out, 1) // number of element segments
+	writeUleb128(ctxt.Out, 1)
 
-	writeUleb128(ctxt.Out, 0) // tableidx
+	writeUleb128(ctxt.Out, 0)
 	writeI32Const(ctxt.Out, funcValueOffset)
-	ctxt.Out.WriteByte(0x0b) // end
+	ctxt.Out.WriteByte(0x0b)
 
-	writeUleb128(ctxt.Out, numFns) // number of entries
+	writeUleb128(ctxt.Out, numFns)
 	for i := uint64(0); i < numFns; i++ {
 		writeUleb128(ctxt.Out, numImports+i)
 	}
-
-	writeSecSize(ctxt, sizeOffset)
+	psess.
+		writeSecSize(ctxt, sizeOffset)
 }
 
 // writeElementSec writes the section that provides the function bodies for the functions
 // declared by the "func" section.
-func writeCodeSec(ctxt *ld.Link, fns []*wasmFunc) {
+func (psess *PackageSession) writeCodeSec(ctxt *ld.Link, fns []*wasmFunc) {
 	sizeOffset := writeSecHeader(ctxt, sectionCode)
 
-	writeUleb128(ctxt.Out, uint64(len(fns))) // number of code entries
+	writeUleb128(ctxt.Out, uint64(len(fns)))
 	for _, fn := range fns {
 		writeUleb128(ctxt.Out, uint64(len(fn.Code)))
 		ctxt.Out.Write(fn.Code)
 	}
-
-	writeSecSize(ctxt, sizeOffset)
+	psess.
+		writeSecSize(ctxt, sizeOffset)
 }
 
 // writeDataSec writes the section that provides data that will be used to initialize the linear memory.
-func writeDataSec(ctxt *ld.Link) {
+func (psess *PackageSession) writeDataSec(ctxt *ld.Link) {
 	sizeOffset := writeSecHeader(ctxt, sectionData)
 
 	sections := []*sym.Section{
@@ -404,37 +374,37 @@ func writeDataSec(ctxt *ld.Link) {
 		ctxt.Syms.Lookup("runtime.data", 0).Sect,
 	}
 
-	writeUleb128(ctxt.Out, uint64(len(sections))) // number of data entries
+	writeUleb128(ctxt.Out, uint64(len(sections)))
 
 	for _, sec := range sections {
-		writeUleb128(ctxt.Out, 0) // memidx
+		writeUleb128(ctxt.Out, 0)
 		writeI32Const(ctxt.Out, int32(sec.Vaddr))
-		ctxt.Out.WriteByte(0x0b) // end
+		ctxt.Out.WriteByte(0x0b)
 		writeUleb128(ctxt.Out, uint64(sec.Length))
-		ld.Datblk(ctxt, int64(sec.Vaddr), int64(sec.Length))
+		psess.ld.
+			Datblk(ctxt, int64(sec.Vaddr), int64(sec.Length))
 	}
-
-	writeSecSize(ctxt, sizeOffset)
+	psess.
+		writeSecSize(ctxt, sizeOffset)
 }
-
-var nameRegexp = regexp.MustCompile(`[^\w\.]`)
 
 // writeNameSec writes an optional section that assigns names to the functions declared by the "func" section.
 // The names are only used by WebAssembly stack traces, debuggers and decompilers.
 // TODO(neelance): add symbol table of DATA symbols
-func writeNameSec(ctxt *ld.Link, firstFnIndex int, fns []*wasmFunc) {
+func (psess *PackageSession) writeNameSec(ctxt *ld.Link, firstFnIndex int, fns []*wasmFunc) {
 	sizeOffset := writeSecHeader(ctxt, sectionCustom)
 	writeName(ctxt.Out, "name")
 
-	sizeOffset2 := writeSecHeader(ctxt, 0x01) // function names
+	sizeOffset2 := writeSecHeader(ctxt, 0x01)
 	writeUleb128(ctxt.Out, uint64(len(fns)))
 	for i, fn := range fns {
 		writeUleb128(ctxt.Out, uint64(firstFnIndex+i))
 		writeName(ctxt.Out, fn.Name)
 	}
-	writeSecSize(ctxt, sizeOffset2)
-
-	writeSecSize(ctxt, sizeOffset)
+	psess.
+		writeSecSize(ctxt, sizeOffset2)
+	psess.
+		writeSecSize(ctxt, sizeOffset)
 }
 
 type nameWriter interface {
@@ -443,12 +413,12 @@ type nameWriter interface {
 }
 
 func writeI32Const(w io.ByteWriter, v int32) {
-	w.WriteByte(0x41) // i32.const
+	w.WriteByte(0x41)
 	writeSleb128(w, int64(v))
 }
 
 func writeI64Const(w io.ByteWriter, v int64) {
-	w.WriteByte(0x42) // i64.const
+	w.WriteByte(0x42)
 	writeSleb128(w, v)
 }
 

@@ -1,19 +1,13 @@
-// Copyright 2013 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
-// Parsing of Go intermediate object files and archives.
-
 package objfile
 
 import (
-	"cmd/internal/goobj"
-	"cmd/internal/objabi"
-	"cmd/internal/sys"
 	"debug/dwarf"
 	"debug/gosym"
 	"errors"
 	"fmt"
+	"github.com/dave/golib/src/cmd/internal/goobj"
+	"github.com/dave/golib/src/cmd/internal/objabi"
+	"github.com/dave/golib/src/cmd/internal/sys"
 	"os"
 )
 
@@ -23,7 +17,7 @@ type goobjFile struct {
 }
 
 func openGoFile(r *os.File) (*File, error) {
-	f, err := goobj.Parse(r, `""`)
+	f, err := goobj.Parse(r, "\"\"")
 	if err != nil {
 		return nil, err
 	}
@@ -90,7 +84,7 @@ func (f *goobjFile) symbols() ([]Sym, error) {
 				seen[r.Sym] = true
 				sym := Sym{Name: goobjName(r.Sym), Code: 'U'}
 				if s.Version != 0 {
-					// should not happen but handle anyway
+
 					sym.Code = 'u'
 				}
 				syms = append(syms, sym)
@@ -102,8 +96,7 @@ func (f *goobjFile) symbols() ([]Sym, error) {
 }
 
 func (f *goobjFile) pcln() (textStart uint64, symtab, pclntab []byte, err error) {
-	// Should never be called. We implement Liner below, callers
-	// should use that instead.
+
 	return 0, nil, nil, fmt.Errorf("pcln not available in go object file")
 }
 
@@ -142,8 +135,7 @@ func (f *goobjFile) PCToLine(pc uint64) (string, int, *gosym.Func) {
 			return "", 0, nil
 		}
 		line := int(pcValue(pcline, pc-uint64(s.Data.Offset), arch))
-		// Note: we provide only the name in the Func structure.
-		// We could provide more if needed.
+
 		return fileName, line, &gosym.Func{Sym: &gosym.Sym{Name: s.Name}}
 	}
 	return "", 0, nil

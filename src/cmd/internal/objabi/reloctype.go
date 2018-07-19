@@ -1,33 +1,3 @@
-// Derived from Inferno utils/6l/l.h and related files.
-// https://bitbucket.org/inferno-os/inferno-os/src/default/utils/6l/l.h
-//
-//	Copyright © 1994-1999 Lucent Technologies Inc.  All rights reserved.
-//	Portions Copyright © 1995-1997 C H Forsyth (forsyth@terzarima.net)
-//	Portions Copyright © 1997-1999 Vita Nuova Limited
-//	Portions Copyright © 2000-2007 Vita Nuova Holdings Limited (www.vitanuova.com)
-//	Portions Copyright © 2004,2006 Bruce Ellis
-//	Portions Copyright © 2005-2007 C H Forsyth (forsyth@terzarima.net)
-//	Revisions Copyright © 2000-2007 Lucent Technologies Inc. and others
-//	Portions Copyright © 2009 The Go Authors. All rights reserved.
-//
-// Permission is hereby granted, free of charge, to any person obtaining a copy
-// of this software and associated documentation files (the "Software"), to deal
-// in the Software without restriction, including without limitation the rights
-// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-// copies of the Software, and to permit persons to whom the Software is
-// furnished to do so, subject to the following conditions:
-//
-// The above copyright notice and this permission notice shall be included in
-// all copies or substantial portions of the Software.
-//
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL THE
-// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-// THE SOFTWARE.
-
 package objabi
 
 type RelocType int32
@@ -109,15 +79,6 @@ const (
 	// attribute of form DW_FORM_data4.
 	R_DWARFFILEREF
 
-	// Platform dependent relocations. Architectures with fixed width instructions
-	// have the inherent issue that a 32-bit (or 64-bit!) displacement cannot be
-	// stuffed into a 32-bit instruction, so an address needs to be spread across
-	// several instructions, and in turn this requires a sequence of relocations, each
-	// updating a part of an instruction. This leads to relocation codes that are
-	// inherently processor specific.
-
-	// Arm64.
-
 	// Set a MOV[NZ] immediate field to bits [15:0] of the offset from the thread
 	// local base to the thread local variable defined by the referenced (thread
 	// local) symbol. Error if the offset does not fit into 16 bits.
@@ -131,8 +92,6 @@ const (
 	// R_ARM64_GOTPCREL relocates an adrp, ld64 pair to compute the address of the GOT
 	// slot of the referenced symbol.
 	R_ARM64_GOTPCREL
-
-	// PPC64.
 
 	// R_POWER_TLS_LE is used to implement the "local exec" model for tls
 	// access. It resolves to the offset of the thread-local symbol from the

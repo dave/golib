@@ -1,7 +1,3 @@
-// Copyright 2016 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
 package syntax
 
 import (
@@ -28,7 +24,7 @@ func (err Error) Error() string {
 	return fmt.Sprintf("%s: %s", err.Pos, err.Msg)
 }
 
-var _ error = Error{} // verify that Error implements error
+// verify that Error implements error
 
 // An ErrorHandler is called for each error encountered reading a .go file.
 type ErrorHandler func(err error)
@@ -55,7 +51,7 @@ type PragmaHandler func(pos Pos, text string) Pragma
 //
 // If pragh != nil, it is called with each pragma encountered.
 //
-func Parse(base *PosBase, src io.Reader, errh ErrorHandler, pragh PragmaHandler, mode Mode) (_ *File, first error) {
+func (psess *PackageSession) Parse(base *PosBase, src io.Reader, errh ErrorHandler, pragh PragmaHandler, mode Mode) (_ *File, first error) {
 	defer func() {
 		if p := recover(); p != nil {
 			if err, ok := p.(Error); ok {
@@ -68,12 +64,12 @@ func Parse(base *PosBase, src io.Reader, errh ErrorHandler, pragh PragmaHandler,
 
 	var p parser
 	p.init(base, src, errh, pragh, mode)
-	p.next()
-	return p.fileOrNil(), p.first
+	p.next(psess)
+	return p.fileOrNil(psess), p.first
 }
 
 // ParseFile behaves like Parse but it reads the source from the named file.
-func ParseFile(filename string, errh ErrorHandler, pragh PragmaHandler, mode Mode) (*File, error) {
+func (psess *PackageSession) ParseFile(filename string, errh ErrorHandler, pragh PragmaHandler, mode Mode) (*File, error) {
 	f, err := os.Open(filename)
 	if err != nil {
 		if errh != nil {
@@ -82,5 +78,5 @@ func ParseFile(filename string, errh ErrorHandler, pragh PragmaHandler, mode Mod
 		return nil, err
 	}
 	defer f.Close()
-	return Parse(NewFileBase(filename), f, errh, pragh, mode)
+	return psess.Parse(NewFileBase(filename), f, errh, pragh, mode)
 }

@@ -1,13 +1,9 @@
-// Copyright 2018 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
 package x86
 
 import (
-	"cmd/internal/obj"
 	"errors"
 	"fmt"
+	"github.com/dave/golib/src/cmd/internal/obj"
 	"strings"
 )
 
@@ -196,13 +192,12 @@ func newEVEXSuffix() evexSuffix {
 
 // evexSuffixMap maps obj.X86suffix to it's decoded version.
 // Filled during init().
-var evexSuffixMap [255]evexSuffix
 
-func init() {
-	// Decode all valid suffixes for later use.
-	for i := range opSuffixTable {
+func (psess *PackageSession) init() {
+
+	for i := range psess.opSuffixTable {
 		suffix := newEVEXSuffix()
-		parts := strings.Split(opSuffixTable[i], ".")
+		parts := strings.Split(psess.opSuffixTable[i], ".")
 		for j := range parts {
 			switch parts[j] {
 			case "Z":
@@ -222,14 +217,15 @@ func init() {
 				suffix.rounding = rcRZSAE
 			}
 		}
-		evexSuffixMap[i] = suffix
+		psess.
+			evexSuffixMap[i] = suffix
 	}
 }
 
 // toDisp8 tries to convert disp to proper 8-bit displacement value.
-func toDisp8(disp int32, p *obj.Prog, asmbuf *AsmBuf) (disp8 byte, ok bool) {
+func (psess *PackageSession) toDisp8(disp int32, p *obj.Prog, asmbuf *AsmBuf) (disp8 byte, ok bool) {
 	if asmbuf.evexflag {
-		bcst := evexSuffixMap[p.Scond].broadcast
+		bcst := psess.evexSuffixMap[p.Scond].broadcast
 		elemSize := asmbuf.evex.DispMultiplier(bcst)
 		return compressedDisp8(disp, elemSize)
 	}
@@ -254,10 +250,10 @@ func decodeRegisterRange(list int64) (reg0, reg1 int) {
 // Suffix bits are stored into p.Scond.
 //
 // Leading "." in cond is ignored.
-func ParseSuffix(p *obj.Prog, cond string) error {
+func (psess *PackageSession) ParseSuffix(p *obj.Prog, cond string) error {
 	cond = strings.TrimPrefix(cond, ".")
 
-	suffix := newOpSuffix(cond)
+	suffix := psess.newOpSuffix(cond)
 	if !suffix.IsValid() {
 		return inferSuffixError(cond)
 	}
@@ -278,8 +274,8 @@ func ParseSuffix(p *obj.Prog, cond string) error {
 //	- unknown suffixes
 //	- misplaced suffix (e.g. wrong Z suffix position)
 func inferSuffixError(cond string) error {
-	suffixSet := make(map[string]bool)  // Set for duplicates detection.
-	unknownSet := make(map[string]bool) // Set of unknown suffixes.
+	suffixSet := make(map[string]bool)
+	unknownSet := make(map[string]bool)
 	hasBcst := false
 	hasRoundSae := false
 	var msg []string // Error message parts
@@ -321,28 +317,6 @@ func inferSuffixError(cond string) error {
 // opSuffixTable is a complete list of possible opcode suffix combinations.
 // It "maps" uint8 suffix bits to their string representation.
 // With the exception of first and last elements, order is not important.
-var opSuffixTable = [...]string{
-	"", // Map empty suffix to empty string.
-
-	"Z",
-
-	"SAE",
-	"SAE.Z",
-
-	"RN_SAE",
-	"RZ_SAE",
-	"RD_SAE",
-	"RU_SAE",
-	"RN_SAE.Z",
-	"RZ_SAE.Z",
-	"RD_SAE.Z",
-	"RU_SAE.Z",
-
-	"BCST",
-	"BCST.Z",
-
-	"<bad suffix>",
-}
 
 // opSuffix represents instruction opcode suffix.
 // Compound (multi-part) suffixes expressed with single opSuffix value.
@@ -351,15 +325,15 @@ var opSuffixTable = [...]string{
 type opSuffix uint8
 
 // badOpSuffix is used to represent all invalid suffix combinations.
-const badOpSuffix = opSuffix(len(opSuffixTable) - 1)
+const badOpSuffix = opSuffix(len(psess.opSuffixTable) - 1)
 
 // newOpSuffix returns opSuffix object that matches suffixes string.
 //
 // If no matching suffix is found, special "invalid" suffix is returned.
 // Use IsValid method to check against this case.
-func newOpSuffix(suffixes string) opSuffix {
-	for i := range opSuffixTable {
-		if opSuffixTable[i] == suffixes {
+func (psess *PackageSession) newOpSuffix(suffixes string) opSuffix {
+	for i := range psess.opSuffixTable {
+		if psess.opSuffixTable[i] == suffixes {
 			return opSuffix(i)
 		}
 	}
@@ -377,6 +351,6 @@ func (suffix opSuffix) IsValid() bool {
 // It matches the string that was used to create suffix with NewX86Suffix()
 // for valid suffixes.
 // For all invalid suffixes, special marker is returned.
-func (suffix opSuffix) String() string {
-	return opSuffixTable[suffix]
+func (suffix opSuffix) String(psess *PackageSession) string {
+	return psess.opSuffixTable[suffix]
 }

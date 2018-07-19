@@ -1,31 +1,25 @@
-// Copyright 2016 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
 package ssa
 
-import "cmd/compile/internal/types"
+import "github.com/dave/golib/src/cmd/compile/internal/types"
 
 // zcse does an initial pass of common-subexpression elimination on the
 // function for values with zero arguments to allow the more expensive cse
 // to begin with a reduced number of values. Values are just relinked,
 // nothing is deleted. A subsequent deadcode pass is required to actually
 // remove duplicate expressions.
-func zcse(f *Func) {
+func (psess *PackageSession) zcse(f *Func) {
 	vals := make(map[vkey]*Value)
 
 	for _, b := range f.Blocks {
 		for i := 0; i < len(b.Values); {
 			v := b.Values[i]
 			next := true
-			if opcodeTable[v.Op].argLen == 0 {
+			if psess.opcodeTable[v.Op].argLen == 0 {
 				key := vkey{v.Op, keyFor(v), v.Aux, v.Type}
 				if vals[key] == nil {
 					vals[key] = v
 					if b != f.Entry {
-						// Move v to the entry block so it will dominate every block
-						// where we might use it. This prevents the need for any dominator
-						// calculations in this pass.
+
 						v.Block = f.Entry
 						f.Entry.Values = append(f.Entry.Values, v)
 						last := len(b.Values) - 1
@@ -33,7 +27,6 @@ func zcse(f *Func) {
 						b.Values[last] = nil
 						b.Values = b.Values[:last]
 
-						// process b.Values[i] again
 						next = false
 					}
 				}
@@ -47,7 +40,7 @@ func zcse(f *Func) {
 	for _, b := range f.Blocks {
 		for _, v := range b.Values {
 			for i, a := range v.Args {
-				if opcodeTable[a.Op].argLen == 0 {
+				if psess.opcodeTable[a.Op].argLen == 0 {
 					key := vkey{a.Op, keyFor(a), a.Aux, a.Type}
 					if rv, ok := vals[key]; ok {
 						v.SetArg(i, rv)

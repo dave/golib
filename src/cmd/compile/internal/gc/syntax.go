@@ -1,17 +1,11 @@
-// Copyright 2009 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
-// “Abstract” syntax representation.
-
 package gc
 
 import (
-	"cmd/compile/internal/ssa"
-	"cmd/compile/internal/syntax"
-	"cmd/compile/internal/types"
-	"cmd/internal/obj"
-	"cmd/internal/src"
+	"github.com/dave/golib/src/cmd/compile/internal/ssa"
+	"github.com/dave/golib/src/cmd/compile/internal/syntax"
+	"github.com/dave/golib/src/cmd/compile/internal/types"
+	"github.com/dave/golib/src/cmd/internal/obj"
+	"github.com/dave/golib/src/cmd/internal/src"
 )
 
 // A Node is a single node in the syntax tree.
@@ -63,34 +57,38 @@ func (n *Node) ResetAux() {
 	n.aux = 0
 }
 
-func (n *Node) SubOp() Op {
+func (n *Node) SubOp(psess *PackageSession) Op {
 	switch n.Op {
 	case OASOP, OCMPIFACE, OCMPSTR, ONAME:
 	default:
-		Fatalf("unexpected op: %v", n.Op)
+		psess.
+			Fatalf("unexpected op: %v", n.Op)
 	}
 	return Op(n.aux)
 }
 
-func (n *Node) SetSubOp(op Op) {
+func (n *Node) SetSubOp(psess *PackageSession, op Op) {
 	switch n.Op {
 	case OASOP, OCMPIFACE, OCMPSTR, ONAME:
 	default:
-		Fatalf("unexpected op: %v", n.Op)
+		psess.
+			Fatalf("unexpected op: %v", n.Op)
 	}
 	n.aux = uint8(op)
 }
 
-func (n *Node) IndexMapLValue() bool {
+func (n *Node) IndexMapLValue(psess *PackageSession) bool {
 	if n.Op != OINDEXMAP {
-		Fatalf("unexpected op: %v", n.Op)
+		psess.
+			Fatalf("unexpected op: %v", n.Op)
 	}
 	return n.aux != 0
 }
 
-func (n *Node) SetIndexMapLValue(b bool) {
+func (n *Node) SetIndexMapLValue(psess *PackageSession, b bool) {
 	if n.Op != OINDEXMAP {
-		Fatalf("unexpected op: %v", n.Op)
+		psess.
+			Fatalf("unexpected op: %v", n.Op)
 	}
 	if b {
 		n.aux = 1
@@ -99,16 +97,18 @@ func (n *Node) SetIndexMapLValue(b bool) {
 	}
 }
 
-func (n *Node) TChanDir() types.ChanDir {
+func (n *Node) TChanDir(psess *PackageSession) types.ChanDir {
 	if n.Op != OTCHAN {
-		Fatalf("unexpected op: %v", n.Op)
+		psess.
+			Fatalf("unexpected op: %v", n.Op)
 	}
 	return types.ChanDir(n.aux)
 }
 
-func (n *Node) SetTChanDir(dir types.ChanDir) {
+func (n *Node) SetTChanDir(psess *PackageSession, dir types.ChanDir) {
 	if n.Op != OTCHAN {
-		Fatalf("unexpected op: %v", n.Op)
+		psess.
+			Fatalf("unexpected op: %v", n.Op)
 	}
 	n.aux = uint8(dir)
 }
@@ -223,11 +223,13 @@ func (n *Node) Val() Val {
 }
 
 // SetVal sets the Val for the node, which must not have been used with SetOpt.
-func (n *Node) SetVal(v Val) {
+func (n *Node) SetVal(psess *PackageSession, v Val) {
 	if n.HasOpt() {
-		Debug['h'] = 1
+		psess.
+			Debug['h'] = 1
 		Dump("have Opt", n)
-		Fatalf("have Opt")
+		psess.
+			Fatalf("have Opt")
 	}
 	n.SetHasVal(true)
 	n.E = v.U
@@ -243,14 +245,16 @@ func (n *Node) Opt() interface{} {
 
 // SetOpt sets the optimizer data for the node, which must not have been used with SetVal.
 // SetOpt(nil) is ignored for Vals to simplify call sites that are clearing Opts.
-func (n *Node) SetOpt(x interface{}) {
+func (n *Node) SetOpt(psess *PackageSession, x interface{}) {
 	if x == nil && n.HasVal() {
 		return
 	}
 	if n.HasVal() {
-		Debug['h'] = 1
+		psess.
+			Debug['h'] = 1
 		Dump("have Val", n)
-		Fatalf("have Val")
+		psess.
+			Fatalf("have Val")
 	}
 	n.SetHasOpt(true)
 	n.E = x
@@ -411,48 +415,6 @@ type Param struct {
 	Alias  bool // node is alias for Ntype (only used when type-checking ODCLTYPE)
 }
 
-// Functions
-//
-// A simple function declaration is represented as an ODCLFUNC node f
-// and an ONAME node n. They're linked to one another through
-// f.Func.Nname == n and n.Name.Defn == f. When functions are
-// referenced by name in an expression, the function's ONAME node is
-// used directly.
-//
-// Function names have n.Class() == PFUNC. This distinguishes them
-// from variables of function type.
-//
-// Confusingly, n.Func and f.Func both exist, but commonly point to
-// different Funcs. (Exception: an OCALLPART's Func does point to its
-// ODCLFUNC's Func.)
-//
-// A method declaration is represented like functions, except n.Sym
-// will be the qualified method name (e.g., "T.m") and
-// f.Func.Shortname is the bare method name (e.g., "m").
-//
-// Method expressions are represented as ONAME/PFUNC nodes like
-// function names, but their Left and Right fields still point to the
-// type and method, respectively. They can be distinguished from
-// normal functions with isMethodExpression. Also, unlike function
-// name nodes, method expression nodes exist for each method
-// expression. The declaration ONAME can be accessed with
-// x.Type.Nname(), where x is the method expression ONAME node.
-//
-// Method values are represented by ODOTMETH/ODOTINTER when called
-// immediately, and OCALLPART otherwise. They are like method
-// expressions, except that for ODOTMETH/ODOTINTER the method name is
-// stored in Sym instead of Right.
-//
-// Closures are represented by OCLOSURE node c. They link back and
-// forth with the ODCLFUNC via Func.Closure; that is, c.Func.Closure
-// == f and f.Func.Closure == c.
-//
-// Function bodies are stored in f.Nbody, and inline function bodies
-// are stored in n.Func.Inl. Pragmas are stored in f.Func.Pragma.
-//
-// Imported functions skip the ODCLFUNC, so n.Name.Defn is nil. They
-// also use Dcl instead of Inldcl.
-
 // Func holds Node fields used only with function-like nodes.
 type Func struct {
 	Shortname *types.Sym
@@ -556,16 +518,15 @@ func (f *Func) SetInlinabilityChecked(b bool) { f.flags.set(funcInlinabilityChec
 func (f *Func) SetExportInline(b bool)        { f.flags.set(funcExportInline, b) }
 func (f *Func) SetInstrumentBody(b bool)      { f.flags.set(funcInstrumentBody, b) }
 
-func (f *Func) setWBPos(pos src.XPos) {
-	if Debug_wb != 0 {
-		Warnl(pos, "write barrier")
+func (f *Func) setWBPos(psess *PackageSession, pos src.XPos) {
+	if psess.Debug_wb != 0 {
+		psess.
+			Warnl(pos, "write barrier")
 	}
 	if !f.WBPos.IsKnown() {
 		f.WBPos = pos
 	}
 }
-
-//go:generate stringer -type=Op -trimprefix=O
 
 type Op uint8
 
@@ -802,9 +763,7 @@ func (n *Nodes) Set(s []*Node) {
 	if len(s) == 0 {
 		n.slice = nil
 	} else {
-		// Copy s and take address of t rather than s to avoid
-		// allocation in the case where len(s) == 0 (which is
-		// over 3x more common, dynamically, for make.bash).
+
 		t := s
 		n.slice = &t
 	}
@@ -931,9 +890,9 @@ func (q *nodeQueue) pushRight(n *Node) {
 	if len(q.ring) == 0 {
 		q.ring = make([]*Node, 16)
 	} else if q.head+len(q.ring) == q.tail {
-		// Grow the ring.
+
 		nring := make([]*Node, len(q.ring)*2)
-		// Copy the old elements.
+
 		part := q.ring[q.head%len(q.ring):]
 		if q.tail-q.head <= len(part) {
 			part = part[:q.tail-q.head]

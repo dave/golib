@@ -1,33 +1,34 @@
-// Copyright 2009 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
 package gc
 
-import "cmd/compile/internal/types"
+import "github.com/dave/golib/src/cmd/compile/internal/types"
 
 // select
-func typecheckselect(sel *Node) {
+func (psess *PackageSession) typecheckselect(sel *Node) {
 	var def *Node
-	lno := setlineno(sel)
-	typecheckslice(sel.Ninit.Slice(), Etop)
+	lno := psess.setlineno(sel)
+	psess.
+		typecheckslice(sel.Ninit.Slice(), Etop)
 	for _, ncase := range sel.List.Slice() {
 		if ncase.Op != OXCASE {
-			setlineno(ncase)
-			Fatalf("typecheckselect %v", ncase.Op)
+			psess.
+				setlineno(ncase)
+			psess.
+				Fatalf("typecheckselect %v", ncase.Op)
 		}
 
 		if ncase.List.Len() == 0 {
-			// default
+
 			if def != nil {
-				yyerrorl(ncase.Pos, "multiple defaults in select (first at %v)", def.Line())
+				psess.
+					yyerrorl(ncase.Pos, "multiple defaults in select (first at %v)", def.Line(psess))
 			} else {
 				def = ncase
 			}
 		} else if ncase.List.Len() > 1 {
-			yyerrorl(ncase.Pos, "select cases cannot be lists")
+			psess.
+				yyerrorl(ncase.Pos, "select cases cannot be lists")
 		} else {
-			ncase.List.SetFirst(typecheck(ncase.List.First(), Etop))
+			ncase.List.SetFirst(psess.typecheck(ncase.List.First(), Etop))
 			n := ncase.List.First()
 			ncase.Left = n
 			ncase.List.Set(nil)
@@ -35,33 +36,29 @@ func typecheckselect(sel *Node) {
 			default:
 				pos := n.Pos
 				if n.Op == ONAME {
-					// We don't have the right position for ONAME nodes (see #15459 and
-					// others). Using ncase.Pos for now as it will provide the correct
-					// line number (assuming the expression follows the "case" keyword
-					// on the same line). This matches the approach before 1.10.
+
 					pos = ncase.Pos
 				}
-				yyerrorl(pos, "select case must be receive, send or assign recv")
+				psess.
+					yyerrorl(pos, "select case must be receive, send or assign recv")
 
-			// convert x = <-c into OSELRECV(x, <-c).
-			// remove implicit conversions; the eventual assignment
-			// will reintroduce them.
 			case OAS:
 				if (n.Right.Op == OCONVNOP || n.Right.Op == OCONVIFACE) && n.Right.Implicit() {
 					n.Right = n.Right.Left
 				}
 
 				if n.Right.Op != ORECV {
-					yyerrorl(n.Pos, "select assignment must have receive on right hand side")
+					psess.
+						yyerrorl(n.Pos, "select assignment must have receive on right hand side")
 					break
 				}
 
 				n.Op = OSELRECV
 
-				// convert x, ok = <-c into OSELRECV2(x, <-c) with ntest=ok
 			case OAS2RECV:
 				if n.Rlist.First().Op != ORECV {
-					yyerrorl(n.Pos, "select assignment must have receive on right hand side")
+					psess.
+						yyerrorl(n.Pos, "select assignment must have receive on right hand side")
 					break
 				}
 
@@ -71,9 +68,8 @@ func typecheckselect(sel *Node) {
 				n.Right = n.Rlist.First()
 				n.Rlist.Set(nil)
 
-				// convert <-c into OSELRECV(N, <-c)
 			case ORECV:
-				n = nodl(n.Pos, OSELRECV, nil, n)
+				n = psess.nodl(n.Pos, OSELRECV, nil, n)
 
 				n.SetTypecheck(1)
 				ncase.Left = n
@@ -82,57 +78,56 @@ func typecheckselect(sel *Node) {
 				break
 			}
 		}
-
-		typecheckslice(ncase.Nbody.Slice(), Etop)
+		psess.
+			typecheckslice(ncase.Nbody.Slice(), Etop)
 	}
-
-	lineno = lno
+	psess.
+		lineno = lno
 }
 
-func walkselect(sel *Node) {
-	lno := setlineno(sel)
+func (psess *PackageSession) walkselect(sel *Node) {
+	lno := psess.setlineno(sel)
 	if sel.Nbody.Len() != 0 {
-		Fatalf("double walkselect")
+		psess.
+			Fatalf("double walkselect")
 	}
 
 	init := sel.Ninit.Slice()
 	sel.Ninit.Set(nil)
 
-	init = append(init, walkselectcases(&sel.List)...)
+	init = append(init, psess.walkselectcases(&sel.List)...)
 	sel.List.Set(nil)
 
 	sel.Nbody.Set(init)
-	walkstmtlist(sel.Nbody.Slice())
-
-	lineno = lno
+	psess.
+		walkstmtlist(sel.Nbody.Slice())
+	psess.
+		lineno = lno
 }
 
-func walkselectcases(cases *Nodes) []*Node {
+func (psess *PackageSession) walkselectcases(cases *Nodes) []*Node {
 	n := cases.Len()
-	sellineno := lineno
+	sellineno := psess.lineno
 
-	// optimization: zero-case select
 	if n == 0 {
-		return []*Node{mkcall("block", nil, nil)}
+		return []*Node{psess.mkcall("block", nil, nil)}
 	}
 
-	// optimization: one-case select: single op.
-	// TODO(rsc): Reenable optimization once order.go can handle it.
-	// golang.org/issue/7672.
 	if n == 1 {
 		cas := cases.First()
-		setlineno(cas)
+		psess.
+			setlineno(cas)
 		l := cas.Ninit.Slice()
-		if cas.Left != nil { // not default:
+		if cas.Left != nil {
 			n := cas.Left
 			l = append(l, n.Ninit.Slice()...)
 			n.Ninit.Set(nil)
 			var ch *Node
 			switch n.Op {
 			default:
-				Fatalf("select %v", n.Op)
+				psess.
+					Fatalf("select %v", n.Op)
 
-				// ok already
 			case OSEND:
 				ch = n.Left
 
@@ -148,8 +143,9 @@ func walkselectcases(cases *Nodes) []*Node {
 				}
 
 				if n.Left == nil {
-					nblank = typecheck(nblank, Erv|Easgn)
-					n.Left = nblank
+					psess.
+						nblank = psess.typecheck(psess.nblank, Erv|Easgn)
+					n.Left = psess.nblank
 				}
 
 				n.Op = OAS2
@@ -158,38 +154,36 @@ func walkselectcases(cases *Nodes) []*Node {
 				n.Right = nil
 				n.Left = nil
 				n.SetTypecheck(0)
-				n = typecheck(n, Etop)
+				n = psess.typecheck(n, Etop)
 			}
 
-			// if ch == nil { block() }; n;
-			a := nod(OIF, nil, nil)
+			a := psess.nod(OIF, nil, nil)
 
-			a.Left = nod(OEQ, ch, nodnil())
+			a.Left = psess.nod(OEQ, ch, psess.nodnil())
 			var ln Nodes
 			ln.Set(l)
-			a.Nbody.Set1(mkcall("block", nil, &ln))
+			a.Nbody.Set1(psess.mkcall("block", nil, &ln))
 			l = ln.Slice()
-			a = typecheck(a, Etop)
+			a = psess.typecheck(a, Etop)
 			l = append(l, a, n)
 		}
 
 		l = append(l, cas.Nbody.Slice()...)
-		l = append(l, nod(OBREAK, nil, nil))
+		l = append(l, psess.nod(OBREAK, nil, nil))
 		return l
 	}
 
-	// convert case value arguments to addresses.
-	// this rewrite is used by both the general code and the next optimization.
 	for _, cas := range cases.Slice() {
-		setlineno(cas)
+		psess.
+			setlineno(cas)
 		n := cas.Left
 		if n == nil {
 			continue
 		}
 		switch n.Op {
 		case OSEND:
-			n.Right = nod(OADDR, n.Right, nil)
-			n.Right = typecheck(n.Right, Erv)
+			n.Right = psess.nod(OADDR, n.Right, nil)
+			n.Right = psess.typecheck(n.Right, Erv)
 
 		case OSELRECV, OSELRECV2:
 			if n.Op == OSELRECV2 && n.List.Len() == 0 {
@@ -197,13 +191,12 @@ func walkselectcases(cases *Nodes) []*Node {
 			}
 
 			if n.Left != nil {
-				n.Left = nod(OADDR, n.Left, nil)
-				n.Left = typecheck(n.Left, Erv)
+				n.Left = psess.nod(OADDR, n.Left, nil)
+				n.Left = psess.typecheck(n.Left, Erv)
 			}
 		}
 	}
 
-	// optimization: two-case select but one is default: single non-blocking op.
 	if n == 2 && (cases.First().Left == nil || cases.Second().Left == nil) {
 		var cas *Node
 		var dflt *Node
@@ -216,66 +209,67 @@ func walkselectcases(cases *Nodes) []*Node {
 		}
 
 		n := cas.Left
-		setlineno(n)
-		r := nod(OIF, nil, nil)
+		psess.
+			setlineno(n)
+		r := psess.nod(OIF, nil, nil)
 		r.Ninit.Set(cas.Ninit.Slice())
 		switch n.Op {
 		default:
-			Fatalf("select %v", n.Op)
+			psess.
+				Fatalf("select %v", n.Op)
 
 		case OSEND:
-			// if selectnbsend(c, v) { body } else { default body }
+
 			ch := n.Left
-			r.Left = mkcall1(chanfn("selectnbsend", 2, ch.Type), types.Types[TBOOL], &r.Ninit, ch, n.Right)
+			r.Left = psess.mkcall1(psess.chanfn("selectnbsend", 2, ch.Type), psess.types.Types[TBOOL], &r.Ninit, ch, n.Right)
 
 		case OSELRECV:
-			// if selectnbrecv(&v, c) { body } else { default body }
-			r = nod(OIF, nil, nil)
+
+			r = psess.nod(OIF, nil, nil)
 			r.Ninit.Set(cas.Ninit.Slice())
 			ch := n.Right.Left
 			elem := n.Left
 			if elem == nil {
-				elem = nodnil()
+				elem = psess.nodnil()
 			}
-			r.Left = mkcall1(chanfn("selectnbrecv", 2, ch.Type), types.Types[TBOOL], &r.Ninit, elem, ch)
+			r.Left = psess.mkcall1(psess.chanfn("selectnbrecv", 2, ch.Type), psess.types.Types[TBOOL], &r.Ninit, elem, ch)
 
 		case OSELRECV2:
-			// if selectnbrecv2(&v, &received, c) { body } else { default body }
-			r = nod(OIF, nil, nil)
+
+			r = psess.nod(OIF, nil, nil)
 			r.Ninit.Set(cas.Ninit.Slice())
 			ch := n.Right.Left
 			elem := n.Left
 			if elem == nil {
-				elem = nodnil()
+				elem = psess.nodnil()
 			}
-			receivedp := nod(OADDR, n.List.First(), nil)
-			receivedp = typecheck(receivedp, Erv)
-			r.Left = mkcall1(chanfn("selectnbrecv2", 2, ch.Type), types.Types[TBOOL], &r.Ninit, elem, receivedp, ch)
+			receivedp := psess.nod(OADDR, n.List.First(), nil)
+			receivedp = psess.typecheck(receivedp, Erv)
+			r.Left = psess.mkcall1(psess.chanfn("selectnbrecv2", 2, ch.Type), psess.types.Types[TBOOL], &r.Ninit, elem, receivedp, ch)
 		}
 
-		r.Left = typecheck(r.Left, Erv)
+		r.Left = psess.typecheck(r.Left, Erv)
 		r.Nbody.Set(cas.Nbody.Slice())
 		r.Rlist.Set(append(dflt.Ninit.Slice(), dflt.Nbody.Slice()...))
-		return []*Node{r, nod(OBREAK, nil, nil)}
+		return []*Node{r, psess.nod(OBREAK, nil, nil)}
 	}
 
 	var init []*Node
-
-	// generate sel-struct
-	lineno = sellineno
-	selv := temp(types.NewArray(scasetype(), int64(n)))
-	r := nod(OAS, selv, nil)
-	r = typecheck(r, Etop)
+	psess.
+		lineno = sellineno
+	selv := psess.temp(psess.types.NewArray(psess.scasetype(), int64(n)))
+	r := psess.nod(OAS, selv, nil)
+	r = psess.typecheck(r, Etop)
 	init = append(init, r)
 
-	order := temp(types.NewArray(types.Types[TUINT16], 2*int64(n)))
-	r = nod(OAS, order, nil)
-	r = typecheck(r, Etop)
+	order := psess.temp(psess.types.NewArray(psess.types.Types[TUINT16], 2*int64(n)))
+	r = psess.nod(OAS, order, nil)
+	r = psess.typecheck(r, Etop)
 	init = append(init, r)
 
-	// register cases
 	for i, cas := range cases.Slice() {
-		setlineno(cas)
+		psess.
+			setlineno(cas)
 
 		init = append(init, cas.Ninit.Slice()...)
 		cas.Ninit.Set(nil)
@@ -296,7 +290,8 @@ func walkselectcases(cases *Nodes) []*Node {
 
 			switch n.Op {
 			default:
-				Fatalf("select %v", n.Op)
+				psess.
+					Fatalf("select %v", n.Op)
 			case OSEND:
 				kind = caseSend
 				c = n.Left
@@ -309,64 +304,60 @@ func walkselectcases(cases *Nodes) []*Node {
 		}
 
 		setField := func(f string, val *Node) {
-			r := nod(OAS, nodSym(ODOT, nod(OINDEX, selv, nodintconst(int64(i))), lookup(f)), val)
-			r = typecheck(r, Etop)
+			r := psess.nod(OAS, psess.nodSym(ODOT, psess.nod(OINDEX, selv, psess.nodintconst(int64(i))), psess.lookup(f)), val)
+			r = psess.typecheck(r, Etop)
 			init = append(init, r)
 		}
 
-		setField("kind", nodintconst(kind))
+		setField("kind", psess.nodintconst(kind))
 		if c != nil {
-			c = nod(OCONVNOP, c, nil)
-			c.Type = types.Types[TUNSAFEPTR]
+			c = psess.nod(OCONVNOP, c, nil)
+			c.Type = psess.types.Types[TUNSAFEPTR]
 			setField("c", c)
 		}
 		if elem != nil {
-			elem = nod(OCONVNOP, elem, nil)
-			elem.Type = types.Types[TUNSAFEPTR]
+			elem = psess.nod(OCONVNOP, elem, nil)
+			elem.Type = psess.types.Types[TUNSAFEPTR]
 			setField("elem", elem)
 		}
 
-		// TODO(mdempsky): There should be a cleaner way to
-		// handle this.
-		if instrumenting {
-			r = mkcall("selectsetpc", nil, nil, bytePtrToIndex(selv, int64(i)))
+		if psess.instrumenting {
+			r = psess.mkcall("selectsetpc", nil, nil, psess.bytePtrToIndex(selv, int64(i)))
 			init = append(init, r)
 		}
 	}
-
-	// run the select
-	lineno = sellineno
-	chosen := temp(types.Types[TINT])
-	recvOK := temp(types.Types[TBOOL])
-	r = nod(OAS2, nil, nil)
+	psess.
+		lineno = sellineno
+	chosen := psess.temp(psess.types.Types[TINT])
+	recvOK := psess.temp(psess.types.Types[TBOOL])
+	r = psess.nod(OAS2, nil, nil)
 	r.List.Set2(chosen, recvOK)
-	fn := syslook("selectgo")
-	r.Rlist.Set1(mkcall1(fn, fn.Type.Results(), nil, bytePtrToIndex(selv, 0), bytePtrToIndex(order, 0), nodintconst(int64(n))))
-	r = typecheck(r, Etop)
+	fn := psess.syslook("selectgo")
+	r.Rlist.Set1(psess.mkcall1(fn, fn.Type.Results(psess.types), nil, psess.bytePtrToIndex(selv, 0), psess.bytePtrToIndex(order, 0), psess.nodintconst(int64(n))))
+	r = psess.typecheck(r, Etop)
 	init = append(init, r)
 
-	// selv and order are no longer alive after selectgo.
-	init = append(init, nod(OVARKILL, selv, nil))
-	init = append(init, nod(OVARKILL, order, nil))
+	init = append(init, psess.nod(OVARKILL, selv, nil))
+	init = append(init, psess.nod(OVARKILL, order, nil))
 
-	// dispatch cases
 	for i, cas := range cases.Slice() {
-		setlineno(cas)
+		psess.
+			setlineno(cas)
 
-		cond := nod(OEQ, chosen, nodintconst(int64(i)))
-		cond = typecheck(cond, Erv)
-		cond = defaultlit(cond, nil)
+		cond := psess.nod(OEQ, chosen, psess.nodintconst(int64(i)))
+		cond = psess.typecheck(cond, Erv)
+		cond = psess.defaultlit(cond, nil)
 
-		r = nod(OIF, cond, nil)
+		r = psess.nod(OIF, cond, nil)
 
 		if n := cas.Left; n != nil && n.Op == OSELRECV2 {
-			x := nod(OAS, n.List.First(), recvOK)
-			x = typecheck(x, Etop)
+			x := psess.nod(OAS, n.List.First(), recvOK)
+			x = psess.typecheck(x, Etop)
 			r.Nbody.Append(x)
 		}
 
 		r.Nbody.AppendNodes(&cas.Nbody)
-		r.Nbody.Append(nod(OBREAK, nil, nil))
+		r.Nbody.Append(psess.nod(OBREAK, nil, nil))
 		init = append(init, r)
 	}
 
@@ -374,26 +365,26 @@ func walkselectcases(cases *Nodes) []*Node {
 }
 
 // bytePtrToIndex returns a Node representing "(*byte)(&n[i])".
-func bytePtrToIndex(n *Node, i int64) *Node {
-	s := nod(OCONVNOP, nod(OADDR, nod(OINDEX, n, nodintconst(i)), nil), nil)
-	s.Type = types.NewPtr(types.Types[TUINT8])
-	s = typecheck(s, Erv)
+func (psess *PackageSession) bytePtrToIndex(n *Node, i int64) *Node {
+	s := psess.nod(OCONVNOP, psess.nod(OADDR, psess.nod(OINDEX, n, psess.nodintconst(i)), nil), nil)
+	s.Type = psess.types.NewPtr(psess.types.Types[TUINT8])
+	s = psess.typecheck(s, Erv)
 	return s
 }
 
-var scase *types.Type
-
 // Keep in sync with src/runtime/select.go.
-func scasetype() *types.Type {
-	if scase == nil {
-		scase = tostruct([]*Node{
-			namedfield("c", types.Types[TUNSAFEPTR]),
-			namedfield("elem", types.Types[TUNSAFEPTR]),
-			namedfield("kind", types.Types[TUINT16]),
-			namedfield("pc", types.Types[TUINTPTR]),
-			namedfield("releasetime", types.Types[TUINT64]),
+func (psess *PackageSession) scasetype() *types.Type {
+	if psess.scase == nil {
+		psess.
+			scase = psess.tostruct([]*Node{psess.
+			namedfield("c", psess.types.Types[TUNSAFEPTR]), psess.
+			namedfield("elem", psess.types.Types[TUNSAFEPTR]), psess.
+			namedfield("kind", psess.types.Types[TUINT16]), psess.
+			namedfield("pc", psess.types.Types[TUINTPTR]), psess.
+			namedfield("releasetime", psess.types.Types[TUINT64]),
 		})
-		scase.SetNoalg(true)
+		psess.
+			scase.SetNoalg(true)
 	}
-	return scase
+	return psess.scase
 }

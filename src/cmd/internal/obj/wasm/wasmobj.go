@@ -1,136 +1,54 @@
-// Copyright 2018 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
 package wasm
 
 import (
 	"bytes"
-	"cmd/internal/obj"
-	"cmd/internal/objabi"
-	"cmd/internal/sys"
 	"encoding/binary"
 	"fmt"
+	"github.com/dave/golib/src/cmd/internal/obj"
+	"github.com/dave/golib/src/cmd/internal/objabi"
+
 	"io"
 	"math"
 )
 
-var Register = map[string]int16{
-	"PC_F": REG_PC_F,
-	"PC_B": REG_PC_B,
-	"SP":   REG_SP,
-	"CTXT": REG_CTXT,
-	"g":    REG_g,
-	"RET0": REG_RET0,
-	"RET1": REG_RET1,
-	"RET2": REG_RET2,
-	"RET3": REG_RET3,
-	"RUN":  REG_RUN,
-
-	"R0":  REG_R0,
-	"R1":  REG_R1,
-	"R2":  REG_R2,
-	"R3":  REG_R3,
-	"R4":  REG_R4,
-	"R5":  REG_R5,
-	"R6":  REG_R6,
-	"R7":  REG_R7,
-	"R8":  REG_R8,
-	"R9":  REG_R9,
-	"R10": REG_R10,
-	"R11": REG_R11,
-	"R12": REG_R12,
-	"R13": REG_R13,
-	"R14": REG_R14,
-	"R15": REG_R15,
-
-	"F0":  REG_F0,
-	"F1":  REG_F1,
-	"F2":  REG_F2,
-	"F3":  REG_F3,
-	"F4":  REG_F4,
-	"F5":  REG_F5,
-	"F6":  REG_F6,
-	"F7":  REG_F7,
-	"F8":  REG_F8,
-	"F9":  REG_F9,
-	"F10": REG_F10,
-	"F11": REG_F11,
-	"F12": REG_F12,
-	"F13": REG_F13,
-	"F14": REG_F14,
-	"F15": REG_F15,
-}
-
-var registerNames []string
-
-func init() {
-	obj.RegisterRegister(MINREG, MAXREG, rconv)
-	obj.RegisterOpcode(obj.ABaseWasm, Anames)
-
-	registerNames = make([]string, MAXREG-MINREG)
-	for name, reg := range Register {
-		registerNames[reg-MINREG] = name
+func (psess *PackageSession) init() {
+	psess.obj.
+		RegisterRegister(MINREG, MAXREG, psess.rconv)
+	psess.obj.
+		RegisterOpcode(obj.ABaseWasm, psess.Anames)
+	psess.
+		registerNames = make([]string, MAXREG-MINREG)
+	for name, reg := range psess.Register {
+		psess.
+			registerNames[reg-MINREG] = name
 	}
 }
 
-func rconv(r int) string {
-	return registerNames[r-MINREG]
+func (psess *PackageSession) rconv(r int) string {
+	return psess.registerNames[r-MINREG]
 }
-
-var unaryDst = map[obj.As]bool{
-	ASet:          true,
-	ATee:          true,
-	ACall:         true,
-	ACallIndirect: true,
-	ACallImport:   true,
-	ABr:           true,
-	ABrIf:         true,
-	ABrTable:      true,
-	AI32Store:     true,
-	AI64Store:     true,
-	AF32Store:     true,
-	AF64Store:     true,
-	AI32Store8:    true,
-	AI32Store16:   true,
-	AI64Store8:    true,
-	AI64Store16:   true,
-	AI64Store32:   true,
-	ACALLNORESUME: true,
-}
-
-var Linkwasm = obj.LinkArch{
-	Arch:       sys.ArchWasm,
-	Init:       instinit,
-	Preprocess: preprocess,
-	Assemble:   assemble,
-	UnaryDst:   unaryDst,
-}
-
-var (
-	morestack       *obj.LSym
-	morestackNoCtxt *obj.LSym
-	gcWriteBarrier  *obj.LSym
-	sigpanic        *obj.LSym
-	deferreturn     *obj.LSym
-	jmpdefer        *obj.LSym
-)
 
 const (
 	/* mark flags */
 	WasmImport = 1 << 0
 )
 
-func instinit(ctxt *obj.Link) {
-	morestack = ctxt.Lookup("runtime.morestack")
-	morestackNoCtxt = ctxt.Lookup("runtime.morestack_noctxt")
-	gcWriteBarrier = ctxt.Lookup("runtime.gcWriteBarrier")
-	sigpanic = ctxt.Lookup("runtime.sigpanic")
-	deferreturn = ctxt.Lookup("runtime.deferreturn")
-	jmpdefer = ctxt.Lookup(`"".jmpdefer`)
+func (psess *PackageSession) instinit(ctxt *obj.Link) {
+	psess.
+		morestack = ctxt.Lookup("runtime.morestack")
+	psess.
+		morestackNoCtxt = ctxt.Lookup("runtime.morestack_noctxt")
+	psess.
+		gcWriteBarrier = ctxt.Lookup("runtime.gcWriteBarrier")
+	psess.
+		sigpanic = ctxt.Lookup("runtime.sigpanic")
+	psess.
+		deferreturn = ctxt.Lookup("runtime.deferreturn")
+	psess.
+		jmpdefer = ctxt.Lookup("\"\".jmpdefer")
 }
 
-func preprocess(ctxt *obj.Link, s *obj.LSym, newprog obj.ProgAlloc) {
+func (psess *PackageSession) preprocess(ctxt *obj.Link, s *obj.LSym, newprog obj.ProgAlloc) {
 	appendp := func(p *obj.Prog, as obj.As, args ...obj.Addr) *obj.Prog {
 		if p.As != obj.ANOP {
 			p2 := obj.Appendp(p, newprog)
@@ -143,7 +61,7 @@ func preprocess(ctxt *obj.Link, s *obj.LSym, newprog obj.ProgAlloc) {
 			p.From = obj.Addr{}
 			p.To = obj.Addr{}
 		case 1:
-			if unaryDst[as] {
+			if psess.unaryDst[as] {
 				p.From = obj.Addr{}
 				p.To = args[0]
 			} else {
@@ -167,36 +85,17 @@ func preprocess(ctxt *obj.Link, s *obj.LSym, newprog obj.ProgAlloc) {
 	s.Func.Locals = int32(framesize)
 
 	if s.Func.Text.From.Sym.Wrapper() {
-		// if g._panic != nil && g._panic.argp == FP {
-		//   g._panic.argp = bottom-of-frame
-		// }
-		//
-		// MOVD g_panic(g), R0
-		// Get R0
-		// I64Eqz
-		// Not
-		// If
-		//   Get SP
-		//   I64ExtendUI32
-		//   I64Const $framesize+8
-		//   I64Add
-		//   I64Load panic_argp(R0)
-		//   I64Eq
-		//   If
-		//     MOVD SP, panic_argp(R0)
-		//   End
-		// End
 
 		gpanic := obj.Addr{
 			Type:   obj.TYPE_MEM,
 			Reg:    REGG,
-			Offset: 4 * 8, // g_panic
+			Offset: 4 * 8,
 		}
 
 		panicargp := obj.Addr{
 			Type:   obj.TYPE_MEM,
 			Reg:    REG_R0,
-			Offset: 0, // panic.argp
+			Offset: 0,
 		}
 
 		p := s.Func.Text
@@ -230,11 +129,9 @@ func preprocess(ctxt *obj.Link, s *obj.LSym, newprog obj.ProgAlloc) {
 		p.Spadj = int32(framesize)
 	}
 
-	// Introduce resume points for CALL instructions
-	// and collect other explicit resume points.
 	numResumePoints := 0
 	explicitBlockDepth := 0
-	pc := int64(0) // pc is only incremented when necessary, this avoids bloat of the BrTable instruction
+	pc := int64(0)
 	var tableIdxs []uint64
 	tablePC := int64(0)
 	base := ctxt.PosTable.Pos(s.Func.Text.Pos).Base()
@@ -273,10 +170,6 @@ func preprocess(ctxt *obj.Link, s *obj.LSym, newprog obj.ProgAlloc) {
 
 		p.Pc = pc
 
-		// Increase pc whenever some pc-value table needs a new entry. Don't increase it
-		// more often to avoid bloat of the BrTable instruction.
-		// The "base != prevBase" condition detects inlined instructions. They are an
-		// implicit call, so entering and leaving this section affects the stack trace.
 		if p.As == ACALLNORESUME || p.As == obj.ANOP || p.Spadj != 0 || base != prevBase {
 			pc++
 		}
@@ -288,66 +181,49 @@ func preprocess(ctxt *obj.Link, s *obj.LSym, newprog obj.ProgAlloc) {
 		p := s.Func.Text
 
 		if framesize <= objabi.StackSmall {
-			// small stack: SP <= stackguard
-			// Get SP
-			// Get g
-			// I32WrapI64
-			// I32Load $stackguard0
-			// I32GtU
 
 			p = appendp(p, AGet, regAddr(REG_SP))
 			p = appendp(p, AGet, regAddr(REGG))
 			p = appendp(p, AI32WrapI64)
-			p = appendp(p, AI32Load, constAddr(2*int64(ctxt.Arch.PtrSize))) // G.stackguard0
+			p = appendp(p, AI32Load, constAddr(2*int64(ctxt.Arch.PtrSize)))
 			p = appendp(p, AI32LeU)
 		} else {
-			// large stack: SP-framesize <= stackguard-StackSmall
-			//              SP <= stackguard+(framesize-StackSmall)
-			// Get SP
-			// Get g
-			// I32WrapI64
-			// I32Load $stackguard0
-			// I32Const $(framesize-StackSmall)
-			// I32Add
-			// I32GtU
 
 			p = appendp(p, AGet, regAddr(REG_SP))
 			p = appendp(p, AGet, regAddr(REGG))
 			p = appendp(p, AI32WrapI64)
-			p = appendp(p, AI32Load, constAddr(2*int64(ctxt.Arch.PtrSize))) // G.stackguard0
+			p = appendp(p, AI32Load, constAddr(2*int64(ctxt.Arch.PtrSize)))
 			p = appendp(p, AI32Const, constAddr(int64(framesize)-objabi.StackSmall))
 			p = appendp(p, AI32Add)
 			p = appendp(p, AI32LeU)
 		}
-		// TODO(neelance): handle wraparound case
 
 		p = appendp(p, AIf)
 		p = appendp(p, obj.ACALL, constAddr(0))
 		if s.Func.Text.From.Sym.NeedCtxt() {
-			p.To = obj.Addr{Type: obj.TYPE_MEM, Name: obj.NAME_EXTERN, Sym: morestack}
+			p.To = obj.Addr{Type: obj.TYPE_MEM, Name: obj.NAME_EXTERN, Sym: psess.morestack}
 		} else {
-			p.To = obj.Addr{Type: obj.TYPE_MEM, Name: obj.NAME_EXTERN, Sym: morestackNoCtxt}
+			p.To = obj.Addr{Type: obj.TYPE_MEM, Name: obj.NAME_EXTERN, Sym: psess.morestackNoCtxt}
 		}
 		p = appendp(p, AEnd)
 	}
 
-	// Add Block instructions for resume points and BrTable to jump to selected resume point.
 	if numResumePoints > 0 {
 		p := s.Func.Text
-		p = appendp(p, ALoop) // entryPointLoop, used to jump between basic blocks
+		p = appendp(p, ALoop)
 
 		for i := 0; i < numResumePoints+1; i++ {
 			p = appendp(p, ABlock)
 		}
-		p = appendp(p, AGet, regAddr(REG_PC_B)) // read next basic block from PC_B
+		p = appendp(p, AGet, regAddr(REG_PC_B))
 		p = appendp(p, ABrTable, obj.Addr{Val: tableIdxs})
-		p = appendp(p, AEnd) // end of Block
+		p = appendp(p, AEnd)
 
 		for p.Link != nil {
 			p = p.Link
 		}
 
-		p = appendp(p, AEnd) // end of entryPointLoop
+		p = appendp(p, AEnd)
 		p = appendp(p, obj.AUNDEF)
 	}
 
@@ -377,25 +253,23 @@ func preprocess(ctxt *obj.Link, s *obj.LSym, newprog obj.ProgAlloc) {
 			p.As = obj.ANOP
 
 			if jmp.To.Type == obj.TYPE_BRANCH {
-				// jump to basic block
+
 				p = appendp(p, AI32Const, constAddr(jmp.To.Val.(*obj.Prog).Pc))
-				p = appendp(p, ASet, regAddr(REG_PC_B))               // write next basic block to PC_B
-				p = appendp(p, ABr, constAddr(int64(currentDepth-1))) // jump to beginning of entryPointLoop
+				p = appendp(p, ASet, regAddr(REG_PC_B))
+				p = appendp(p, ABr, constAddr(int64(currentDepth-1)))
 				break
 			}
 
-			// reset PC_B to function entry
 			p = appendp(p, AI32Const, constAddr(0))
 			p = appendp(p, ASet, regAddr(REG_PC_B))
 
-			// low-level WebAssembly call to function
 			switch jmp.To.Type {
 			case obj.TYPE_MEM:
 				p = appendp(p, ACall, jmp.To)
 			case obj.TYPE_NONE:
-				// (target PC is on stack)
+
 				p = appendp(p, AI32WrapI64)
-				p = appendp(p, AI32Const, constAddr(16)) // only needs PC_F bits (16-31), PC_B bits (0-15) are zero
+				p = appendp(p, AI32Const, constAddr(16))
 				p = appendp(p, AI32ShrU)
 				p = appendp(p, ACallIndirect)
 			default:
@@ -409,83 +283,70 @@ func preprocess(ctxt *obj.Link, s *obj.LSym, newprog obj.ProgAlloc) {
 			p.As = obj.ANOP
 
 			pcAfterCall := call.Link.Pc
-			if call.To.Sym == sigpanic {
-				pcAfterCall-- // sigpanic expects to be called without advancing the pc
+			if call.To.Sym == psess.sigpanic {
+				pcAfterCall--
 			}
 
-			// jmpdefer manipulates the return address on the stack so deferreturn gets called repeatedly.
-			// Model this in WebAssembly with a loop.
-			if call.To.Sym == deferreturn {
+			if call.To.Sym == psess.deferreturn {
 				p = appendp(p, ALoop)
 			}
 
-			// SP -= 8
 			p = appendp(p, AGet, regAddr(REG_SP))
 			p = appendp(p, AI32Const, constAddr(8))
 			p = appendp(p, AI32Sub)
 			p = appendp(p, ASet, regAddr(REG_SP))
 
-			// write return address to Go stack
 			p = appendp(p, AGet, regAddr(REG_SP))
 			p = appendp(p, AI64Const, obj.Addr{
 				Type:   obj.TYPE_ADDR,
 				Name:   obj.NAME_EXTERN,
-				Sym:    s,           // PC_F
-				Offset: pcAfterCall, // PC_B
+				Sym:    s,
+				Offset: pcAfterCall,
 			})
 			p = appendp(p, AI64Store, constAddr(0))
 
-			// reset PC_B to function entry
 			p = appendp(p, AI32Const, constAddr(0))
 			p = appendp(p, ASet, regAddr(REG_PC_B))
 
-			// low-level WebAssembly call to function
 			switch call.To.Type {
 			case obj.TYPE_MEM:
 				p = appendp(p, ACall, call.To)
 			case obj.TYPE_NONE:
-				// (target PC is on stack)
+
 				p = appendp(p, AI32WrapI64)
-				p = appendp(p, AI32Const, constAddr(16)) // only needs PC_F bits (16-31), PC_B bits (0-15) are zero
+				p = appendp(p, AI32Const, constAddr(16))
 				p = appendp(p, AI32ShrU)
 				p = appendp(p, ACallIndirect)
 			default:
 				panic("bad target for CALL")
 			}
 
-			// gcWriteBarrier has no return value, it never unwinds the stack
-			if call.To.Sym == gcWriteBarrier {
+			if call.To.Sym == psess.gcWriteBarrier {
 				break
 			}
 
-			// jmpdefer removes the frame of deferreturn from the Go stack.
-			// However, its WebAssembly function still returns normally,
-			// so we need to return from deferreturn without removing its
-			// stack frame (no RET), because the frame is already gone.
-			if call.To.Sym == jmpdefer {
+			if call.To.Sym == psess.jmpdefer {
 				p = appendp(p, AReturn)
 				break
 			}
 
-			// return value of call is on the top of the stack, indicating whether to unwind the WebAssembly stack
 			p = appendp(p, AIf)
-			if call.As == ACALLNORESUME && call.To.Sym != sigpanic { // sigpanic unwinds the stack, but it never resumes
-				// trying to unwind WebAssembly stack but call has no resume point, terminate with error
+			if call.As == ACALLNORESUME && call.To.Sym != psess.sigpanic {
+
 				p = appendp(p, obj.AUNDEF)
 			} else {
-				// unwinding WebAssembly stack to switch goroutine, return 1
+
 				p = appendp(p, AI32Const, constAddr(1))
 				p = appendp(p, AReturn)
 			}
 			p = appendp(p, AEnd)
 
-			// jump to before the call if jmpdefer has reset the return address to the call's PC
-			if call.To.Sym == deferreturn {
+			if call.To.Sym == psess.deferreturn {
 				p = appendp(p, AGet, regAddr(REG_PC_B))
 				p = appendp(p, AI32Const, constAddr(call.Pc))
 				p = appendp(p, AI32Eq)
 				p = appendp(p, ABrIf, constAddr(0))
-				p = appendp(p, AEnd) // end of Loop
+				p = appendp(p, AEnd)
 			}
 
 		case obj.ARET, ARETUNWIND:
@@ -493,50 +354,44 @@ func preprocess(ctxt *obj.Link, s *obj.LSym, newprog obj.ProgAlloc) {
 			p.As = obj.ANOP
 
 			if framesize > 0 {
-				// SP += framesize
+
 				p = appendp(p, AGet, regAddr(REG_SP))
 				p = appendp(p, AI32Const, constAddr(framesize))
 				p = appendp(p, AI32Add)
 				p = appendp(p, ASet, regAddr(REG_SP))
-				// TODO(neelance): This should theoretically set Spadj, but it only works without.
-				// p.Spadj = int32(-framesize)
+
 			}
 
 			if ret.To.Type == obj.TYPE_MEM {
-				// reset PC_B to function entry
+
 				p = appendp(p, AI32Const, constAddr(0))
 				p = appendp(p, ASet, regAddr(REG_PC_B))
 
-				// low-level WebAssembly call to function
 				p = appendp(p, ACall, ret.To)
 				p = appendp(p, AReturn)
 				break
 			}
 
-			// read return PC_F from Go stack
 			p = appendp(p, AGet, regAddr(REG_SP))
 			p = appendp(p, AI32Load16U, constAddr(2))
 			p = appendp(p, ASet, regAddr(REG_PC_F))
 
-			// read return PC_B from Go stack
 			p = appendp(p, AGet, regAddr(REG_SP))
 			p = appendp(p, AI32Load16U, constAddr(0))
 			p = appendp(p, ASet, regAddr(REG_PC_B))
 
-			// SP += 8
 			p = appendp(p, AGet, regAddr(REG_SP))
 			p = appendp(p, AI32Const, constAddr(8))
 			p = appendp(p, AI32Add)
 			p = appendp(p, ASet, regAddr(REG_SP))
 
 			if ret.As == ARETUNWIND {
-				// function needs to unwind the WebAssembly stack, return 1
+
 				p = appendp(p, AI32Const, constAddr(1))
 				p = appendp(p, AReturn)
 				break
 			}
 
-			// not unwinding the WebAssembly stack, return 0
 			p = appendp(p, AI32Const, constAddr(0))
 			p = appendp(p, AReturn)
 		}
@@ -551,7 +406,7 @@ func preprocess(ctxt *obj.Link, s *obj.LSym, newprog obj.ProgAlloc) {
 			p.From.Offset += int64(framesize)
 		case obj.NAME_PARAM:
 			p.From.Reg = REG_SP
-			p.From.Offset += int64(framesize) + 8 // parameters are after the frame and the 8-byte return address
+			p.From.Offset += int64(framesize) + 8
 		}
 
 		switch p.To.Name {
@@ -559,7 +414,7 @@ func preprocess(ctxt *obj.Link, s *obj.LSym, newprog obj.ProgAlloc) {
 			p.To.Offset += int64(framesize)
 		case obj.NAME_PARAM:
 			p.To.Reg = REG_SP
-			p.To.Offset += int64(framesize) + 8 // parameters are after the frame and the 8-byte return address
+			p.To.Offset += int64(framesize) + 8
 		}
 
 		switch p.As {
@@ -708,22 +563,21 @@ func regAddr(reg int16) obj.Addr {
 func assemble(ctxt *obj.Link, s *obj.LSym, newprog obj.ProgAlloc) {
 	w := new(bytes.Buffer)
 
-	// Function starts with declaration of locals: numbers and types.
 	switch s.Name {
 	case "memchr":
-		writeUleb128(w, 1) // number of sets of locals
-		writeUleb128(w, 3) // number of locals
-		w.WriteByte(0x7F)  // i32
+		writeUleb128(w, 1)
+		writeUleb128(w, 3)
+		w.WriteByte(0x7F)
 	case "memcmp":
-		writeUleb128(w, 1) // number of sets of locals
-		writeUleb128(w, 2) // number of locals
-		w.WriteByte(0x7F)  // i32
+		writeUleb128(w, 1)
+		writeUleb128(w, 2)
+		w.WriteByte(0x7F)
 	default:
-		writeUleb128(w, 2)  // number of sets of locals
-		writeUleb128(w, 16) // number of locals
-		w.WriteByte(0x7E)   // i64
-		writeUleb128(w, 16) // number of locals
-		w.WriteByte(0x7C)   // f64
+		writeUleb128(w, 2)
+		writeUleb128(w, 16)
+		w.WriteByte(0x7E)
+		writeUleb128(w, 16)
+		w.WriteByte(0x7C)
 	}
 
 	for p := s.Func.Text; p != nil; p = p.Link {
@@ -735,10 +589,10 @@ func assemble(ctxt *obj.Link, s *obj.LSym, newprog obj.ProgAlloc) {
 			reg := p.From.Reg
 			switch {
 			case reg >= REG_PC_F && reg <= REG_RUN:
-				w.WriteByte(0x23) // get_global
+				w.WriteByte(0x23)
 				writeUleb128(w, uint64(reg-REG_PC_F))
 			case reg >= REG_R0 && reg <= REG_F15:
-				w.WriteByte(0x20) // get_local
+				w.WriteByte(0x20)
 				writeUleb128(w, uint64(reg-REG_R0))
 			default:
 				panic("bad Get: invalid register")
@@ -752,14 +606,14 @@ func assemble(ctxt *obj.Link, s *obj.LSym, newprog obj.ProgAlloc) {
 			reg := p.To.Reg
 			switch {
 			case reg >= REG_PC_F && reg <= REG_RUN:
-				w.WriteByte(0x24) // set_global
+				w.WriteByte(0x24)
 				writeUleb128(w, uint64(reg-REG_PC_F))
 			case reg >= REG_R0 && reg <= REG_F15:
 				if p.Link.As == AGet && p.Link.From.Reg == reg {
-					w.WriteByte(0x22) // tee_local
+					w.WriteByte(0x22)
 					p = p.Link
 				} else {
-					w.WriteByte(0x21) // set_local
+					w.WriteByte(0x21)
 				}
 				writeUleb128(w, uint64(reg-REG_R0))
 			default:
@@ -774,7 +628,7 @@ func assemble(ctxt *obj.Link, s *obj.LSym, newprog obj.ProgAlloc) {
 			reg := p.To.Reg
 			switch {
 			case reg >= REG_R0 && reg <= REG_F15:
-				w.WriteByte(0x22) // tee_local
+				w.WriteByte(0x22)
 				writeUleb128(w, uint64(reg-REG_R0))
 			default:
 				panic("bad Tee: invalid register")
@@ -782,15 +636,15 @@ func assemble(ctxt *obj.Link, s *obj.LSym, newprog obj.ProgAlloc) {
 			continue
 
 		case ANot:
-			w.WriteByte(0x45) // i32.eqz
+			w.WriteByte(0x45)
 			continue
 
 		case obj.AUNDEF:
-			w.WriteByte(0x00) // unreachable
+			w.WriteByte(0x00)
 			continue
 
 		case obj.ANOP, obj.ATEXT, obj.AFUNCDATA, obj.APCDATA:
-			// ignore
+
 			continue
 		}
 
@@ -810,7 +664,7 @@ func assemble(ctxt *obj.Link, s *obj.LSym, newprog obj.ProgAlloc) {
 		switch p.As {
 		case ABlock, ALoop, AIf:
 			if p.From.Offset != 0 {
-				// block type, rarely used, e.g. for code compiled with emscripten
+
 				w.WriteByte(0x80 - byte(p.From.Offset))
 				continue
 			}
@@ -853,7 +707,7 @@ func assemble(ctxt *obj.Link, s *obj.LSym, newprog obj.ProgAlloc) {
 
 		case ACallIndirect:
 			writeUleb128(w, uint64(p.To.Offset))
-			w.WriteByte(0x00) // reserved value
+			w.WriteByte(0x00)
 
 		case AI32Const, AI64Const:
 			if p.From.Name == obj.NAME_EXTERN {
@@ -900,7 +754,7 @@ func assemble(ctxt *obj.Link, s *obj.LSym, newprog obj.ProgAlloc) {
 		}
 	}
 
-	w.WriteByte(0x0b) // end
+	w.WriteByte(0x0b)
 
 	s.P = w.Bytes()
 }

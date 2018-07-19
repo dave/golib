@@ -1,12 +1,8 @@
-// Copyright 2017 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
 package types
 
 import (
-	"cmd/internal/obj"
-	"cmd/internal/src"
+	"github.com/dave/golib/src/cmd/internal/obj"
+	"github.com/dave/golib/src/cmd/internal/src"
 	"unicode"
 	"unicode/utf8"
 )
@@ -70,11 +66,11 @@ func (sym *Sym) LinksymName() string {
 	return sym.Pkg.Prefix + "." + sym.Name
 }
 
-func (sym *Sym) Linksym() *obj.LSym {
+func (sym *Sym) Linksym(psess *PackageSession) *obj.LSym {
 	if sym == nil {
 		return nil
 	}
-	return Ctxt.Lookup(sym.LinksymName())
+	return psess.Ctxt.Lookup(sym.LinksymName())
 }
 
 // Less reports whether symbol a is ordered before symbol b.
@@ -93,15 +89,12 @@ func (a *Sym) Less(b *Sym) bool {
 		return false
 	}
 
-	// Exported symbols before non-exported.
 	ea := IsExported(a.Name)
 	eb := IsExported(b.Name)
 	if ea != eb {
 		return ea
 	}
 
-	// Order by name and then (for non-exported names) by package
-	// height and path.
 	if a.Name != b.Name {
 		return a.Name < b.Name
 	}

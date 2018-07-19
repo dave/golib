@@ -1,7 +1,3 @@
-// Copyright 2016 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
 package ssa
 
 import "fmt"
@@ -103,10 +99,10 @@ func (m *SparseTreeMap) Insert(b *Block, adjust int32, x interface{}, helper *Sp
 	rbtree := (*RBTint32)(m)
 	blockIndex := &helper.Sdom[b.ID]
 	if blockIndex.entry == 0 {
-		// assert unreachable
+
 		return
 	}
-	// sp will be the sparse parent in this sparse tree (nearest ancestor in the larger tree that is also in this sparse tree)
+
 	sp := m.findEntry(b, adjust, helper)
 	entry := &sparseTreeMapEntry{index: blockIndex, block: b, data: x, sparseParent: sp, adjust: adjust}
 
@@ -116,13 +112,10 @@ func (m *SparseTreeMap) Insert(b *Block, adjust int32, x interface{}, helper *Sp
 	left := blockIndex.entry + adjust
 	_ = rbtree.Insert(left, entry)
 
-	// This newly inserted block may now be the sparse parent of some existing nodes (the new sparse children of this block)
-	// Iterate over nodes bracketed by this new node to correct their parent, but not over the proper sparse descendants of those nodes.
-	_, d := rbtree.Lub(left) // Lub (not EQ) of left is either right or a sparse child
+	_, d := rbtree.Lub(left)
 	for tme := d.(*sparseTreeMapEntry); tme != entry; tme = d.(*sparseTreeMapEntry) {
 		tme.sparseParent = entry
-		// all descendants of tme are unchanged;
-		// next sparse sibling (or right-bracketing sparse parent == entry) is first node after tme.index.exit - tme.adjust
+
 		_, d = rbtree.Lub(tme.index.exit - tme.adjust)
 	}
 }
@@ -153,8 +146,6 @@ func (m *SparseTreeMap) findEntry(b *Block, adjust int32, helper *SparseTreeHelp
 	}
 	blockIndex := &helper.Sdom[b.ID]
 
-	// The Glb (not EQ) of this probe is either the entry-indexed end of a sparse parent
-	// or the exit-indexed end of a sparse sibling
 	_, v := rbtree.Glb(blockIndex.entry + adjust)
 
 	if v == nil {
@@ -162,13 +153,13 @@ func (m *SparseTreeMap) findEntry(b *Block, adjust int32, helper *SparseTreeHelp
 	}
 
 	otherEntry := v.(*sparseTreeMapEntry)
-	if otherEntry.index.exit >= blockIndex.exit { // otherEntry exit after blockIndex exit; therefore, brackets
+	if otherEntry.index.exit >= blockIndex.exit {
 		return otherEntry
 	}
-	// otherEntry is a sparse Sibling, and shares the same sparse parent (nearest ancestor within larger tree)
+
 	sp := otherEntry.sparseParent
 	if sp != nil {
-		if sp.index.exit < blockIndex.exit { // no ancestor found
+		if sp.index.exit < blockIndex.exit {
 			return nil
 		}
 		return sp

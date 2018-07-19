@@ -1,7 +1,3 @@
-// Copyright 2018 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
 package ssa
 
 import (
@@ -213,20 +209,9 @@ func (po *poset) addchild(i1, i2 uint32, strict bool) {
 		po.setchr(i1, e2)
 		po.upush(undoSetChr, i1, 0)
 	} else {
-		// If n1 already has two children, add an intermediate dummy
-		// node to record the relation correctly (without relating
-		// n2 to other existing nodes). Use a non-deterministic value
-		// to decide whether to append on the left or the right, to avoid
-		// creating degenerated chains.
-		//
-		//      n1
-		//     /  \
-		//   i1l  dummy
-		//        /   \
-		//      i1r   n2
-		//
+
 		dummy := po.newnode(nil)
-		if (i1^i2)&1 != 0 { // non-deterministic
+		if (i1^i2)&1 != 0 {
 			po.setchl(dummy, i1r)
 			po.setchr(dummy, e2)
 			po.setchr(i1, newedge(dummy, false))
@@ -277,9 +262,6 @@ func (po *poset) newconst(n *Value) {
 		panic("newconst on non-constant")
 	}
 
-	// If this is the first constant, put it into a new root, as
-	// we can't record an existing connection so we don't have
-	// a specific DAG to add it to.
 	if len(po.constants) == 0 {
 		i := po.newnode(n)
 		po.roots = append(po.roots, i)
@@ -332,39 +314,23 @@ func (po *poset) newconst(n *Value) {
 	}
 
 	if lowerptr == nil && higherptr == nil {
-		// This should not happen, as at least one
-		// other constant must exist if we get here.
+
 		panic("no constant found")
 	}
 
-	// Create the new node and connect it to the bounds, so that
-	// lower < n < higher. We could have found both bounds or only one
-	// of them, depending on what other constants are present in the poset.
-	// Notice that we always link constants together, so they
-	// are always part of the same DAG.
 	i := po.newnode(n)
 	switch {
 	case lowerptr != nil && higherptr != nil:
-		// Both bounds are present, record lower < n < higher.
+
 		po.addchild(po.values[lowerptr.ID], i, true)
 		po.addchild(i, po.values[higherptr.ID], true)
 
 	case lowerptr != nil:
-		// Lower bound only, record lower < n.
+
 		po.addchild(po.values[lowerptr.ID], i, true)
 
 	case higherptr != nil:
-		// Higher bound only. To record n < higher, we need
-		// a dummy root:
-		//
-		//        dummy
-		//        /   \
-		//      root   \
-		//       /      n
-		//     ....    /
-		//       \    /
-		//       higher
-		//
+
 		i2 := po.values[higherptr.ID]
 		r2 := po.findroot(i2)
 		dummy := po.newnode(nil)
@@ -387,8 +353,7 @@ func (po *poset) aliasnode(n1, n2 *Value) {
 
 	i2 := po.values[n2.ID]
 	if i2 != 0 {
-		// Rename all references to i2 into i1
-		// (do not touch i1 itself, otherwise we can create useless self-loops)
+
 		for idx, n := range po.nodes {
 			if uint32(idx) != i1 {
 				l, r := n.l, n.r
@@ -403,8 +368,6 @@ func (po *poset) aliasnode(n1, n2 *Value) {
 			}
 		}
 
-		// Reassign all existing IDs that point to i2 to i1.
-		// This includes n2.ID.
 		for k, v := range po.values {
 			if v == i2 {
 				po.values[k] = i1
@@ -412,7 +375,7 @@ func (po *poset) aliasnode(n1, n2 *Value) {
 			}
 		}
 	} else {
-		// n2.ID wasn't seen before, so record it as alias to i1
+
 		po.values[n2.ID] = i1
 		po.upushalias(n2.ID, 0)
 	}
@@ -461,19 +424,13 @@ func (po *poset) dfs(r uint32, strict bool, f func(i uint32) bool) bool {
 	open[0] = r
 
 	if strict {
-		// Do a first DFS; walk all paths and stop when we find a strict
-		// edge, building a "next" list of nodes reachable through strict
-		// edges. This will be the bootstrap open list for the real DFS.
+
 		next := make([]uint32, 0, 64)
 
 		for len(open) > 0 {
 			i := open[len(open)-1]
 			open = open[:len(open)-1]
 
-			// Don't visit the same node twice. Notice that all nodes
-			// across non-strict paths are still visited at least once, so
-			// a non-strict path can never obscure a strict path to the
-			// same node.
 			if !closed.Test(i) {
 				closed.Set(i)
 
@@ -533,9 +490,7 @@ func (po *poset) dominates(i1, i2 uint32, strict bool) bool {
 // Returns the root; if i is itself a root, it is returned.
 // Panic if i is not in any DAG.
 func (po *poset) findroot(i uint32) uint32 {
-	// TODO(rasky): if needed, a way to speed up this search is
-	// storing a bitset for each root using it as a mini bloom filter
-	// of nodes present under that root.
+
 	for _, r := range po.roots {
 		if po.dominates(r, i, false) {
 			return r
@@ -564,7 +519,6 @@ func (po *poset) collapsepath(n1, n2 *Value) bool {
 		return false
 	}
 
-	// TODO: for now, only handle the simple case of i2 being child of i1
 	l, r := po.children(i1)
 	if l.Target() == i2 || r.Target() == i2 {
 		po.aliasnode(n1, n2)
@@ -580,7 +534,6 @@ func (po *poset) isnoneq(id1, id2 ID) bool {
 		id1, id2 = id2, id1
 	}
 
-	// Check if we recorded a non-equal relation before
 	if bs, ok := po.noneq[id1]; ok && bs.Test(uint32(id2)) {
 		return true
 	}
@@ -594,14 +547,11 @@ func (po *poset) setnoneq(id1, id2 ID) {
 	}
 	bs := po.noneq[id1]
 	if bs == nil {
-		// Given that we record non-equality relations using the
-		// higher ID as a key, the bitsize will never change size.
-		// TODO(rasky): if memory is a problem, consider allocating
-		// a small bitset and lazily grow it when higher IDs arrive.
+
 		bs = newBitset(int(id1))
 		po.noneq[id1] = bs
 	} else if bs.Test(uint32(id2)) {
-		// Already recorded
+
 		return
 	}
 	bs.Set(uint32(id2))
@@ -611,7 +561,7 @@ func (po *poset) setnoneq(id1, id2 ID) {
 // CheckIntegrity verifies internal integrity of a poset. It is intended
 // for debugging purposes.
 func (po *poset) CheckIntegrity() (err error) {
-	// Record which index is a constant
+
 	constants := newBitset(int(po.lastidx + 1))
 	for _, c := range po.constants {
 		if idx, ok := po.values[c.ID]; !ok {
@@ -653,7 +603,6 @@ func (po *poset) CheckIntegrity() (err error) {
 		}
 	}
 
-	// Verify that values contain the minimum set
 	for id, idx := range po.values {
 		if !seen.Test(idx) {
 			err = fmt.Errorf("spurious value [%d]=%d", id, idx)
@@ -661,7 +610,6 @@ func (po *poset) CheckIntegrity() (err error) {
 		}
 	}
 
-	// Verify that only existing nodes have non-zero children
 	for i, n := range po.nodes {
 		if n.l|n.r != 0 {
 			if !seen.Test(uint32(i)) {
@@ -718,7 +666,6 @@ func (po *poset) DotDump(fn string, title string) error {
 	}
 	defer f.Close()
 
-	// Create reverse index mapping (taking aliases into account)
 	names := make(map[uint32]string)
 	for id, i := range po.values {
 		s := names[i]
@@ -730,7 +677,6 @@ func (po *poset) DotDump(fn string, title string) error {
 		names[i] = s
 	}
 
-	// Create constant mapping
 	consts := make(map[uint32]int64)
 	for _, v := range po.constants {
 		idx := po.values[v.ID]
@@ -757,7 +703,7 @@ func (po *poset) DotDump(fn string, title string) error {
 				fmt.Fprintf(f, "\t\tnode%d [shape=box style=filled fillcolor=cadetblue1 label=<%s <font point-size=\"6\">%s [%d]</font>>]\n",
 					i, vals, names[i], i)
 			} else {
-				// Normal SSA value
+
 				fmt.Fprintf(f, "\t\tnode%d [label=<%s <font point-size=\"6\">[%d]</font>>]\n", i, names[i], i)
 			}
 			chl, chr := po.children(i)
@@ -845,7 +791,6 @@ func (po *poset) NonEqual(n1, n2 *Value) bool {
 		return true
 	}
 
-	// Check if n1<n2 or n2<n1, in which case we can infer that n1!=n2
 	if po.Ordered(n1, n2) || po.Ordered(n2, n1) {
 		return true
 	}
@@ -856,8 +801,7 @@ func (po *poset) NonEqual(n1, n2 *Value) bool {
 // setOrder records that n1<n2 or n1<=n2 (depending on strict).
 // Implements SetOrder() and SetOrderOrEqual()
 func (po *poset) setOrder(n1, n2 *Value, strict bool) bool {
-	// If we are trying to record n1<=n2 but we learned that n1!=n2,
-	// record n1<n2, as it provides more information.
+
 	if !strict && po.isnoneq(n1.ID, n2.ID) {
 		strict = true
 	}
@@ -867,24 +811,19 @@ func (po *poset) setOrder(n1, n2 *Value, strict bool) bool {
 
 	switch {
 	case !f1 && !f2:
-		// Neither n1 nor n2 are in the poset, so they are not related
-		// in any way to existing nodes.
-		// Create a new DAG to record the relation.
+
 		i1, i2 = po.newnode(n1), po.newnode(n2)
 		po.roots = append(po.roots, i1)
 		po.upush(undoNewRoot, i1, 0)
 		po.addchild(i1, i2, strict)
 
 	case f1 && !f2:
-		// n1 is in one of the DAGs, while n2 is not. Add n2 as children
-		// of n1.
+
 		i2 = po.newnode(n2)
 		po.addchild(i1, i2, strict)
 
 	case !f1 && f2:
-		// n1 is not in any DAG but n2 is. If n2 is a root, we can put
-		// n1 in its place as a root; otherwise, we need to create a new
-		// dummy root to record the relation.
+
 		i1 = po.newnode(n1)
 
 		if po.isroot(i2) {
@@ -894,18 +833,8 @@ func (po *poset) setOrder(n1, n2 *Value, strict bool) bool {
 			return true
 		}
 
-		// Search for i2's root; this requires a O(n) search on all
-		// DAGs
 		r := po.findroot(i2)
 
-		// Re-parent as follows:
-		//
-		//                  dummy
-		//     r            /   \
-		//      \   ===>   r    i1
-		//      i2          \   /
-		//                    i2
-		//
 		dummy := po.newnode(nil)
 		po.changeroot(r, dummy)
 		po.upush(undoChangeRoot, dummy, newedge(r, false))
@@ -914,67 +843,37 @@ func (po *poset) setOrder(n1, n2 *Value, strict bool) bool {
 		po.addchild(i1, i2, strict)
 
 	case f1 && f2:
-		// If the nodes are aliased, fail only if we're setting a strict order
-		// (that is, we cannot set n1<n2 if n1==n2).
+
 		if i1 == i2 {
 			return !strict
 		}
 
-		// Both n1 and n2 are in the poset. This is the complex part of the algorithm
-		// as we need to find many different cases and DAG shapes.
-
-		// Check if n1 somehow dominates n2
 		if po.dominates(i1, i2, false) {
-			// This is the table of all cases we need to handle:
-			//
-			//      DAG          New      Action
-			//      ---------------------------------------------------
-			// #1:  N1<=X<=N2 |  N1<=N2 | do nothing
-			// #2:  N1<=X<=N2 |  N1<N2  | add strict edge (N1<N2)
-			// #3:  N1<X<N2   |  N1<=N2 | do nothing (we already know more)
-			// #4:  N1<X<N2   |  N1<N2  | do nothing
 
-			// Check if we're in case #2
 			if strict && !po.dominates(i1, i2, true) {
 				po.addchild(i1, i2, true)
 				return true
 			}
 
-			// Case #1, #3 o #4: nothing to do
 			return true
 		}
 
-		// Check if n2 somehow dominates n1
 		if po.dominates(i2, i1, false) {
-			// This is the table of all cases we need to handle:
-			//
-			//      DAG           New      Action
-			//      ---------------------------------------------------
-			// #5:  N2<=X<=N1  |  N1<=N2 | collapse path (learn that N1=X=N2)
-			// #6:  N2<=X<=N1  |  N1<N2  | contradiction
-			// #7:  N2<X<N1    |  N1<=N2 | contradiction in the path
-			// #8:  N2<X<N1    |  N1<N2  | contradiction
 
 			if strict {
-				// Cases #6 and #8: contradiction
+
 				return false
 			}
 
-			// We're in case #5 or #7. Try to collapse path, and that will
-			// fail if it realizes that we are in case #7.
 			return po.collapsepath(n2, n1)
 		}
 
-		// We don't know of any existing relation between n1 and n2. They could
-		// be part of the same DAG or not.
-		// Find their roots to check whether they are in the same DAG.
 		r1, r2 := po.findroot(i1), po.findroot(i2)
 		if r1 != r2 {
-			// We need to merge the two DAGs to record a relation between the nodes
+
 			po.mergeroot(r1, r2)
 		}
 
-		// Connect n1 and n2
 		po.addchild(i1, i2, strict)
 	}
 
@@ -1007,7 +906,6 @@ func (po *poset) SetEqual(n1, n2 *Value) bool {
 		panic("should not call Add with n1==n2")
 	}
 
-	// If we recorded that n1!=n2, this is a contradiction.
 	if po.isnoneq(n1.ID, n2.ID) {
 		return false
 	}
@@ -1027,12 +925,10 @@ func (po *poset) SetEqual(n1, n2 *Value) bool {
 		po.aliasnode(n2, n1)
 	case f1 && f2:
 		if i1 == i2 {
-			// Already aliased, ignore
+
 			return true
 		}
 
-		// If we already knew that n1<=n2, we can collapse the path to
-		// record n1==n2 (and viceversa).
 		if po.dominates(i1, i2, false) {
 			return po.collapsepath(n1, n2)
 		}
@@ -1043,16 +939,12 @@ func (po *poset) SetEqual(n1, n2 *Value) bool {
 		r1 := po.findroot(i1)
 		r2 := po.findroot(i2)
 		if r1 != r2 {
-			// Merge the two DAGs so we can record relations between the nodes
+
 			po.mergeroot(r1, r2)
 		}
 
-		// Set n2 as alias of n1. This will also update all the references
-		// to n2 to become references to n1
 		po.aliasnode(n1, n2)
 
-		// Connect i2 (now dummy) as child of i1. This allows to keep the correct
-		// order with its children.
 		po.addchild(i1, i2, false)
 	}
 	return true
@@ -1066,21 +958,16 @@ func (po *poset) SetNonEqual(n1, n2 *Value) bool {
 		panic("should not call Equal with n1==n2")
 	}
 
-	// See if we already know this
 	if po.isnoneq(n1.ID, n2.ID) {
 		return true
 	}
 
-	// Check if we're contradicting an existing relation
 	if po.Equal(n1, n2) {
 		return false
 	}
 
-	// Record non-equality
 	po.setnoneq(n1.ID, n2.ID)
 
-	// If we know that i1<=i2 but not i1<i2, learn that as we
-	// now know that they are not equal. Do the same for i2<=i1.
 	i1, f1 := po.lookup(n1)
 	i2, f2 := po.lookup(n2)
 	if f1 && f2 {
@@ -1143,7 +1030,6 @@ func (po *poset) Undo() {
 			po.nodes = po.nodes[:pass.idx]
 			po.lastidx--
 
-			// If it was the last inserted constant, remove it
 			nc := len(po.constants)
 			if nc > 0 && po.constants[nc-1].ID == pass.ID {
 				po.constants = po.constants[:nc-1]
@@ -1153,13 +1039,13 @@ func (po *poset) Undo() {
 			ID, prev := pass.ID, pass.idx
 			cur := po.values[ID]
 			if prev == 0 {
-				// Born as an alias, die as an alias
+
 				delete(po.values, ID)
 			} else {
 				if cur == prev {
 					panic("invalid aliasnode undo pass")
 				}
-				// Give it back previous value
+
 				po.values[ID] = prev
 			}
 

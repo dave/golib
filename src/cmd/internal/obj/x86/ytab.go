@@ -1,7 +1,3 @@
-// Copyright 2017 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
 package x86
 
 // argListMax specifies upper arg count limit expected to be carried by obj.Prog.
@@ -26,16 +22,14 @@ type ytab struct {
 // to index ycover table like `ycover[args[i]+yt.args[i]]`.
 // This means that args should contain values that already
 // multiplied by Ymax.
-func (yt *ytab) match(args []int) bool {
-	// Trailing Yxxx check is required to avoid a case
-	// where shorter arg list is matched.
-	// If we had exact yt.args length, it could be `yt.argc != len(args)`.
+func (yt *ytab) match(psess *PackageSession, args []int) bool {
+
 	if len(args) < len(yt.args) && yt.args[len(args)] != Yxxx {
 		return false
 	}
 
 	for i := range args {
-		if ycover[args[i]+int(yt.args[i])] == 0 {
+		if psess.ycover[args[i]+int(yt.args[i])] == 0 {
 			return false
 		}
 	}

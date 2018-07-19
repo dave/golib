@@ -1,13 +1,9 @@
-// Copyright 2015 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
 package ssa
 
 import (
-	"cmd/compile/internal/types"
-	"cmd/internal/src"
 	"fmt"
+	"github.com/dave/golib/src/cmd/compile/internal/types"
+	"github.com/dave/golib/src/cmd/internal/src"
 	"math"
 	"sort"
 	"strings"
@@ -58,37 +54,30 @@ type Value struct {
 	argstorage [3]*Value
 }
 
-// Examples:
-// Opcode          aux   args
-//  OpAdd          nil      2
-//  OpConst     string      0    string constant
-//  OpConst      int64      0    int64 constant
-//  OpAddcq      int64      1    amd64 op: v = arg[0] + constant
-
 // short form print. Just v#.
 func (v *Value) String() string {
 	if v == nil {
-		return "nil" // should never happen, but not panicking helps with debugging
+		return "nil"
 	}
 	return fmt.Sprintf("v%d", v.ID)
 }
 
-func (v *Value) AuxInt8() int8 {
-	if opcodeTable[v.Op].auxType != auxInt8 {
+func (v *Value) AuxInt8(psess *PackageSession) int8 {
+	if psess.opcodeTable[v.Op].auxType != auxInt8 {
 		v.Fatalf("op %s doesn't have an int8 aux field", v.Op)
 	}
 	return int8(v.AuxInt)
 }
 
-func (v *Value) AuxInt16() int16 {
-	if opcodeTable[v.Op].auxType != auxInt16 {
+func (v *Value) AuxInt16(psess *PackageSession) int16 {
+	if psess.opcodeTable[v.Op].auxType != auxInt16 {
 		v.Fatalf("op %s doesn't have an int16 aux field", v.Op)
 	}
 	return int16(v.AuxInt)
 }
 
-func (v *Value) AuxInt32() int32 {
-	if opcodeTable[v.Op].auxType != auxInt32 {
+func (v *Value) AuxInt32(psess *PackageSession) int32 {
+	if psess.opcodeTable[v.Op].auxType != auxInt32 {
 		v.Fatalf("op %s doesn't have an int32 aux field", v.Op)
 	}
 	return int32(v.AuxInt)
@@ -113,24 +102,24 @@ func (v *Value) AuxUnsigned() uint64 {
 	return 0
 }
 
-func (v *Value) AuxFloat() float64 {
-	if opcodeTable[v.Op].auxType != auxFloat32 && opcodeTable[v.Op].auxType != auxFloat64 {
+func (v *Value) AuxFloat(psess *PackageSession) float64 {
+	if psess.opcodeTable[v.Op].auxType != auxFloat32 && psess.opcodeTable[v.Op].auxType != auxFloat64 {
 		v.Fatalf("op %s doesn't have a float aux field", v.Op)
 	}
 	return math.Float64frombits(uint64(v.AuxInt))
 }
-func (v *Value) AuxValAndOff() ValAndOff {
-	if opcodeTable[v.Op].auxType != auxSymValAndOff {
+func (v *Value) AuxValAndOff(psess *PackageSession) ValAndOff {
+	if psess.opcodeTable[v.Op].auxType != auxSymValAndOff {
 		v.Fatalf("op %s doesn't have a ValAndOff aux field", v.Op)
 	}
 	return ValAndOff(v.AuxInt)
 }
 
 // long form print.  v# = opcode <type> [aux] args [: reg] (names)
-func (v *Value) LongString() string {
+func (v *Value) LongString(psess *PackageSession) string {
 	s := fmt.Sprintf("v%d = %s", v.ID, v.Op)
-	s += " <" + v.Type.String() + ">"
-	s += v.auxString()
+	s += " <" + v.Type.String(psess.types) + ">"
+	s += v.auxString(psess)
 	for _, a := range v.Args {
 		s += fmt.Sprintf(" %v", a)
 	}
@@ -147,20 +136,20 @@ func (v *Value) LongString() string {
 			for _, value := range values {
 				if value == v {
 					names = append(names, name.String())
-					break // drop duplicates.
+					break
 				}
 			}
 		}
 	}
 	if len(names) != 0 {
-		sort.Strings(names) // Otherwise a source of variation in debugging output.
+		sort.Strings(names)
 		s += " (" + strings.Join(names, ", ") + ")"
 	}
 	return s
 }
 
-func (v *Value) auxString() string {
-	switch opcodeTable[v.Op].auxType {
+func (v *Value) auxString(psess *PackageSession) string {
+	switch psess.opcodeTable[v.Op].auxType {
 	case auxBool:
 		if v.AuxInt == 0 {
 			return " [false]"
@@ -168,15 +157,15 @@ func (v *Value) auxString() string {
 			return " [true]"
 		}
 	case auxInt8:
-		return fmt.Sprintf(" [%d]", v.AuxInt8())
+		return fmt.Sprintf(" [%d]", v.AuxInt8(psess))
 	case auxInt16:
-		return fmt.Sprintf(" [%d]", v.AuxInt16())
+		return fmt.Sprintf(" [%d]", v.AuxInt16(psess))
 	case auxInt32:
-		return fmt.Sprintf(" [%d]", v.AuxInt32())
+		return fmt.Sprintf(" [%d]", v.AuxInt32(psess))
 	case auxInt64, auxInt128:
 		return fmt.Sprintf(" [%d]", v.AuxInt)
 	case auxFloat32, auxFloat64:
-		return fmt.Sprintf(" [%g]", v.AuxFloat())
+		return fmt.Sprintf(" [%g]", v.AuxFloat(psess))
 	case auxString:
 		return fmt.Sprintf(" {%q}", v.Aux)
 	case auxSym, auxTyp:
@@ -197,7 +186,7 @@ func (v *Value) auxString() string {
 		if v.Aux != nil {
 			s = fmt.Sprintf(" {%v}", v.Aux)
 		}
-		return s + fmt.Sprintf(" [%s]", v.AuxValAndOff())
+		return s + fmt.Sprintf(" [%s]", v.AuxValAndOff(psess))
 	case auxCCop:
 		return fmt.Sprintf(" {%s}", v.Aux.(Op))
 	}
@@ -209,14 +198,14 @@ func (v *Value) auxString() string {
 //go:noinline
 func (v *Value) AddArg(w *Value) {
 	if v.Args == nil {
-		v.resetArgs() // use argstorage
+		v.resetArgs()
 	}
 	v.Args = append(v.Args, w)
 	w.Uses++
 }
 func (v *Value) AddArgs(a ...*Value) {
 	if v.Args == nil {
-		v.resetArgs() // use argstorage
+		v.resetArgs()
 	}
 	v.Args = append(v.Args, a...)
 	for _, x := range a {
@@ -231,7 +220,7 @@ func (v *Value) SetArg(i int, w *Value) {
 func (v *Value) RemoveArg(i int) {
 	v.Args[i].Uses--
 	copy(v.Args[i:], v.Args[i+1:])
-	v.Args[len(v.Args)-1] = nil // aid GC
+	v.Args[len(v.Args)-1] = nil
 	v.Args = v.Args[:len(v.Args)-1]
 }
 func (v *Value) SetArgs1(a *Value) {
@@ -257,7 +246,7 @@ func (v *Value) resetArgs() {
 func (v *Value) reset(op Op) {
 	v.Op = op
 	if op != OpCopy && notStmtBoundary(op) {
-		// Special case for OpCopy because of how it is used in rewrite
+
 		v.Pos = v.Pos.WithNotStmt()
 	}
 	v.resetArgs()
@@ -266,14 +255,14 @@ func (v *Value) reset(op Op) {
 }
 
 // copyInto makes a new value identical to v and adds it to the end of b.
-func (v *Value) copyInto(b *Block) *Value {
-	c := b.NewValue0(v.Pos.WithNotStmt(), v.Op, v.Type) // Lose the position, this causes line number churn otherwise.
+func (v *Value) copyInto(psess *PackageSession, b *Block) *Value {
+	c := b.NewValue0(v.Pos.WithNotStmt(), v.Op, v.Type)
 	c.Aux = v.Aux
 	c.AuxInt = v.AuxInt
 	c.AddArgs(v.Args...)
 	for _, a := range v.Args {
-		if a.Type.IsMemory() {
-			v.Fatalf("can't move a value with a memory arg %s", v.LongString())
+		if a.Type.IsMemory(psess.types) {
+			v.Fatalf("can't move a value with a memory arg %s", v.LongString(psess))
 		}
 	}
 	return c
@@ -281,14 +270,14 @@ func (v *Value) copyInto(b *Block) *Value {
 
 // copyIntoWithXPos makes a new value identical to v and adds it to the end of b.
 // The supplied position is used as the position of the new value.
-func (v *Value) copyIntoWithXPos(b *Block, pos src.XPos) *Value {
+func (v *Value) copyIntoWithXPos(psess *PackageSession, b *Block, pos src.XPos) *Value {
 	c := b.NewValue0(pos, v.Op, v.Type)
 	c.Aux = v.Aux
 	c.AuxInt = v.AuxInt
 	c.AddArgs(v.Args...)
 	for _, a := range v.Args {
-		if a.Type.IsMemory() {
-			v.Fatalf("can't move a value with a memory arg %s", v.LongString())
+		if a.Type.IsMemory(psess.types) {
+			v.Fatalf("can't move a value with a memory arg %s", v.LongString(psess))
 		}
 	}
 	return c
@@ -306,36 +295,36 @@ func (v *Value) isGenericIntConst() bool {
 }
 
 // Reg returns the register assigned to v, in cmd/internal/obj/$ARCH numbering.
-func (v *Value) Reg() int16 {
+func (v *Value) Reg(psess *PackageSession) int16 {
 	reg := v.Block.Func.RegAlloc[v.ID]
 	if reg == nil {
-		v.Fatalf("nil register for value: %s\n%s\n", v.LongString(), v.Block.Func)
+		v.Fatalf("nil register for value: %s\n%s\n", v.LongString(psess), v.Block.Func)
 	}
 	return reg.(*Register).objNum
 }
 
 // Reg0 returns the register assigned to the first output of v, in cmd/internal/obj/$ARCH numbering.
-func (v *Value) Reg0() int16 {
+func (v *Value) Reg0(psess *PackageSession) int16 {
 	reg := v.Block.Func.RegAlloc[v.ID].(LocPair)[0]
 	if reg == nil {
-		v.Fatalf("nil first register for value: %s\n%s\n", v.LongString(), v.Block.Func)
+		v.Fatalf("nil first register for value: %s\n%s\n", v.LongString(psess), v.Block.Func)
 	}
 	return reg.(*Register).objNum
 }
 
 // Reg1 returns the register assigned to the second output of v, in cmd/internal/obj/$ARCH numbering.
-func (v *Value) Reg1() int16 {
+func (v *Value) Reg1(psess *PackageSession) int16 {
 	reg := v.Block.Func.RegAlloc[v.ID].(LocPair)[1]
 	if reg == nil {
-		v.Fatalf("nil second register for value: %s\n%s\n", v.LongString(), v.Block.Func)
+		v.Fatalf("nil second register for value: %s\n%s\n", v.LongString(psess), v.Block.Func)
 	}
 	return reg.(*Register).objNum
 }
 
-func (v *Value) RegName() string {
+func (v *Value) RegName(psess *PackageSession) string {
 	reg := v.Block.Func.RegAlloc[v.ID]
 	if reg == nil {
-		v.Fatalf("nil register for value: %s\n%s\n", v.LongString(), v.Block.Func)
+		v.Fatalf("nil register for value: %s\n%s\n", v.LongString(psess), v.Block.Func)
 	}
 	return reg.(*Register).name
 }
@@ -343,7 +332,7 @@ func (v *Value) RegName() string {
 // MemoryArg returns the memory argument for the Value.
 // The returned value, if non-nil, will be memory-typed (or a tuple with a memory-typed second part).
 // Otherwise, nil is returned.
-func (v *Value) MemoryArg() *Value {
+func (v *Value) MemoryArg(psess *PackageSession) *Value {
 	if v.Op == OpPhi {
 		v.Fatalf("MemoryArg on Phi")
 	}
@@ -351,7 +340,7 @@ func (v *Value) MemoryArg() *Value {
 	if na == 0 {
 		return nil
 	}
-	if m := v.Args[na-1]; m.Type.IsMemory() {
+	if m := v.Args[na-1]; m.Type.IsMemory(psess.types) {
 		return m
 	}
 	return nil
@@ -360,10 +349,8 @@ func (v *Value) MemoryArg() *Value {
 // LackingPos indicates whether v is a value that is unlikely to have a correct
 // position assigned to it.  Ignoring such values leads to more user-friendly positions
 // assigned to nearby values and the blocks containing them.
-func (v *Value) LackingPos() bool {
-	// The exact definition of LackingPos is somewhat heuristically defined and may change
-	// in the future, for example if some of these operations are generated more carefully
-	// with respect to their source position.
+func (v *Value) LackingPos(psess *PackageSession) bool {
+
 	return v.Op == OpVarDef || v.Op == OpVarKill || v.Op == OpVarLive || v.Op == OpPhi ||
-		(v.Op == OpFwdRef || v.Op == OpCopy) && v.Type == types.TypeMem
+		(v.Op == OpFwdRef || v.Op == OpCopy) && v.Type == psess.types.TypeMem
 }

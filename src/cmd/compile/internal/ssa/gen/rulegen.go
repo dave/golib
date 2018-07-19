@@ -1,13 +1,4 @@
-// Copyright 2015 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
 // +build gen
-
-// This program generates Go code that applies rewrite rules to a Value.
-// The generated code implements a function of type func (v *Value) bool
-// which returns true iff if did something.
-// Ideas stolen from Swift: http://www.hpl.hp.com/techreports/Compaq-DEC/WRL-2000-2.html
 
 package main
 
@@ -25,27 +16,6 @@ import (
 	"sort"
 	"strings"
 )
-
-// rule syntax:
-//  sexpr [&& extra conditions] -> [@block] sexpr
-//
-// sexpr are s-expressions (lisp-like parenthesized groupings)
-// sexpr ::= [variable:](opcode sexpr*)
-//         | variable
-//         | <type>
-//         | [auxint]
-//         | {aux}
-//
-// aux      ::= variable | {code}
-// type     ::= variable | {code}
-// variable ::= some token
-// opcode   ::= one of the opcodes from the *Ops.go files
-
-// extra conditions is just a chunk of Go that evaluates to a boolean. It may use
-// variables declared in the matching sexpr. The variable "v" is predefined to be
-// the value matched by the entire rule.
-
-// If multiple rules match, the first one in file order is selected.
 
 var (
 	genLog = flag.Bool("log", false, "generate code that logs; for debugging only")
@@ -81,17 +51,15 @@ func (r Rule) parse() (match, cond, result string) {
 }
 
 func genRules(arch arch) {
-	// Open input file.
+
 	text, err := os.Open(arch.name + ".rules")
 	if err != nil {
 		log.Fatalf("can't read rule file: %v", err)
 	}
 
-	// oprules contains a list of rules for each block and opcode
 	blockrules := map[string][]Rule{}
 	oprules := map[string][]Rule{}
 
-	// read rule file
 	scanner := bufio.NewScanner(text)
 	rule := ""
 	var lineno int
@@ -100,8 +68,7 @@ func genRules(arch arch) {
 		lineno++
 		line := scanner.Text()
 		if i := strings.Index(line, "//"); i >= 0 {
-			// Remove comments. Note that this isn't string safe, so
-			// it will truncate lines with // inside strings. Oh well.
+
 			line = line[:i]
 		}
 		rule += " " + line
@@ -129,7 +96,7 @@ func genRules(arch arch) {
 				if rawop := strings.Split(rule3, " ")[0][1:]; isBlock(rawop, arch) {
 					blockrules[rawop] = append(blockrules[rawop], r)
 				} else {
-					// Do fancier value op matching.
+
 					match, _, _ := r.parse()
 					op, oparch, _, _, _, _ := parseValue(match, arch, loc)
 					opname := fmt.Sprintf("Op%s%s", oparch, op.name)
@@ -154,16 +121,15 @@ func genRules(arch arch) {
 	}
 	sort.Strings(ops)
 
-	// Start output buffer, write header.
 	w := new(bytes.Buffer)
 	fmt.Fprintf(w, "// Code generated from gen/%s.rules; DO NOT EDIT.\n", arch.name)
 	fmt.Fprintln(w, "// generated with: cd gen; go run *.go")
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "package ssa")
 	fmt.Fprintln(w, "import \"math\"")
-	fmt.Fprintln(w, "import \"cmd/internal/obj\"")
-	fmt.Fprintln(w, "import \"cmd/internal/objabi\"")
-	fmt.Fprintln(w, "import \"cmd/compile/internal/types\"")
+	fmt.Fprintln(w, "import \"github.com/dave/golib/src/cmd/internal/obj\"")
+	fmt.Fprintln(w, "import \"github.com/dave/golib/src/cmd/internal/objabi\"")
+	fmt.Fprintln(w, "import \"github.com/dave/golib/src/cmd/compile/internal/types\"")
 	fmt.Fprintln(w, "var _ = math.MinInt8  // in case not otherwise used")
 	fmt.Fprintln(w, "var _ = obj.ANOP      // in case not otherwise used")
 	fmt.Fprintln(w, "var _ = objabi.GOROOT // in case not otherwise used")
@@ -171,7 +137,7 @@ func genRules(arch arch) {
 	fmt.Fprintln(w)
 
 	const chunkSize = 10
-	// Main rewrite routine is a switch on v.Op.
+
 	fmt.Fprintf(w, "func rewriteValue%s(v *Value) bool {\n", arch.name)
 	fmt.Fprintf(w, "switch v.Op {\n")
 	for _, op := range ops {
@@ -189,8 +155,6 @@ func genRules(arch arch) {
 	fmt.Fprintf(w, "return false\n")
 	fmt.Fprintf(w, "}\n")
 
-	// Generate a routine per op. Note that we don't make one giant routine
-	// because it is too big for some compilers.
 	for _, op := range ops {
 		for chunk := 0; chunk < len(oprules[op]); chunk += chunkSize {
 			buf := new(bytes.Buffer)
@@ -232,9 +196,7 @@ func genRules(arch arch) {
 			}
 
 			body := buf.String()
-			// Do a rough match to predict whether we need b, config, fe, and/or types.
-			// It's not precise--thus the blank assignments--but it's good enough
-			// to avoid generating needless code and doing pointless nil checks.
+
 			hasb := strings.Contains(body, "b.")
 			hasconfig := strings.Contains(body, "config.") || strings.Contains(body, "config)")
 			hasfe := strings.Contains(body, "fe.")
@@ -261,8 +223,6 @@ func genRules(arch arch) {
 		}
 	}
 
-	// Generate block rewrite function. There are only a few block types
-	// so we can make this one function with a switch.
 	fmt.Fprintf(w, "func rewriteBlock%s(b *Block) bool {\n", arch.name)
 	fmt.Fprintln(w, "config := b.Func.Config")
 	fmt.Fprintln(w, "_ = config")
@@ -286,15 +246,14 @@ func genRules(arch arch) {
 
 			fmt.Fprintf(w, "for {\n")
 
-			_, _, _, aux, s := extract(match) // remove parens, then split
+			_, _, _, aux, s := extract(match)
 
-			// check match of control value
 			if s[0] != "nil" {
 				fmt.Fprintf(w, "v := b.Control\n")
 				if strings.Contains(s[0], "(") {
 					genMatch0(w, arch, s[0], "v", map[string]struct{}{}, false, rule.loc)
 				} else {
-					fmt.Fprintf(w, "_ = v\n") // in case we don't use v
+					fmt.Fprintf(w, "_ = v\n")
 					fmt.Fprintf(w, "%s := b.Control\n", s[0])
 				}
 			}
@@ -306,11 +265,9 @@ func genRules(arch arch) {
 				fmt.Fprintf(w, "if !(%s) {\nbreak\n}\n", cond)
 			}
 
-			// Rule matches. Generate result.
-			outop, _, _, aux, t := extract(result) // remove parens, then split
+			outop, _, _, aux, t := extract(result)
 			newsuccs := t[1:]
 
-			// Check if newsuccs is the same set as succs.
 			succs := s[1:]
 			m := map[string]bool{}
 			for _, succ := range succs {
@@ -369,7 +326,6 @@ func genRules(arch arch) {
 	fmt.Fprintf(w, "return false\n")
 	fmt.Fprintf(w, "}\n")
 
-	// gofmt result
 	b := w.Bytes()
 	src, err := format.Source(b)
 	if err != nil {
@@ -377,7 +333,6 @@ func genRules(arch arch) {
 		panic(err)
 	}
 
-	// Write to file
 	err = ioutil.WriteFile("../rewrite"+arch.name+".go", src, 0666)
 	if err != nil {
 		log.Fatalf("can't write output: %v\n", err)
@@ -397,7 +352,6 @@ func genMatch0(w io.Writer, arch arch, match, v string, m map[string]struct{}, t
 
 	op, oparch, typ, auxint, aux, args := parseValue(match, arch, loc)
 
-	// check op
 	if !top {
 		fmt.Fprintf(w, "if %s.Op != Op%s%s {\nbreak\n}\n", v, oparch, op.name)
 		canFail = true
@@ -405,13 +359,13 @@ func genMatch0(w io.Writer, arch arch, match, v string, m map[string]struct{}, t
 
 	if typ != "" {
 		if !isVariable(typ) {
-			// code. We must match the results of this code.
+
 			fmt.Fprintf(w, "if %s.Type != %s {\nbreak\n}\n", v, typ)
 			canFail = true
 		} else {
-			// variable
+
 			if _, ok := m[typ]; ok {
-				// must match previous variable
+
 				fmt.Fprintf(w, "if %s.Type != %s {\nbreak\n}\n", v, typ)
 				canFail = true
 			} else {
@@ -423,11 +377,11 @@ func genMatch0(w io.Writer, arch arch, match, v string, m map[string]struct{}, t
 
 	if auxint != "" {
 		if !isVariable(auxint) {
-			// code
+
 			fmt.Fprintf(w, "if %s.AuxInt != %s {\nbreak\n}\n", v, auxint)
 			canFail = true
 		} else {
-			// variable
+
 			if _, ok := m[auxint]; ok {
 				fmt.Fprintf(w, "if %s.AuxInt != %s {\nbreak\n}\n", v, auxint)
 				canFail = true
@@ -441,11 +395,11 @@ func genMatch0(w io.Writer, arch arch, match, v string, m map[string]struct{}, t
 	if aux != "" {
 
 		if !isVariable(aux) {
-			// code
+
 			fmt.Fprintf(w, "if %s.Aux != %s {\nbreak\n}\n", v, aux)
 			canFail = true
 		} else {
-			// variable
+
 			if _, ok := m[aux]; ok {
 				fmt.Fprintf(w, "if %s.Aux != %s {\nbreak\n}\n", v, aux)
 				canFail = true
@@ -457,23 +411,20 @@ func genMatch0(w io.Writer, arch arch, match, v string, m map[string]struct{}, t
 	}
 
 	if n := len(args); n > 1 {
-		fmt.Fprintf(w, "_ = %s.Args[%d]\n", v, n-1) // combine some bounds checks
+		fmt.Fprintf(w, "_ = %s.Args[%d]\n", v, n-1)
 	}
 	for i, arg := range args {
 		if arg == "_" {
 			continue
 		}
 		if !strings.Contains(arg, "(") {
-			// leaf variable
+
 			if _, ok := m[arg]; ok {
-				// variable already has a definition. Check whether
-				// the old definition and the new definition match.
-				// For example, (add x x).  Equality is just pointer equality
-				// on Values (so cse is important to do before lowering).
+
 				fmt.Fprintf(w, "if %s != %s.Args[%d] {\nbreak\n}\n", arg, v, i)
 				canFail = true
 			} else {
-				// remember that this variable references the given value
+
 				m[arg] = struct{}{}
 				fmt.Fprintf(w, "%s := %s.Args[%d]\n", arg, v, i)
 			}
@@ -484,11 +435,11 @@ func genMatch0(w io.Writer, arch arch, match, v string, m map[string]struct{}, t
 		colon := strings.Index(arg, ":")
 		openparen := strings.Index(arg, "(")
 		if colon >= 0 && openparen >= 0 && colon < openparen {
-			// rule-specified name
+
 			argname = arg[:colon]
 			arg = arg[colon+1:]
 		} else {
-			// autogenerated name
+
 			argname = fmt.Sprintf("%s_%d", v, i)
 		}
 		fmt.Fprintf(w, "%s := %s.Args[%d]\n", argname, v, i)
@@ -507,7 +458,7 @@ func genMatch0(w io.Writer, arch arch, match, v string, m map[string]struct{}, t
 func genResult(w io.Writer, arch arch, result string, loc string) {
 	move := false
 	if result[0] == '@' {
-		// parse @block directive
+
 		s := strings.SplitN(result[1:], " ", 2)
 		fmt.Fprintf(w, "b = %s\n", s[0])
 		result = s[1]
@@ -516,14 +467,11 @@ func genResult(w io.Writer, arch arch, result string, loc string) {
 	genResult0(w, arch, result, new(int), true, move, loc)
 }
 func genResult0(w io.Writer, arch arch, result string, alloc *int, top, move bool, loc string) string {
-	// TODO: when generating a constant result, use f.constVal to avoid
-	// introducing copies just to clean them up again.
+
 	if result[0] != '(' {
-		// variable
+
 		if top {
-			// It in not safe in general to move a variable between blocks
-			// (and particularly not a phi node).
-			// Introduce a copy.
+
 			fmt.Fprintf(w, "v.reset(OpCopy)\n")
 			fmt.Fprintf(w, "v.Type = %s.Type\n", result)
 			fmt.Fprintf(w, "v.AddArg(%s)\n", result)
@@ -533,7 +481,6 @@ func genResult0(w io.Writer, arch arch, result string, alloc *int, top, move boo
 
 	op, oparch, typ, auxint, aux, args := parseValue(result, arch, loc)
 
-	// Find the type of the variable.
 	typeOverride := typ != ""
 	if typ == "" && op.typ != "" {
 		typ = typeName(op.typ)
@@ -554,7 +501,7 @@ func genResult0(w io.Writer, arch arch, result string, alloc *int, top, move boo
 		*alloc++
 		fmt.Fprintf(w, "%s := b.NewValue0(v.Pos, Op%s%s, %s)\n", v, oparch, op.name, typ)
 		if move && top {
-			// Rewrite original into a copy
+
 			fmt.Fprintf(w, "v.reset(OpCopy)\n")
 			fmt.Fprintf(w, "v.AddArg(%s)\n", v)
 		}
@@ -579,9 +526,9 @@ func split(s string) []string {
 
 outer:
 	for s != "" {
-		d := 0               // depth of ({[<
+		d := 0
 		var open, close byte // opening and closing markers ({[< or )}]>
-		nonsp := false       // found a non-space char so far
+		nonsp := false
 		for i := 0; i < len(s); i++ {
 			switch {
 			case d == 0 && s[i] == '(':
@@ -637,22 +584,19 @@ func isBlock(name string, arch arch) bool {
 }
 
 func extract(val string) (op string, typ string, auxint string, aux string, args []string) {
-	val = val[1 : len(val)-1] // remove ()
+	val = val[1 : len(val)-1]
 
-	// Split val up into regions.
-	// Split by spaces/tabs, except those contained in (), {}, [], or <>.
 	s := split(val)
 
-	// Extract restrictions and args.
 	op = s[0]
 	for _, a := range s[1:] {
 		switch a[0] {
 		case '<':
-			typ = a[1 : len(a)-1] // remove <>
+			typ = a[1 : len(a)-1]
 		case '[':
-			auxint = a[1 : len(a)-1] // remove []
+			auxint = a[1 : len(a)-1]
 		case '{':
-			aux = a[1 : len(a)-1] // remove {}
+			aux = a[1 : len(a)-1]
 		default:
 			args = append(args, a)
 		}
@@ -669,12 +613,6 @@ func parseValue(val string, arch arch, loc string) (op opData, oparch string, ty
 	var s string
 	s, typ, auxint, aux, args = extract(val)
 
-	// match reports whether x is a good op to select.
-	// If strict is true, rule generation might succeed.
-	// If strict is false, rule generation has failed,
-	// but we're trying to generate a useful error.
-	// Doing strict=true then strict=false allows
-	// precise op matching while retaining good error messages.
 	match := func(x opData, strict bool, archname string) bool {
 		if x.name != s {
 			return false
@@ -709,9 +647,7 @@ func parseValue(val string, arch arch, loc string) (op opData, oparch string, ty
 	}
 
 	if op.name == "" {
-		// Failed to find the op.
-		// Run through everything again with strict=false
-		// to generate useful diagnosic messages before failing.
+
 		for _, x := range genericOps {
 			match(x, false, "generic")
 		}
@@ -721,7 +657,6 @@ func parseValue(val string, arch arch, loc string) (op opData, oparch string, ty
 		log.Fatalf("%s: unknown op %s", loc, s)
 	}
 
-	// Sanity check aux, auxint.
 	if auxint != "" {
 		switch op.aux {
 		case "Bool", "Int8", "Int16", "Int32", "Int64", "Int128", "Float32", "Float64", "SymOff", "SymValAndOff", "SymInt32", "TypSize":
@@ -790,18 +725,11 @@ func isVariable(s string) bool {
 }
 
 // opRegexp is a regular expression to find the opcode portion of s-expressions.
-var opRegexp = regexp.MustCompile(`[(]\w*[(](\w+[|])+\w+[)]\w* `)
+var opRegexp = regexp.MustCompile("[(]\\w*[(](\\w+[|])+\\w+[)]\\w* ")
 
 // expandOr converts a rule into multiple rules by expanding | ops.
 func expandOr(r string) []string {
-	// Find every occurrence of |-separated things at the opcode position.
-	// They look like (MOV(B|W|L|Q|SS|SD)load
-	// Note: there might be false positives in parts of rules that are Go code
-	// (e.g. && conditions, AuxInt expressions, etc.).  There are currently no
-	// such false positives, so I'm not too worried about it.
-	// Generate rules selecting one case from each |-form.
 
-	// Count width of |-forms.  They must match.
 	n := 1
 	for _, s := range opRegexp.FindAllString(r, -1) {
 		c := strings.Count(s, "|") + 1
@@ -814,7 +742,7 @@ func expandOr(r string) []string {
 		n = c
 	}
 	if n == 1 {
-		// No |-form in this rule.
+
 		return []string{r}
 	}
 	res := make([]string, n)
@@ -823,7 +751,7 @@ func expandOr(r string) []string {
 			if strings.Count(s, "|") == 0 {
 				return s
 			}
-			s = s[1 : len(s)-1] // remove leading "(" and trailing " "
+			s = s[1 : len(s)-1]
 			x, y := strings.Index(s, "("), strings.Index(s, ")")
 			return "(" + s[:x] + strings.Split(s[x+1:y], "|")[i] + s[y+1:] + " "
 		})
@@ -875,7 +803,6 @@ func commute1(m string, cnt map[string]int, arch arch) []string {
 	s := split(m[1 : len(m)-1])
 	op := s[0]
 
-	// Figure out if the op is commutative or not.
 	commutative := false
 	for _, x := range genericOps {
 		if op == x.name {
@@ -897,7 +824,7 @@ func commute1(m string, cnt map[string]int, arch arch) []string {
 	}
 	var idx0, idx1 int
 	if commutative {
-		// Find indexes of two args we can swap.
+
 		for i, arg := range s {
 			if i == 0 || arg[0] == '<' || arg[0] == '[' || arg[0] == '{' {
 				continue
@@ -915,28 +842,23 @@ func commute1(m string, cnt map[string]int, arch arch) []string {
 			panic("couldn't find first two args of commutative op " + s[0])
 		}
 		if cnt[s[idx0]] == 1 && cnt[s[idx1]] == 1 || s[idx0] == s[idx1] && cnt[s[idx0]] == 2 {
-			// When we have (Add x y) with no other uses of x and y in the matching rule,
-			// then we can skip the commutative match (Add y x).
+
 			commutative = false
 		}
 	}
 
-	// Recursively commute arguments.
 	a := make([][]string, len(s))
 	for i, arg := range s {
 		a[i] = commute1(arg, cnt, arch)
 	}
 
-	// Choose all possibilities from all args.
 	r := crossProduct(a)
 
-	// If commutative, do that again with its two args reversed.
 	if commutative {
 		a[idx0], a[idx1] = a[idx1], a[idx0]
 		r = append(r, crossProduct(a)...)
 	}
 
-	// Construct result.
 	for i, x := range r {
 		r[i] = prefix + "(" + x + ")"
 	}
@@ -958,7 +880,7 @@ func varCount1(m string, cnt map[string]int) {
 		cnt[m]++
 		return
 	}
-	// Split up input.
+
 	colon := strings.Index(m, ":")
 	if colon >= 0 && isVariable(m[:colon]) {
 		cnt[m[:colon]]++

@@ -1,7 +1,3 @@
-// Copyright 2015 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
 // Package testenv provides information about what functionality
 // is available in different testing environments run by the Go team.
 //
@@ -34,10 +30,7 @@ func Builder() string {
 // and then run them with os.StartProcess or exec.Command.
 func HasGoBuild() bool {
 	if os.Getenv("GO_GCFLAGS") != "" {
-		// It's too much work to require every caller of the go command
-		// to pass along "-gcflags="+os.Getenv("GO_GCFLAGS").
-		// For now, if $GO_GCFLAGS is set, report that we simply can't
-		// run go build.
+
 		return false
 	}
 	switch runtime.GOOS {
@@ -65,7 +58,7 @@ func MustHaveGoBuild(t testing.TB) {
 
 // HasGoRun reports whether the current system can run programs with ``go run.''
 func HasGoRun() bool {
-	// For now, having go run and having go build are the same.
+
 	return HasGoBuild()
 }
 
@@ -195,9 +188,7 @@ func MustHaveSymlink(t testing.TB) {
 
 // HasLink reports whether the current system can use os.Link.
 func HasLink() bool {
-	// From Android release M (Marshmallow), hard linking files is blocked
-	// and an attempt to call link() on a file will return EACCES.
-	// - https://code.google.com/p/android-developer-preview/issues/detail?id=3150
+
 	return runtime.GOOS != "plan9" && runtime.GOOS != "android"
 }
 
@@ -233,12 +224,11 @@ func CleanCmdEnv(cmd *exec.Cmd) *exec.Cmd {
 		panic("environment already set")
 	}
 	for _, env := range os.Environ() {
-		// Exclude GODEBUG from the environment to prevent its output
-		// from breaking tests that are trying to parse other command output.
+
 		if strings.HasPrefix(env, "GODEBUG=") {
 			continue
 		}
-		// Exclude GOTRACEBACK for the same reason.
+
 		if strings.HasPrefix(env, "GOTRACEBACK=") {
 			continue
 		}

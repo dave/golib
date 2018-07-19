@@ -1,15 +1,8 @@
-// Copyright 2016 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
 package s390x
 
 import (
-	"cmd/internal/obj"
+	"github.com/dave/golib/src/cmd/internal/obj"
 )
-
-// This file contains utility functions for use when
-// assembling vector instructions.
 
 // vop returns the opcode, element size and condition
 // setting for the given (possibly extended) mnemonic.

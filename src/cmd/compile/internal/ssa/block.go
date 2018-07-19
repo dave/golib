@@ -1,12 +1,8 @@
-// Copyright 2015 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
 package ssa
 
 import (
-	"cmd/internal/src"
 	"fmt"
+	"github.com/dave/golib/src/cmd/internal/src"
 )
 
 // Block represents a basic block in the control flow graph of a function.
@@ -110,8 +106,8 @@ func (b *Block) String() string {
 }
 
 // long form print
-func (b *Block) LongString() string {
-	s := b.Kind.String()
+func (b *Block) LongString(psess *PackageSession) string {
+	s := b.Kind.String(psess)
 	if b.Aux != nil {
 		s += fmt.Sprintf(" %s", b.Aux)
 	}
@@ -161,7 +157,7 @@ func (b *Block) removePred(i int) {
 	if i != n {
 		e := b.Preds[n]
 		b.Preds[i] = e
-		// Update the other end of the edge we moved.
+
 		e.b.Succs[e.i].i = i
 	}
 	b.Preds[n] = Edge{}
@@ -177,7 +173,7 @@ func (b *Block) removeSucc(i int) {
 	if i != n {
 		e := b.Succs[n]
 		b.Succs[i] = e
-		// Update the other end of the edge we moved.
+
 		e.b.Preds[e.i].i = i
 	}
 	b.Succs[n] = Edge{}
@@ -202,18 +198,16 @@ func (b *Block) swapSuccessors() {
 // from its successors.  This is true if all the values within it have unreliable positions
 // and if it is "plain", meaning that there is no control flow that is also very likely
 // to correspond to a well-understood source position.
-func (b *Block) LackingPos() bool {
-	// Non-plain predecessors are If or Defer, which both (1) have two successors,
-	// which might have different line numbers and (2) correspond to statements
-	// in the source code that have positions, so this case ought not occur anyway.
+func (b *Block) LackingPos(psess *PackageSession) bool {
+
 	if b.Kind != BlockPlain {
 		return false
 	}
-	if b.Pos != src.NoXPos {
+	if b.Pos != psess.src.NoXPos {
 		return false
 	}
 	for _, v := range b.Values {
-		if v.LackingPos() {
+		if v.LackingPos(psess) {
 			continue
 		}
 		return false

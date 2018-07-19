@@ -1,59 +1,48 @@
-// Copyright 2009 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
 package gc
 
 import (
-	"cmd/compile/internal/types"
-	"cmd/internal/sys"
+	"github.com/dave/golib/src/cmd/compile/internal/types"
+	"github.com/dave/golib/src/cmd/internal/sys"
 	"unicode/utf8"
 )
 
 // range
-func typecheckrange(n *Node) {
-	// Typechecking order is important here:
-	// 0. first typecheck range expression (slice/map/chan),
-	//	it is evaluated only once and so logically it is not part of the loop.
-	// 1. typcheck produced values,
-	//	this part can declare new vars and so it must be typechecked before body,
-	//	because body can contain a closure that captures the vars.
-	// 2. decldepth++ to denote loop body.
-	// 3. typecheck body.
-	// 4. decldepth--.
-	typecheckrangeExpr(n)
+func (psess *PackageSession) typecheckrange(n *Node) {
+	psess.
+		typecheckrangeExpr(n)
 
-	// second half of dance, the first half being typecheckrangeExpr
 	n.SetTypecheck(1)
 	ls := n.List.Slice()
 	for i1, n1 := range ls {
 		if n1.Typecheck() == 0 {
-			ls[i1] = typecheck(ls[i1], Erv|Easgn)
+			ls[i1] = psess.typecheck(ls[i1], Erv|Easgn)
 		}
 	}
-
-	decldepth++
-	typecheckslice(n.Nbody.Slice(), Etop)
-	decldepth--
+	psess.
+		decldepth++
+	psess.
+		typecheckslice(n.Nbody.Slice(), Etop)
+	psess.
+		decldepth--
 }
 
-func typecheckrangeExpr(n *Node) {
-	n.Right = typecheck(n.Right, Erv)
+func (psess *PackageSession) typecheckrangeExpr(n *Node) {
+	n.Right = psess.typecheck(n.Right, Erv)
 
 	t := n.Right.Type
 	if t == nil {
 		return
 	}
-	// delicate little dance.  see typecheckas2
+
 	ls := n.List.Slice()
 	for i1, n1 := range ls {
 		if n1.Name == nil || n1.Name.Defn != n {
-			ls[i1] = typecheck(ls[i1], Erv|Easgn)
+			ls[i1] = psess.typecheck(ls[i1], Erv|Easgn)
 		}
 	}
 
-	if t.IsPtr() && t.Elem().IsArray() {
-		t = t.Elem()
+	if t.IsPtr() && t.Elem(psess.types).IsArray() {
+		t = t.Elem(psess.types)
 	}
 	n.Type = t
 
@@ -61,36 +50,39 @@ func typecheckrangeExpr(n *Node) {
 	toomany := false
 	switch t.Etype {
 	default:
-		yyerrorl(n.Pos, "cannot range over %L", n.Right)
+		psess.
+			yyerrorl(n.Pos, "cannot range over %L", n.Right)
 		return
 
 	case TARRAY, TSLICE:
-		t1 = types.Types[TINT]
-		t2 = t.Elem()
+		t1 = psess.types.Types[TINT]
+		t2 = t.Elem(psess.types)
 
 	case TMAP:
-		t1 = t.Key()
-		t2 = t.Elem()
+		t1 = t.Key(psess.types)
+		t2 = t.Elem(psess.types)
 
 	case TCHAN:
-		if !t.ChanDir().CanRecv() {
-			yyerrorl(n.Pos, "invalid operation: range %v (receive from send-only type %v)", n.Right, n.Right.Type)
+		if !t.ChanDir(psess.types).CanRecv() {
+			psess.
+				yyerrorl(n.Pos, "invalid operation: range %v (receive from send-only type %v)", n.Right, n.Right.Type)
 			return
 		}
 
-		t1 = t.Elem()
+		t1 = t.Elem(psess.types)
 		t2 = nil
 		if n.List.Len() == 2 {
 			toomany = true
 		}
 
 	case TSTRING:
-		t1 = types.Types[TINT]
-		t2 = types.Runetype
+		t1 = psess.types.Types[TINT]
+		t2 = psess.types.Runetype
 	}
 
 	if n.List.Len() > 2 || toomany {
-		yyerrorl(n.Pos, "too many variables in range")
+		psess.
+			yyerrorl(n.Pos, "too many variables in range")
 	}
 
 	var v1, v2 *Node
@@ -101,10 +93,6 @@ func typecheckrangeExpr(n *Node) {
 		v2 = n.List.Second()
 	}
 
-	// this is not only a optimization but also a requirement in the spec.
-	// "if the second iteration variable is the blank identifier, the range
-	// clause is equivalent to the same clause with only the first variable
-	// present."
 	if v2.isBlank() {
 		if v1 != nil {
 			n.List.Set1(v1)
@@ -116,27 +104,29 @@ func typecheckrangeExpr(n *Node) {
 	if v1 != nil {
 		if v1.Name != nil && v1.Name.Defn == n {
 			v1.Type = t1
-		} else if v1.Type != nil && assignop(t1, v1.Type, &why) == 0 {
-			yyerrorl(n.Pos, "cannot assign type %v to %L in range%s", t1, v1, why)
+		} else if v1.Type != nil && psess.assignop(t1, v1.Type, &why) == 0 {
+			psess.
+				yyerrorl(n.Pos, "cannot assign type %v to %L in range%s", t1, v1, why)
 		}
-		checkassign(n, v1)
+		psess.
+			checkassign(n, v1)
 	}
 
 	if v2 != nil {
 		if v2.Name != nil && v2.Name.Defn == n {
 			v2.Type = t2
-		} else if v2.Type != nil && assignop(t2, v2.Type, &why) == 0 {
-			yyerrorl(n.Pos, "cannot assign type %v to %L in range%s", t2, v2, why)
+		} else if v2.Type != nil && psess.assignop(t2, v2.Type, &why) == 0 {
+			psess.
+				yyerrorl(n.Pos, "cannot assign type %v to %L in range%s", t2, v2, why)
 		}
-		checkassign(n, v2)
+		psess.
+			checkassign(n, v2)
 	}
 }
 
-func cheapComputableIndex(width int64) bool {
-	switch thearch.LinkArch.Family {
-	// MIPS does not have R+R addressing
-	// Arm64 may lack ability to generate this code in our assembler,
-	// but the architecture supports it.
+func (psess *PackageSession) cheapComputableIndex(width int64) bool {
+	switch psess.thearch.LinkArch.Family {
+
 	case sys.PPC64, sys.S390X:
 		return width == 1
 	case sys.AMD64, sys.I386, sys.ARM64, sys.ARM:
@@ -152,26 +142,20 @@ func cheapComputableIndex(width int64) bool {
 // simpler forms.  The result must be assigned back to n.
 // Node n may also be modified in place, and may also be
 // the returned node.
-func walkrange(n *Node) *Node {
-	if isMapClear(n) {
+func (psess *PackageSession) walkrange(n *Node) *Node {
+	if psess.isMapClear(n) {
 		m := n.Right
-		lno := setlineno(m)
-		n = mapClear(m)
-		lineno = lno
+		lno := psess.setlineno(m)
+		n = psess.mapClear(m)
+		psess.
+			lineno = lno
 		return n
 	}
-
-	// variable name conventions:
-	//	ohv1, hv1, hv2: hidden (old) val 1, 2
-	//	ha, hit: hidden aggregate, iterator
-	//	hn, hp: hidden len, pointer
-	//	hb: hidden bool
-	//	a, v1, v2: not hidden aggregate, val 1, 2
 
 	t := n.Type
 
 	a := n.Right
-	lno := setlineno(a)
+	lno := psess.setlineno(a)
 	n.Right = nil
 
 	var v1, v2 *Node
@@ -193,11 +177,10 @@ func walkrange(n *Node) *Node {
 	}
 
 	if v1 == nil && v2 != nil {
-		Fatalf("walkrange: v2 != nil while v1 == nil")
+		psess.
+			Fatalf("walkrange: v2 != nil while v1 == nil")
 	}
 
-	// n.List has no meaning anymore, clear it
-	// to avoid erroneous processing by racewalk.
 	n.List.Set(nil)
 
 	var ifGuard *Node
@@ -208,246 +191,201 @@ func walkrange(n *Node) *Node {
 	var init []*Node
 	switch t.Etype {
 	default:
-		Fatalf("walkrange")
+		psess.
+			Fatalf("walkrange")
 
 	case TARRAY, TSLICE:
-		if arrayClear(n, v1, v2, a) {
-			lineno = lno
+		if psess.arrayClear(n, v1, v2, a) {
+			psess.
+				lineno = lno
 			return n
 		}
 
-		// orderstmt arranged for a copy of the array/slice variable if needed.
 		ha := a
 
-		hv1 := temp(types.Types[TINT])
-		hn := temp(types.Types[TINT])
+		hv1 := psess.temp(psess.types.Types[TINT])
+		hn := psess.temp(psess.types.Types[TINT])
 
-		init = append(init, nod(OAS, hv1, nil))
-		init = append(init, nod(OAS, hn, nod(OLEN, ha, nil)))
+		init = append(init, psess.nod(OAS, hv1, nil))
+		init = append(init, psess.nod(OAS, hn, psess.nod(OLEN, ha, nil)))
 
-		n.Left = nod(OLT, hv1, hn)
-		n.Right = nod(OAS, hv1, nod(OADD, hv1, nodintconst(1)))
+		n.Left = psess.nod(OLT, hv1, hn)
+		n.Right = psess.nod(OAS, hv1, psess.nod(OADD, hv1, psess.nodintconst(1)))
 
-		// for range ha { body }
 		if v1 == nil {
 			break
 		}
 
-		// for v1 := range ha { body }
 		if v2 == nil {
-			body = []*Node{nod(OAS, v1, hv1)}
+			body = []*Node{psess.nod(OAS, v1, hv1)}
 			break
 		}
 
-		// for v1, v2 := range ha { body }
-		if cheapComputableIndex(n.Type.Elem().Width) {
-			// v1, v2 = hv1, ha[hv1]
-			tmp := nod(OINDEX, ha, hv1)
+		if psess.cheapComputableIndex(n.Type.Elem(psess.types).Width) {
+
+			tmp := psess.nod(OINDEX, ha, hv1)
 			tmp.SetBounded(true)
-			// Use OAS2 to correctly handle assignments
-			// of the form "v1, a[v1] := range".
-			a := nod(OAS2, nil, nil)
+
+			a := psess.nod(OAS2, nil, nil)
 			a.List.Set2(v1, v2)
 			a.Rlist.Set2(hv1, tmp)
 			body = []*Node{a}
 			break
 		}
 
-		// TODO(austin): OFORUNTIL is a strange beast, but is
-		// necessary for expressing the control flow we need
-		// while also making "break" and "continue" work. It
-		// would be nice to just lower ORANGE during SSA, but
-		// racewalk needs to see many of the operations
-		// involved in ORANGE's implementation. If racewalk
-		// moves into SSA, consider moving ORANGE into SSA and
-		// eliminating OFORUNTIL.
-
-		// TODO(austin): OFORUNTIL inhibits bounds-check
-		// elimination on the index variable (see #20711).
-		// Enhance the prove pass to understand this.
-		ifGuard = nod(OIF, nil, nil)
-		ifGuard.Left = nod(OLT, hv1, hn)
+		ifGuard = psess.nod(OIF, nil, nil)
+		ifGuard.Left = psess.nod(OLT, hv1, hn)
 		translatedLoopOp = OFORUNTIL
 
-		hp := temp(types.NewPtr(n.Type.Elem()))
-		tmp := nod(OINDEX, ha, nodintconst(0))
+		hp := psess.temp(psess.types.NewPtr(n.Type.Elem(psess.types)))
+		tmp := psess.nod(OINDEX, ha, psess.nodintconst(0))
 		tmp.SetBounded(true)
-		init = append(init, nod(OAS, hp, nod(OADDR, tmp, nil)))
+		init = append(init, psess.nod(OAS, hp, psess.nod(OADDR, tmp, nil)))
 
-		// Use OAS2 to correctly handle assignments
-		// of the form "v1, a[v1] := range".
-		a := nod(OAS2, nil, nil)
+		a := psess.nod(OAS2, nil, nil)
 		a.List.Set2(v1, v2)
-		a.Rlist.Set2(hv1, nod(OIND, hp, nil))
+		a.Rlist.Set2(hv1, psess.nod(OIND, hp, nil))
 		body = append(body, a)
 
-		// Advance pointer as part of the late increment.
-		//
-		// This runs *after* the condition check, so we know
-		// advancing the pointer is safe and won't go past the
-		// end of the allocation.
-		tmp = nod(OADD, hp, nodintconst(t.Elem().Width))
+		tmp = psess.nod(OADD, hp, psess.nodintconst(t.Elem(psess.types).Width))
 
 		tmp.Type = hp.Type
 		tmp.SetTypecheck(1)
-		tmp.Right.Type = types.Types[types.Tptr]
+		tmp.Right.Type = psess.types.Types[psess.types.Tptr]
 		tmp.Right.SetTypecheck(1)
-		a = nod(OAS, hp, tmp)
-		a = typecheck(a, Etop)
+		a = psess.nod(OAS, hp, tmp)
+		a = psess.typecheck(a, Etop)
 		n.List.Set1(a)
 
 	case TMAP:
-		// orderstmt allocated the iterator for us.
-		// we only use a once, so no copy needed.
+
 		ha := a
 
-		hit := prealloc[n]
+		hit := psess.prealloc[n]
 		th := hit.Type
 		n.Left = nil
-		keysym := th.Field(0).Sym // depends on layout of iterator struct.  See reflect.go:hiter
-		valsym := th.Field(1).Sym // ditto
+		keysym := th.Field(psess.types, 0).Sym
+		valsym := th.Field(psess.types, 1).Sym
 
-		fn := syslook("mapiterinit")
+		fn := psess.syslook("mapiterinit")
 
-		fn = substArgTypes(fn, t.Key(), t.Elem(), th)
-		init = append(init, mkcall1(fn, nil, nil, typename(t), ha, nod(OADDR, hit, nil)))
-		n.Left = nod(ONE, nodSym(ODOT, hit, keysym), nodnil())
+		fn = psess.substArgTypes(fn, t.Key(psess.types), t.Elem(psess.types), th)
+		init = append(init, psess.mkcall1(fn, nil, nil, psess.typename(t), ha, psess.nod(OADDR, hit, nil)))
+		n.Left = psess.nod(ONE, psess.nodSym(ODOT, hit, keysym), psess.nodnil())
 
-		fn = syslook("mapiternext")
-		fn = substArgTypes(fn, th)
-		n.Right = mkcall1(fn, nil, nil, nod(OADDR, hit, nil))
+		fn = psess.syslook("mapiternext")
+		fn = psess.substArgTypes(fn, th)
+		n.Right = psess.mkcall1(fn, nil, nil, psess.nod(OADDR, hit, nil))
 
-		key := nodSym(ODOT, hit, keysym)
-		key = nod(OIND, key, nil)
+		key := psess.nodSym(ODOT, hit, keysym)
+		key = psess.nod(OIND, key, nil)
 		if v1 == nil {
 			body = nil
 		} else if v2 == nil {
-			body = []*Node{nod(OAS, v1, key)}
+			body = []*Node{psess.nod(OAS, v1, key)}
 		} else {
-			val := nodSym(ODOT, hit, valsym)
-			val = nod(OIND, val, nil)
-			a := nod(OAS2, nil, nil)
+			val := psess.nodSym(ODOT, hit, valsym)
+			val = psess.nod(OIND, val, nil)
+			a := psess.nod(OAS2, nil, nil)
 			a.List.Set2(v1, v2)
 			a.Rlist.Set2(key, val)
 			body = []*Node{a}
 		}
 
 	case TCHAN:
-		// orderstmt arranged for a copy of the channel variable.
+
 		ha := a
 
 		n.Left = nil
 
-		hv1 := temp(t.Elem())
+		hv1 := psess.temp(t.Elem(psess.types))
 		hv1.SetTypecheck(1)
-		if types.Haspointers(t.Elem()) {
-			init = append(init, nod(OAS, hv1, nil))
+		if psess.types.Haspointers(t.Elem(psess.types)) {
+			init = append(init, psess.nod(OAS, hv1, nil))
 		}
-		hb := temp(types.Types[TBOOL])
+		hb := psess.temp(psess.types.Types[TBOOL])
 
-		n.Left = nod(ONE, hb, nodbool(false))
-		a := nod(OAS2RECV, nil, nil)
+		n.Left = psess.nod(ONE, hb, psess.nodbool(false))
+		a := psess.nod(OAS2RECV, nil, nil)
 		a.SetTypecheck(1)
 		a.List.Set2(hv1, hb)
-		a.Rlist.Set1(nod(ORECV, ha, nil))
+		a.Rlist.Set1(psess.nod(ORECV, ha, nil))
 		n.Left.Ninit.Set1(a)
 		if v1 == nil {
 			body = nil
 		} else {
-			body = []*Node{nod(OAS, v1, hv1)}
+			body = []*Node{psess.nod(OAS, v1, hv1)}
 		}
-		// Zero hv1. This prevents hv1 from being the sole, inaccessible
-		// reference to an otherwise GC-able value during the next channel receive.
-		// See issue 15281.
-		body = append(body, nod(OAS, hv1, nil))
+
+		body = append(body, psess.nod(OAS, hv1, nil))
 
 	case TSTRING:
-		// Transform string range statements like "for v1, v2 = range a" into
-		//
-		// ha := a
-		// for hv1 := 0; hv1 < len(ha); {
-		//   hv1t := hv1
-		//   hv2 := rune(ha[hv1])
-		//   if hv2 < utf8.RuneSelf {
-		//      hv1++
-		//   } else {
-		//      hv2, hv1 = decoderune(ha, hv1)
-		//   }
-		//   v1, v2 = hv1t, hv2
-		//   // original body
-		// }
 
-		// orderstmt arranged for a copy of the string variable.
 		ha := a
 
-		hv1 := temp(types.Types[TINT])
-		hv1t := temp(types.Types[TINT])
-		hv2 := temp(types.Runetype)
+		hv1 := psess.temp(psess.types.Types[TINT])
+		hv1t := psess.temp(psess.types.Types[TINT])
+		hv2 := psess.temp(psess.types.Runetype)
 
-		// hv1 := 0
-		init = append(init, nod(OAS, hv1, nil))
+		init = append(init, psess.nod(OAS, hv1, nil))
 
-		// hv1 < len(ha)
-		n.Left = nod(OLT, hv1, nod(OLEN, ha, nil))
+		n.Left = psess.nod(OLT, hv1, psess.nod(OLEN, ha, nil))
 
 		if v1 != nil {
-			// hv1t = hv1
-			body = append(body, nod(OAS, hv1t, hv1))
+
+			body = append(body, psess.nod(OAS, hv1t, hv1))
 		}
 
-		// hv2 := rune(ha[hv1])
-		nind := nod(OINDEX, ha, hv1)
+		nind := psess.nod(OINDEX, ha, hv1)
 		nind.SetBounded(true)
-		body = append(body, nod(OAS, hv2, conv(nind, types.Runetype)))
+		body = append(body, psess.nod(OAS, hv2, psess.conv(nind, psess.types.Runetype)))
 
-		// if hv2 < utf8.RuneSelf
-		nif := nod(OIF, nil, nil)
-		nif.Left = nod(OLT, hv2, nodintconst(utf8.RuneSelf))
+		nif := psess.nod(OIF, nil, nil)
+		nif.Left = psess.nod(OLT, hv2, psess.nodintconst(utf8.RuneSelf))
 
-		// hv1++
-		nif.Nbody.Set1(nod(OAS, hv1, nod(OADD, hv1, nodintconst(1))))
+		nif.Nbody.Set1(psess.nod(OAS, hv1, psess.nod(OADD, hv1, psess.nodintconst(1))))
 
-		// } else {
-		eif := nod(OAS2, nil, nil)
+		eif := psess.nod(OAS2, nil, nil)
 		nif.Rlist.Set1(eif)
 
-		// hv2, hv1 = decoderune(ha, hv1)
 		eif.List.Set2(hv2, hv1)
-		fn := syslook("decoderune")
-		eif.Rlist.Set1(mkcall1(fn, fn.Type.Results(), nil, ha, hv1))
+		fn := psess.syslook("decoderune")
+		eif.Rlist.Set1(psess.mkcall1(fn, fn.Type.Results(psess.types), nil, ha, hv1))
 
 		body = append(body, nif)
 
 		if v1 != nil {
 			if v2 != nil {
-				// v1, v2 = hv1t, hv2
-				a := nod(OAS2, nil, nil)
+
+				a := psess.nod(OAS2, nil, nil)
 				a.List.Set2(v1, v2)
 				a.Rlist.Set2(hv1t, hv2)
 				body = append(body, a)
 			} else {
-				// v1 = hv1t
-				body = append(body, nod(OAS, v1, hv1t))
+
+				body = append(body, psess.nod(OAS, v1, hv1t))
 			}
 		}
 	}
 
 	n.Op = translatedLoopOp
-	typecheckslice(init, Etop)
+	psess.
+		typecheckslice(init, Etop)
 
 	if ifGuard != nil {
 		ifGuard.Ninit.Append(init...)
-		ifGuard = typecheck(ifGuard, Etop)
+		ifGuard = psess.typecheck(ifGuard, Etop)
 	} else {
 		n.Ninit.Append(init...)
 	}
+	psess.
+		typecheckslice(n.Left.Ninit.Slice(), Etop)
 
-	typecheckslice(n.Left.Ninit.Slice(), Etop)
-
-	n.Left = typecheck(n.Left, Erv)
-	n.Left = defaultlit(n.Left, nil)
-	n.Right = typecheck(n.Right, Etop)
-	typecheckslice(body, Etop)
+	n.Left = psess.typecheck(n.Left, Erv)
+	n.Left = psess.defaultlit(n.Left, nil)
+	n.Right = psess.typecheck(n.Right, Etop)
+	psess.
+		typecheckslice(body, Etop)
 	n.Nbody.Prepend(body...)
 
 	if ifGuard != nil {
@@ -455,9 +393,9 @@ func walkrange(n *Node) *Node {
 		n = ifGuard
 	}
 
-	n = walkstmt(n)
-
-	lineno = lno
+	n = psess.walkstmt(n)
+	psess.
+		lineno = lno
 	return n
 }
 
@@ -468,8 +406,8 @@ func walkrange(n *Node) *Node {
 // }
 //
 // where == for keys of map m is reflexive.
-func isMapClear(n *Node) bool {
-	if Debug['N'] != 0 || instrumenting {
+func (psess *PackageSession) isMapClear(n *Node) bool {
+	if psess.Debug['N'] != 0 || psess.instrumenting {
 		return false
 	}
 
@@ -482,7 +420,6 @@ func isMapClear(n *Node) bool {
 		return false
 	}
 
-	// Require k to be a new variable name.
 	if k.Name == nil || k.Name.Defn != n {
 		return false
 	}
@@ -491,18 +428,17 @@ func isMapClear(n *Node) bool {
 		return false
 	}
 
-	stmt := n.Nbody.First() // only stmt in body
+	stmt := n.Nbody.First()
 	if stmt == nil || stmt.Op != ODELETE {
 		return false
 	}
 
 	m := n.Right
-	if !samesafeexpr(stmt.List.First(), m) || !samesafeexpr(stmt.List.Second(), k) {
+	if !psess.samesafeexpr(stmt.List.First(), m) || !psess.samesafeexpr(stmt.List.Second(), k) {
 		return false
 	}
 
-	// Keys where equality is not reflexive can not be deleted from maps.
-	if !isreflexive(m.Type.Key()) {
+	if !psess.isreflexive(m.Type.Key(psess.types)) {
 		return false
 	}
 
@@ -510,16 +446,15 @@ func isMapClear(n *Node) bool {
 }
 
 // mapClear constructs a call to runtime.mapclear for the map m.
-func mapClear(m *Node) *Node {
+func (psess *PackageSession) mapClear(m *Node) *Node {
 	t := m.Type
 
-	// instantiate mapclear(typ *type, hmap map[any]any)
-	fn := syslook("mapclear")
-	fn = substArgTypes(fn, t.Key(), t.Elem())
-	n := mkcall1(fn, nil, nil, typename(t), m)
+	fn := psess.syslook("mapclear")
+	fn = psess.substArgTypes(fn, t.Key(psess.types), t.Elem(psess.types))
+	n := psess.mkcall1(fn, nil, nil, psess.typename(t), m)
 
-	n = typecheck(n, Etop)
-	n = walkstmt(n)
+	n = psess.typecheck(n, Etop)
+	n = psess.walkstmt(n)
 
 	return n
 }
@@ -535,8 +470,8 @@ func mapClear(m *Node) *Node {
 // in which the evaluation of a is side-effect-free.
 //
 // Parameters are as in walkrange: "for v1, v2 = range a".
-func arrayClear(n, v1, v2, a *Node) bool {
-	if Debug['N'] != 0 || instrumenting {
+func (psess *PackageSession) arrayClear(n, v1, v2, a *Node) bool {
+	if psess.Debug['N'] != 0 || psess.instrumenting {
 		return false
 	}
 
@@ -548,69 +483,60 @@ func arrayClear(n, v1, v2, a *Node) bool {
 		return false
 	}
 
-	stmt := n.Nbody.First() // only stmt in body
+	stmt := n.Nbody.First()
 	if stmt.Op != OAS || stmt.Left.Op != OINDEX {
 		return false
 	}
 
-	if !samesafeexpr(stmt.Left.Left, a) || !samesafeexpr(stmt.Left.Right, v1) {
+	if !psess.samesafeexpr(stmt.Left.Left, a) || !psess.samesafeexpr(stmt.Left.Right, v1) {
 		return false
 	}
 
-	elemsize := n.Type.Elem().Width
-	if elemsize <= 0 || !isZero(stmt.Right) {
+	elemsize := n.Type.Elem(psess.types).Width
+	if elemsize <= 0 || !psess.isZero(stmt.Right) {
 		return false
 	}
 
-	// Convert to
-	// if len(a) != 0 {
-	// 	hp = &a[0]
-	// 	hn = len(a)*sizeof(elem(a))
-	// 	memclr{NoHeap,Has}Pointers(hp, hn)
-	// 	i = len(a) - 1
-	// }
 	n.Op = OIF
 
 	n.Nbody.Set(nil)
-	n.Left = nod(ONE, nod(OLEN, a, nil), nodintconst(0))
+	n.Left = psess.nod(ONE, psess.nod(OLEN, a, nil), psess.nodintconst(0))
 
-	// hp = &a[0]
-	hp := temp(types.Types[TUNSAFEPTR])
+	hp := psess.temp(psess.types.Types[TUNSAFEPTR])
 
-	tmp := nod(OINDEX, a, nodintconst(0))
+	tmp := psess.nod(OINDEX, a, psess.nodintconst(0))
 	tmp.SetBounded(true)
-	tmp = nod(OADDR, tmp, nil)
-	tmp = nod(OCONVNOP, tmp, nil)
-	tmp.Type = types.Types[TUNSAFEPTR]
-	n.Nbody.Append(nod(OAS, hp, tmp))
+	tmp = psess.nod(OADDR, tmp, nil)
+	tmp = psess.nod(OCONVNOP, tmp, nil)
+	tmp.Type = psess.types.Types[TUNSAFEPTR]
+	n.Nbody.Append(psess.nod(OAS, hp, tmp))
 
-	// hn = len(a) * sizeof(elem(a))
-	hn := temp(types.Types[TUINTPTR])
+	hn := psess.temp(psess.types.Types[TUINTPTR])
 
-	tmp = nod(OLEN, a, nil)
-	tmp = nod(OMUL, tmp, nodintconst(elemsize))
-	tmp = conv(tmp, types.Types[TUINTPTR])
-	n.Nbody.Append(nod(OAS, hn, tmp))
+	tmp = psess.nod(OLEN, a, nil)
+	tmp = psess.nod(OMUL, tmp, psess.nodintconst(elemsize))
+	tmp = psess.conv(tmp, psess.types.Types[TUINTPTR])
+	n.Nbody.Append(psess.nod(OAS, hn, tmp))
 
 	var fn *Node
-	if types.Haspointers(a.Type.Elem()) {
-		// memclrHasPointers(hp, hn)
-		fn = mkcall("memclrHasPointers", nil, nil, hp, hn)
+	if psess.types.Haspointers(a.Type.Elem(psess.types)) {
+
+		fn = psess.mkcall("memclrHasPointers", nil, nil, hp, hn)
 	} else {
-		// memclrNoHeapPointers(hp, hn)
-		fn = mkcall("memclrNoHeapPointers", nil, nil, hp, hn)
+
+		fn = psess.mkcall("memclrNoHeapPointers", nil, nil, hp, hn)
 	}
 
 	n.Nbody.Append(fn)
 
-	// i = len(a) - 1
-	v1 = nod(OAS, v1, nod(OSUB, nod(OLEN, a, nil), nodintconst(1)))
+	v1 = psess.nod(OAS, v1, psess.nod(OSUB, psess.nod(OLEN, a, nil), psess.nodintconst(1)))
 
 	n.Nbody.Append(v1)
 
-	n.Left = typecheck(n.Left, Erv)
-	n.Left = defaultlit(n.Left, nil)
-	typecheckslice(n.Nbody.Slice(), Etop)
-	n = walkstmt(n)
+	n.Left = psess.typecheck(n.Left, Erv)
+	n.Left = psess.defaultlit(n.Left, nil)
+	psess.
+		typecheckslice(n.Nbody.Slice(), Etop)
+	n = psess.walkstmt(n)
 	return true
 }

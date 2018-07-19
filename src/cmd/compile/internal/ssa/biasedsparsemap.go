@@ -1,11 +1,6 @@
-// Copyright 2018 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
 package ssa
 
 import (
-	"cmd/internal/src"
 	"math"
 )
 
@@ -82,19 +77,19 @@ func (s *biasedSparseMap) getEntry(i int) (x uint, v int32) {
 }
 
 // add inserts x->0 into s, provided that x is in the range of keys stored in s.
-func (s *biasedSparseMap) add(x uint) {
+func (s *biasedSparseMap) add(psess *PackageSession, x uint) {
 	if int(x) < s.first || int(x) >= s.cap() {
 		return
 	}
-	s.s.set(ID(int(x)-s.first), 0, src.NoXPos)
+	s.s.set(ID(int(x)-s.first), 0, psess.src.NoXPos)
 }
 
 // add inserts x->v into s, provided that x is in the range of keys stored in s.
-func (s *biasedSparseMap) set(x uint, v int32) {
+func (s *biasedSparseMap) set(psess *PackageSession, x uint, v int32) {
 	if int(x) < s.first || int(x) >= s.cap() {
 		return
 	}
-	s.s.set(ID(int(x)-s.first), v, src.NoXPos)
+	s.s.set(ID(int(x)-s.first), v, psess.src.NoXPos)
 }
 
 // remove removes key x from s.

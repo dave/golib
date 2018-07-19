@@ -1,7 +1,3 @@
-// Copyright 2009 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
 package objabi
 
 import (
@@ -25,7 +21,7 @@ func WorkingDir() string {
 // It also removes a leading pathPrefix, or else rewrites a leading $GOROOT
 // prefix to the literal "$GOROOT".
 // If the resulting path is the empty string, the result is "??".
-func AbsFile(dir, file, pathPrefix string) string {
+func (psess *PackageSession) AbsFile(dir, file, pathPrefix string) string {
 	abs := file
 	if dir != "" && !filepath.IsAbs(file) {
 		abs = filepath.Join(dir, file)
@@ -37,8 +33,8 @@ func AbsFile(dir, file, pathPrefix string) string {
 		} else {
 			abs = abs[len(pathPrefix)+1:]
 		}
-	} else if hasPathPrefix(abs, GOROOT) {
-		abs = "$GOROOT" + abs[len(GOROOT):]
+	} else if hasPathPrefix(abs, psess.GOROOT) {
+		abs = "$GOROOT" + abs[len(psess.GOROOT):]
 	}
 	if abs == "" {
 		abs = "??"

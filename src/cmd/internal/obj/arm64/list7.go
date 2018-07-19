@@ -1,64 +1,19 @@
-// cmd/7l/list.c and cmd/7l/sub.c from Vita Nuova.
-// https://code.google.com/p/ken-cc/source/browse/
-//
-// 	Copyright © 1994-1999 Lucent Technologies Inc. All rights reserved.
-// 	Portions Copyright © 1995-1997 C H Forsyth (forsyth@terzarima.net)
-// 	Portions Copyright © 1997-1999 Vita Nuova Limited
-// 	Portions Copyright © 2000-2007 Vita Nuova Holdings Limited (www.vitanuova.com)
-// 	Portions Copyright © 2004,2006 Bruce Ellis
-// 	Portions Copyright © 2005-2007 C H Forsyth (forsyth@terzarima.net)
-// 	Revisions Copyright © 2000-2007 Lucent Technologies Inc. and others
-// 	Portions Copyright © 2009 The Go Authors. All rights reserved.
-//
-// Permission is hereby granted, free of charge, to any person obtaining a copy
-// of this software and associated documentation files (the "Software"), to deal
-// in the Software without restriction, including without limitation the rights
-// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-// copies of the Software, and to permit persons to whom the Software is
-// furnished to do so, subject to the following conditions:
-//
-// The above copyright notice and this permission notice shall be included in
-// all copies or substantial portions of the Software.
-//
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL THE
-// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-// THE SOFTWARE.
-
 package arm64
 
 import (
-	"cmd/internal/obj"
 	"fmt"
+	"github.com/dave/golib/src/cmd/internal/obj"
 )
 
-var strcond = [16]string{
-	"EQ",
-	"NE",
-	"HS",
-	"LO",
-	"MI",
-	"PL",
-	"VS",
-	"VC",
-	"HI",
-	"LS",
-	"GE",
-	"LT",
-	"GT",
-	"LE",
-	"AL",
-	"NV",
-}
-
-func init() {
-	obj.RegisterRegister(obj.RBaseARM64, REG_SPECIAL+1024, rconv)
-	obj.RegisterOpcode(obj.ABaseARM64, Anames)
-	obj.RegisterRegisterList(obj.RegListARM64Lo, obj.RegListARM64Hi, rlconv)
-	obj.RegisterOpSuffix("arm64", obj.CConvARM)
+func (psess *PackageSession) init() {
+	psess.obj.
+		RegisterRegister(obj.RBaseARM64, REG_SPECIAL+1024, psess.rconv)
+	psess.obj.
+		RegisterOpcode(obj.ABaseARM64, psess.Anames)
+	psess.obj.
+		RegisterRegisterList(obj.RegListARM64Lo, obj.RegListARM64Hi, rlconv)
+	psess.obj.
+		RegisterOpSuffix("arm64", psess.obj.CConvARM)
 }
 
 func arrange(a int) string {
@@ -94,7 +49,7 @@ func arrange(a int) string {
 	}
 }
 
-func rconv(r int) string {
+func (psess *PackageSession) rconv(r int) string {
 	ext := (r >> 5) & 7
 	if r == REGG {
 		return "g"
@@ -109,7 +64,7 @@ func rconv(r int) string {
 	case REG_V0 <= r && r <= REG_V31:
 		return fmt.Sprintf("V%d", r-REG_V0)
 	case COND_EQ <= r && r <= COND_NV:
-		return strcond[r-COND_EQ]
+		return psess.strcond[r-COND_EQ]
 	case r == REGSP:
 		return "RSP"
 	case r == REG_DAIF:
@@ -224,7 +179,7 @@ func rconv(r int) string {
 		} else {
 			return fmt.Sprintf("%s.SXTX", regname(r))
 		}
-	// bits 0-4 indicate register, bits 5-7 indicate shift amount, bit 8 equals to 0.
+
 	case REG_LSL <= r && r < (REG_LSL+1<<8):
 		return fmt.Sprintf("R%d<<%d", r&31, (r>>5)&7)
 	case REG_ARNG <= r && r < REG_ELEM:
@@ -235,20 +190,15 @@ func rconv(r int) string {
 	return fmt.Sprintf("badreg(%d)", r)
 }
 
-func DRconv(a int) string {
+func (psess *PackageSession) DRconv(a int) string {
 	if a >= C_NONE && a <= C_NCLASS {
-		return cnames7[a]
+		return psess.cnames7[a]
 	}
 	return "C_??"
 }
 
 func rlconv(list int64) string {
 	str := ""
-
-	// ARM64 register list follows ARM64 instruction decode schema
-	// | 31 | 30 | ... | 15 - 12 | 11 - 10 | ... |
-	// +----+----+-----+---------+---------+-----+
-	// |    | Q  | ... | opcode  |   size  | ... |
 
 	firstReg := int(list & 31)
 	opcode := (list >> 12) & 15
@@ -266,7 +216,7 @@ func rlconv(list int64) string {
 	default:
 		regCnt = -1
 	}
-	// Q:size
+
 	arng := ((list>>30)&1)<<2 | (list>>10)&3
 	switch arng {
 	case 0:

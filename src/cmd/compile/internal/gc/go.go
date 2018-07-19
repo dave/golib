@@ -1,15 +1,9 @@
-// Copyright 2009 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
 package gc
 
 import (
-	"cmd/compile/internal/ssa"
-	"cmd/compile/internal/types"
-	"cmd/internal/obj"
-	"cmd/internal/src"
-	"sync"
+	"github.com/dave/golib/src/cmd/compile/internal/ssa"
+	"github.com/dave/golib/src/cmd/compile/internal/types"
+	"github.com/dave/golib/src/cmd/internal/obj"
 )
 
 const (
@@ -18,8 +12,8 @@ const (
 )
 
 // isRuntimePkg reports whether p is package runtime.
-func isRuntimePkg(p *types.Pkg) bool {
-	if compiling_runtime && p == localpkg {
+func (psess *PackageSession) isRuntimePkg(p *types.Pkg) bool {
+	if psess.compiling_runtime && p == psess.localpkg {
 		return true
 	}
 	return p.Path == "runtime"
@@ -41,8 +35,7 @@ const (
 	PFUNC                  // global function
 
 	PDISCARD // discard during parse of duplicate import
-	// Careful: Class is stored in three bits in Node.flags.
-	// Adding a new Class will overflow that.
+
 )
 
 func init() {
@@ -60,13 +53,13 @@ func init() {
 // 	uchar	nel[4];		// number of elements
 // 	uchar	cap[4];		// allocated number of elements
 // } Array;
-var array_array int // runtime offsetof(Array,array) - same for String
+// runtime offsetof(Array,array) - same for String
 
-var array_nel int // runtime offsetof(Array,nel) - same for String
+// runtime offsetof(Array,nel) - same for String
 
-var array_cap int // runtime offsetof(Array,cap)
+// runtime offsetof(Array,cap)
 
-var sizeof_Array int // runtime sizeof(Array)
+// runtime sizeof(Array)
 
 // note this is the runtime representation
 // of the compilers strings.
@@ -76,172 +69,52 @@ var sizeof_Array int // runtime sizeof(Array)
 // 	uchar	array[8];	// pointer to data
 // 	uchar	nel[4];		// number of elements
 // } String;
-var sizeof_String int // runtime sizeof(String)
-
-var pragcgobuf [][]string
-
-var outfile string
-var linkobj string
-var dolinkobj bool
+// runtime sizeof(String)
 
 // nerrors is the number of compiler errors reported
 // since the last call to saveerrors.
-var nerrors int
 
 // nsavederrors is the total number of compiler errors
 // reported before the last call to saveerrors.
-var nsavederrors int
 
-var nsyntaxerrors int
+// package being compiled
 
-var decldepth int32
+// set during import
 
-var safemode bool
+// fake pkg for itab entries
 
-var nolocalimports bool
+// fake package for runtime itab entries
 
-var Debug [256]int
+// fake package runtime
 
-var debugstr string
+// package runtime/race
 
-var Debug_checknil int
-var Debug_typeassert int
+// package runtime/msan
 
-var localpkg *types.Pkg // package being compiled
+// package unsafe
 
-var inimport bool // set during import
+// fake package for field tracking
 
-var itabpkg *types.Pkg // fake pkg for itab entries
+// fake package for map zero value
 
-var itablinkpkg *types.Pkg // fake package for runtime itab entries
+// pseudo-package for method symbols on anonymous receiver types
 
-var Runtimepkg *types.Pkg // fake package runtime
+// imported functions and methods with inlinable bodies
 
-var racepkg *types.Pkg // package runtime/race
+// protects funcsyms and associated package lookups (see func funcsym)
 
-var msanpkg *types.Pkg // package runtime/msan
-
-var unsafepkg *types.Pkg // package unsafe
-
-var trackpkg *types.Pkg // fake package for field tracking
-
-var mappkg *types.Pkg // fake package for map zero value
-
-var gopkg *types.Pkg // pseudo-package for method symbols on anonymous receiver types
-
-var zerosize int64
-
-var myimportpath string
-
-var localimport string
-
-var asmhdr string
-
-var simtype [NTYPE]types.EType
-
-var (
-	isforw    [NTYPE]bool
-	isInt     [NTYPE]bool
-	isFloat   [NTYPE]bool
-	isComplex [NTYPE]bool
-	issimple  [NTYPE]bool
-)
-
-var (
-	okforeq    [NTYPE]bool
-	okforadd   [NTYPE]bool
-	okforand   [NTYPE]bool
-	okfornone  [NTYPE]bool
-	okforcmp   [NTYPE]bool
-	okforbool  [NTYPE]bool
-	okforcap   [NTYPE]bool
-	okforlen   [NTYPE]bool
-	okforarith [NTYPE]bool
-	okforconst [NTYPE]bool
-)
-
-var (
-	okfor [OEND][]bool
-	iscmp [OEND]bool
-)
-
-var minintval [NTYPE]*Mpint
-
-var maxintval [NTYPE]*Mpint
-
-var minfltval [NTYPE]*Mpflt
-
-var maxfltval [NTYPE]*Mpflt
-
-var xtop []*Node
-
-var exportlist []*Node
-
-var importlist []*Node // imported functions and methods with inlinable bodies
-
-var (
-	funcsymsmu sync.Mutex // protects funcsyms and associated package lookups (see func funcsym)
-	funcsyms   []*types.Sym
-)
-
-var dclcontext Class // PEXTERN/PAUTO
-
-var Curfn *Node
-
-var Widthptr int
-
-var Widthreg int
-
-var nblank *Node
-
-var typecheckok bool
-
-var compiling_runtime bool
+// PEXTERN/PAUTO
 
 // Compiling the standard library
-var compiling_std bool
-
-var compiling_wrappers bool
-
-var use_writebarrier bool
-
-var pure_go bool
-
-var flag_installsuffix string
-
-var flag_race bool
-
-var flag_msan bool
-
-var flagDWARF bool
 
 // Whether we are adding any sort of code instrumentation, such as
 // when the race detector is enabled.
-var instrumenting bool
 
 // Whether we are tracking lexical scopes for DWARF.
-var trackScopes bool
 
 // Controls generation of DWARF inlined instance records. Zero
 // disables, 1 emits inlined routines but suppresses var info,
 // and 2 emits inlined routines with tracking of formals/locals.
-var genDwarfInline int
-
-var debuglive int
-
-var Ctxt *obj.Link
-
-var writearchive bool
-
-var Nacl bool
-
-var nodfp *Node
-
-var disable_checknil int
-
-var autogeneratedPos src.XPos
-
-// interface to back end
 
 type Arch struct {
 	LinkArch *obj.LinkArch
@@ -271,53 +144,6 @@ type Arch struct {
 	ZeroAuto func(*Progs, *Node)
 }
 
-var thearch Arch
+// GO386=387
 
-var (
-	staticbytes,
-	zerobase *Node
-
-	assertE2I,
-	assertE2I2,
-	assertI2I,
-	assertI2I2,
-	Deferproc,
-	Deferreturn,
-	Duffcopy,
-	Duffzero,
-	gcWriteBarrier,
-	goschedguarded,
-	growslice,
-	msanread,
-	msanwrite,
-	Newproc,
-	panicdivide,
-	panicdottypeE,
-	panicdottypeI,
-	panicindex,
-	panicnildottype,
-	panicslice,
-	raceread,
-	racereadrange,
-	racewrite,
-	racewriterange,
-	supportPopcnt,
-	supportSSE41,
-	arm64SupportAtomics,
-	typedmemclr,
-	typedmemmove,
-	Udiv,
-	writeBarrier *obj.LSym
-
-	// GO386=387
-	ControlWord64trunc,
-	ControlWord32 *obj.LSym
-
-	// Wasm
-	WasmMove,
-	WasmZero,
-	WasmDiv,
-	WasmTruncS,
-	WasmTruncU,
-	SigPanic *obj.LSym
-)
+// Wasm

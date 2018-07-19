@@ -9184,369 +9184,369 @@ var opstr = [...]string{
 }
 
 var instFormats = [...]instFormat{
-	{0x0fe00000, 0x02a00000, 2, ADC_EQ, 0x14011c04, instArgs{arg_R_12, arg_R_16, arg_const}},                      // ADC{S}<c> <Rd>,<Rn>,#<const> cond:4|0|0|1|0|1|0|1|S|Rn:4|Rd:4|imm12:12
-	{0x0fe00090, 0x00a00010, 4, ADC_EQ, 0x14011c04, instArgs{arg_R_12, arg_R_16, arg_R_shift_R}},                  // ADC{S}<c> <Rd>,<Rn>,<Rm>,<type> <Rs> cond:4|0|0|0|0|1|0|1|S|Rn:4|Rd:4|Rs:4|0|type:2|1|Rm:4
-	{0x0fe00010, 0x00a00000, 2, ADC_EQ, 0x14011c04, instArgs{arg_R_12, arg_R_16, arg_R_shift_imm}},                // ADC{S}<c> <Rd>,<Rn>,<Rm>{,<shift>} cond:4|0|0|0|0|1|0|1|S|Rn:4|Rd:4|imm5:5|type:2|0|Rm:4
-	{0x0fe00000, 0x02800000, 2, ADD_EQ, 0x14011c04, instArgs{arg_R_12, arg_R_16, arg_const}},                      // ADD{S}<c> <Rd>,<Rn>,#<const> cond:4|0|0|1|0|1|0|0|S|Rn:4|Rd:4|imm12:12
-	{0x0fe00090, 0x00800010, 4, ADD_EQ, 0x14011c04, instArgs{arg_R_12, arg_R_16, arg_R_shift_R}},                  // ADD{S}<c> <Rd>,<Rn>,<Rm>,<type> <Rs> cond:4|0|0|0|0|1|0|0|S|Rn:4|Rd:4|Rs:4|0|type:2|1|Rm:4
-	{0x0fe00010, 0x00800000, 2, ADD_EQ, 0x14011c04, instArgs{arg_R_12, arg_R_16, arg_R_shift_imm}},                // ADD{S}<c> <Rd>,<Rn>,<Rm>{,<shift>} cond:4|0|0|0|0|1|0|0|S|Rn:4|Rd:4|imm5:5|type:2|0|Rm:4
-	{0x0fef0000, 0x028d0000, 2, ADD_EQ, 0x14011c04, instArgs{arg_R_12, arg_SP, arg_const}},                        // ADD{S}<c> <Rd>,SP,#<const> cond:4|0|0|1|0|1|0|0|S|1|1|0|1|Rd:4|imm12:12
-	{0x0fef0010, 0x008d0000, 2, ADD_EQ, 0x14011c04, instArgs{arg_R_12, arg_SP, arg_R_shift_imm}},                  // ADD{S}<c> <Rd>,SP,<Rm>{,<shift>} cond:4|0|0|0|0|1|0|0|S|1|1|0|1|Rd:4|imm5:5|type:2|0|Rm:4
-	{0x0fe00000, 0x02000000, 2, AND_EQ, 0x14011c04, instArgs{arg_R_12, arg_R_16, arg_const}},                      // AND{S}<c> <Rd>,<Rn>,#<const> cond:4|0|0|1|0|0|0|0|S|Rn:4|Rd:4|imm12:12
-	{0x0fe00090, 0x00000010, 4, AND_EQ, 0x14011c04, instArgs{arg_R_12, arg_R_16, arg_R_shift_R}},                  // AND{S}<c> <Rd>,<Rn>,<Rm>,<type> <Rs> cond:4|0|0|0|0|0|0|0|S|Rn:4|Rd:4|Rs:4|0|type:2|1|Rm:4
-	{0x0fe00010, 0x00000000, 2, AND_EQ, 0x14011c04, instArgs{arg_R_12, arg_R_16, arg_R_shift_imm}},                // AND{S}<c> <Rd>,<Rn>,<Rm>{,<shift>} cond:4|0|0|0|0|0|0|0|S|Rn:4|Rd:4|imm5:5|type:2|0|Rm:4
-	{0x0fef0070, 0x01a00040, 4, ASR_EQ, 0x14011c04, instArgs{arg_R_12, arg_R_0, arg_imm5_32}},                     // ASR{S}<c> <Rd>,<Rm>,#<imm5_32> cond:4|0|0|0|1|1|0|1|S|0|0|0|0|Rd:4|imm5:5|1|0|0|Rm:4
-	{0x0fef00f0, 0x01a00050, 4, ASR_EQ, 0x14011c04, instArgs{arg_R_12, arg_R_0, arg_R_8}},                         // ASR{S}<c> <Rd>,<Rn>,<Rm> cond:4|0|0|0|1|1|0|1|S|0|0|0|0|Rd:4|Rm:4|0|1|0|1|Rn:4
-	{0x0f000000, 0x0a000000, 4, B_EQ, 0x1c04, instArgs{arg_label24}},                                              // B<c> <label24> cond:4|1|0|1|0|imm24:24
-	{0x0fe0007f, 0x07c0001f, 4, BFC_EQ, 0x1c04, instArgs{arg_R_12, arg_imm5, arg_lsb_width}},                      // BFC<c> <Rd>,#<lsb>,#<width> cond:4|0|1|1|1|1|1|0|msb:5|Rd:4|lsb:5|0|0|1|1|1|1|1
-	{0x0fe00070, 0x07c00010, 2, BFI_EQ, 0x1c04, instArgs{arg_R_12, arg_R_0, arg_imm5, arg_lsb_width}},             // BFI<c> <Rd>,<Rn>,#<lsb>,#<width> cond:4|0|1|1|1|1|1|0|msb:5|Rd:4|lsb:5|0|0|1|Rn:4
-	{0x0fe00000, 0x03c00000, 2, BIC_EQ, 0x14011c04, instArgs{arg_R_12, arg_R_16, arg_const}},                      // BIC{S}<c> <Rd>,<Rn>,#<const> cond:4|0|0|1|1|1|1|0|S|Rn:4|Rd:4|imm12:12
-	{0x0fe00090, 0x01c00010, 4, BIC_EQ, 0x14011c04, instArgs{arg_R_12, arg_R_16, arg_R_shift_R}},                  // BIC{S}<c> <Rd>,<Rn>,<Rm>,<type> <Rs> cond:4|0|0|0|1|1|1|0|S|Rn:4|Rd:4|Rs:4|0|type:2|1|Rm:4
-	{0x0fe00010, 0x01c00000, 2, BIC_EQ, 0x14011c04, instArgs{arg_R_12, arg_R_16, arg_R_shift_imm}},                // BIC{S}<c> <Rd>,<Rn>,<Rm>{,<shift>} cond:4|0|0|0|1|1|1|0|S|Rn:4|Rd:4|imm5:5|type:2|0|Rm:4
-	{0x0ff000f0, 0x01200070, 4, BKPT_EQ, 0x1c04, instArgs{arg_imm_12at8_4at0}},                                    // BKPT<c> #<imm12+4> cond:4|0|0|0|1|0|0|1|0|imm12:12|0|1|1|1|imm4:4
-	{0x0f000000, 0x0b000000, 4, BL_EQ, 0x1c04, instArgs{arg_label24}},                                             // BL<c> <label24> cond:4|1|0|1|1|imm24:24
-	{0xfe000000, 0xfa000000, 4, BLX, 0x0, instArgs{arg_label24H}},                                                 // BLX <label24H> 1|1|1|1|1|0|1|H|imm24:24
-	{0x0ffffff0, 0x012fff30, 4, BLX_EQ, 0x1c04, instArgs{arg_R_0}},                                                // BLX<c> <Rm> cond:4|0|0|0|1|0|0|1|0|(1)|(1)|(1)|(1)|(1)|(1)|(1)|(1)|(1)|(1)|(1)|(1)|0|0|1|1|Rm:4
-	{0x0ff000f0, 0x012fff30, 3, BLX_EQ, 0x1c04, instArgs{arg_R_0}},                                                // BLX<c> <Rm> cond:4|0|0|0|1|0|0|1|0|(1)|(1)|(1)|(1)|(1)|(1)|(1)|(1)|(1)|(1)|(1)|(1)|0|0|1|1|Rm:4
-	{0x0ffffff0, 0x012fff10, 4, BX_EQ, 0x1c04, instArgs{arg_R_0}},                                                 // BX<c> <Rm> cond:4|0|0|0|1|0|0|1|0|(1)|(1)|(1)|(1)|(1)|(1)|(1)|(1)|(1)|(1)|(1)|(1)|0|0|0|1|Rm:4
-	{0x0ff000f0, 0x012fff10, 3, BX_EQ, 0x1c04, instArgs{arg_R_0}},                                                 // BX<c> <Rm> cond:4|0|0|0|1|0|0|1|0|(1)|(1)|(1)|(1)|(1)|(1)|(1)|(1)|(1)|(1)|(1)|(1)|0|0|0|1|Rm:4
-	{0x0ffffff0, 0x012fff20, 4, BXJ_EQ, 0x1c04, instArgs{arg_R_0}},                                                // BXJ<c> <Rm> cond:4|0|0|0|1|0|0|1|0|(1)|(1)|(1)|(1)|(1)|(1)|(1)|(1)|(1)|(1)|(1)|(1)|0|0|1|0|Rm:4
-	{0x0ff000f0, 0x012fff20, 3, BXJ_EQ, 0x1c04, instArgs{arg_R_0}},                                                // BXJ<c> <Rm> cond:4|0|0|0|1|0|0|1|0|(1)|(1)|(1)|(1)|(1)|(1)|(1)|(1)|(1)|(1)|(1)|(1)|0|0|1|0|Rm:4
-	{0xffffffff, 0xf57ff01f, 4, CLREX, 0x0, instArgs{}},                                                           // CLREX 1|1|1|1|0|1|0|1|0|1|1|1|(1)|(1)|(1)|(1)|(1)|(1)|(1)|(1)|(0)|(0)|(0)|(0)|0|0|0|1|(1)|(1)|(1)|(1)
-	{0xfff000f0, 0xf57ff01f, 3, CLREX, 0x0, instArgs{}},                                                           // CLREX 1|1|1|1|0|1|0|1|0|1|1|1|(1)|(1)|(1)|(1)|(1)|(1)|(1)|(1)|(0)|(0)|(0)|(0)|0|0|0|1|(1)|(1)|(1)|(1)
-	{0x0fff0ff0, 0x016f0f10, 4, CLZ_EQ, 0x1c04, instArgs{arg_R_12, arg_R_0}},                                      // CLZ<c> <Rd>,<Rm> cond:4|0|0|0|1|0|1|1|0|(1)|(1)|(1)|(1)|Rd:4|(1)|(1)|(1)|(1)|0|0|0|1|Rm:4
-	{0x0ff000f0, 0x016f0f10, 3, CLZ_EQ, 0x1c04, instArgs{arg_R_12, arg_R_0}},                                      // CLZ<c> <Rd>,<Rm> cond:4|0|0|0|1|0|1|1|0|(1)|(1)|(1)|(1)|Rd:4|(1)|(1)|(1)|(1)|0|0|0|1|Rm:4
-	{0x0ff0f000, 0x03700000, 4, CMN_EQ, 0x1c04, instArgs{arg_R_16, arg_const}},                                    // CMN<c> <Rn>,#<const> cond:4|0|0|1|1|0|1|1|1|Rn:4|(0)|(0)|(0)|(0)|imm12:12
-	{0x0ff00000, 0x03700000, 3, CMN_EQ, 0x1c04, instArgs{arg_R_16, arg_const}},                                    // CMN<c> <Rn>,#<const> cond:4|0|0|1|1|0|1|1|1|Rn:4|(0)|(0)|(0)|(0)|imm12:12
-	{0x0ff0f090, 0x01700010, 4, CMN_EQ, 0x1c04, instArgs{arg_R_16, arg_R_shift_R}},                                // CMN<c> <Rn>,<Rm>,<type> <Rs> cond:4|0|0|0|1|0|1|1|1|Rn:4|(0)|(0)|(0)|(0)|Rs:4|0|type:2|1|Rm:4
-	{0x0ff00090, 0x01700010, 3, CMN_EQ, 0x1c04, instArgs{arg_R_16, arg_R_shift_R}},                                // CMN<c> <Rn>,<Rm>,<type> <Rs> cond:4|0|0|0|1|0|1|1|1|Rn:4|(0)|(0)|(0)|(0)|Rs:4|0|type:2|1|Rm:4
-	{0x0ff0f010, 0x01700000, 4, CMN_EQ, 0x1c04, instArgs{arg_R_16, arg_R_shift_imm}},                              // CMN<c> <Rn>,<Rm>{,<shift>} cond:4|0|0|0|1|0|1|1|1|Rn:4|(0)|(0)|(0)|(0)|imm5:5|type:2|0|Rm:4
-	{0x0ff00010, 0x01700000, 3, CMN_EQ, 0x1c04, instArgs{arg_R_16, arg_R_shift_imm}},                              // CMN<c> <Rn>,<Rm>{,<shift>} cond:4|0|0|0|1|0|1|1|1|Rn:4|(0)|(0)|(0)|(0)|imm5:5|type:2|0|Rm:4
-	{0x0ff0f000, 0x03500000, 4, CMP_EQ, 0x1c04, instArgs{arg_R_16, arg_const}},                                    // CMP<c> <Rn>,#<const> cond:4|0|0|1|1|0|1|0|1|Rn:4|(0)|(0)|(0)|(0)|imm12:12
-	{0x0ff00000, 0x03500000, 3, CMP_EQ, 0x1c04, instArgs{arg_R_16, arg_const}},                                    // CMP<c> <Rn>,#<const> cond:4|0|0|1|1|0|1|0|1|Rn:4|(0)|(0)|(0)|(0)|imm12:12
-	{0x0ff0f090, 0x01500010, 4, CMP_EQ, 0x1c04, instArgs{arg_R_16, arg_R_shift_R}},                                // CMP<c> <Rn>,<Rm>,<type> <Rs> cond:4|0|0|0|1|0|1|0|1|Rn:4|(0)|(0)|(0)|(0)|Rs:4|0|type:2|1|Rm:4
-	{0x0ff00090, 0x01500010, 3, CMP_EQ, 0x1c04, instArgs{arg_R_16, arg_R_shift_R}},                                // CMP<c> <Rn>,<Rm>,<type> <Rs> cond:4|0|0|0|1|0|1|0|1|Rn:4|(0)|(0)|(0)|(0)|Rs:4|0|type:2|1|Rm:4
-	{0x0ff0f010, 0x01500000, 4, CMP_EQ, 0x1c04, instArgs{arg_R_16, arg_R_shift_imm}},                              // CMP<c> <Rn>,<Rm>{,<shift>} cond:4|0|0|0|1|0|1|0|1|Rn:4|(0)|(0)|(0)|(0)|imm5:5|type:2|0|Rm:4
-	{0x0ff00010, 0x01500000, 3, CMP_EQ, 0x1c04, instArgs{arg_R_16, arg_R_shift_imm}},                              // CMP<c> <Rn>,<Rm>{,<shift>} cond:4|0|0|0|1|0|1|0|1|Rn:4|(0)|(0)|(0)|(0)|imm5:5|type:2|0|Rm:4
-	{0x0ffffff0, 0x0320f0f0, 4, DBG_EQ, 0x1c04, instArgs{arg_option}},                                             // DBG<c> #<option> cond:4|0|0|1|1|0|0|1|0|0|0|0|0|(1)|(1)|(1)|(1)|(0)|(0)|(0)|(0)|1|1|1|1|option:4
-	{0x0fff00f0, 0x0320f0f0, 3, DBG_EQ, 0x1c04, instArgs{arg_option}},                                             // DBG<c> #<option> cond:4|0|0|1|1|0|0|1|0|0|0|0|0|(1)|(1)|(1)|(1)|(0)|(0)|(0)|(0)|1|1|1|1|option:4
-	{0xfffffff0, 0xf57ff050, 4, DMB, 0x0, instArgs{arg_option}},                                                   // DMB #<option> 1|1|1|1|0|1|0|1|0|1|1|1|(1)|(1)|(1)|(1)|(1)|(1)|(1)|(1)|(0)|(0)|(0)|(0)|0|1|0|1|option:4
-	{0xfff000f0, 0xf57ff050, 3, DMB, 0x0, instArgs{arg_option}},                                                   // DMB #<option> 1|1|1|1|0|1|0|1|0|1|1|1|(1)|(1)|(1)|(1)|(1)|(1)|(1)|(1)|(0)|(0)|(0)|(0)|0|1|0|1|option:4
-	{0xfffffff0, 0xf57ff040, 4, DSB, 0x0, instArgs{arg_option}},                                                   // DSB #<option> 1|1|1|1|0|1|0|1|0|1|1|1|(1)|(1)|(1)|(1)|(1)|(1)|(1)|(1)|(0)|(0)|(0)|(0)|0|1|0|0|option:4
-	{0xfff000f0, 0xf57ff040, 3, DSB, 0x0, instArgs{arg_option}},                                                   // DSB #<option> 1|1|1|1|0|1|0|1|0|1|1|1|(1)|(1)|(1)|(1)|(1)|(1)|(1)|(1)|(0)|(0)|(0)|(0)|0|1|0|0|option:4
-	{0x0fe00000, 0x02200000, 2, EOR_EQ, 0x14011c04, instArgs{arg_R_12, arg_R_16, arg_const}},                      // EOR{S}<c> <Rd>,<Rn>,#<const> cond:4|0|0|1|0|0|0|1|S|Rn:4|Rd:4|imm12:12
-	{0x0fe00090, 0x00200010, 4, EOR_EQ, 0x14011c04, instArgs{arg_R_12, arg_R_16, arg_R_shift_R}},                  // EOR{S}<c> <Rd>,<Rn>,<Rm>,<type> <Rs> cond:4|0|0|0|0|0|0|1|S|Rn:4|Rd:4|Rs:4|0|type:2|1|Rm:4
-	{0x0fe00010, 0x00200000, 2, EOR_EQ, 0x14011c04, instArgs{arg_R_12, arg_R_16, arg_R_shift_imm}},                // EOR{S}<c> <Rd>,<Rn>,<Rm>{,<shift>} cond:4|0|0|0|0|0|0|1|S|Rn:4|Rd:4|imm5:5|type:2|0|Rm:4
-	{0xfffffff0, 0xf57ff060, 4, ISB, 0x0, instArgs{arg_option}},                                                   // ISB #<option> 1|1|1|1|0|1|0|1|0|1|1|1|(1)|(1)|(1)|(1)|(1)|(1)|(1)|(1)|(0)|(0)|(0)|(0)|0|1|1|0|option:4
-	{0xfff000f0, 0xf57ff060, 3, ISB, 0x0, instArgs{arg_option}},                                                   // ISB #<option> 1|1|1|1|0|1|0|1|0|1|1|1|(1)|(1)|(1)|(1)|(1)|(1)|(1)|(1)|(0)|(0)|(0)|(0)|0|1|1|0|option:4
-	{0x0fd00000, 0x08900000, 2, LDM_EQ, 0x1c04, instArgs{arg_R_16_WB, arg_registers}},                             // LDM<c> <Rn>{!},<registers> cond:4|1|0|0|0|1|0|W|1|Rn:4|register_list:16
-	{0x0fd00000, 0x08100000, 4, LDMDA_EQ, 0x1c04, instArgs{arg_R_16_WB, arg_registers}},                           // LDMDA<c> <Rn>{!},<registers> cond:4|1|0|0|0|0|0|W|1|Rn:4|register_list:16
-	{0x0fd00000, 0x09100000, 4, LDMDB_EQ, 0x1c04, instArgs{arg_R_16_WB, arg_registers}},                           // LDMDB<c> <Rn>{!},<registers> cond:4|1|0|0|1|0|0|W|1|Rn:4|register_list:16
-	{0x0fd00000, 0x09900000, 4, LDMIB_EQ, 0x1c04, instArgs{arg_R_16_WB, arg_registers}},                           // LDMIB<c> <Rn>{!},<registers> cond:4|1|0|0|1|1|0|W|1|Rn:4|register_list:16
-	{0x0f7f0000, 0x051f0000, 4, LDR_EQ, 0x1c04, instArgs{arg_R_12, arg_label_pm_12}},                              // LDR<c> <Rt>,<label+/-12> cond:4|0|1|0|(1)|U|0|(0)|1|1|1|1|1|Rt:4|imm12:12
-	{0x0e5f0000, 0x051f0000, 3, LDR_EQ, 0x1c04, instArgs{arg_R_12, arg_label_pm_12}},                              // LDR<c> <Rt>,<label+/-12> cond:4|0|1|0|(1)|U|0|(0)|1|1|1|1|1|Rt:4|imm12:12
-	{0x0e500010, 0x06100000, 2, LDR_EQ, 0x1c04, instArgs{arg_R_12, arg_mem_R_pm_R_shift_imm_W}},                   // LDR<c> <Rt>,[<Rn>,+/-<Rm>{, <shift>}]{!} cond:4|0|1|1|P|U|0|W|1|Rn:4|Rt:4|imm5:5|type:2|0|Rm:4
-	{0x0e500000, 0x04100000, 2, LDR_EQ, 0x1c04, instArgs{arg_R_12, arg_mem_R_pm_imm12_W}},                         // LDR<c> <Rt>,[<Rn>{,#+/-<imm12>}]{!} cond:4|0|1|0|P|U|0|W|1|Rn:4|Rt:4|imm12:12
-	{0x0f7f0000, 0x055f0000, 4, LDRB_EQ, 0x1c04, instArgs{arg_R_12, arg_label_pm_12}},                             // LDRB<c> <Rt>,<label+/-12> cond:4|0|1|0|(1)|U|1|(0)|1|1|1|1|1|Rt:4|imm12:12
-	{0x0e5f0000, 0x055f0000, 3, LDRB_EQ, 0x1c04, instArgs{arg_R_12, arg_label_pm_12}},                             // LDRB<c> <Rt>,<label+/-12> cond:4|0|1|0|(1)|U|1|(0)|1|1|1|1|1|Rt:4|imm12:12
-	{0x0e500010, 0x06500000, 2, LDRB_EQ, 0x1c04, instArgs{arg_R_12, arg_mem_R_pm_R_shift_imm_W}},                  // LDRB<c> <Rt>,[<Rn>,+/-<Rm>{, <shift>}]{!} cond:4|0|1|1|P|U|1|W|1|Rn:4|Rt:4|imm5:5|type:2|0|Rm:4
-	{0x0e500000, 0x04500000, 2, LDRB_EQ, 0x1c04, instArgs{arg_R_12, arg_mem_R_pm_imm12_W}},                        // LDRB<c> <Rt>,[<Rn>{,#+/-<imm12>}]{!} cond:4|0|1|0|P|U|1|W|1|Rn:4|Rt:4|imm12:12
-	{0x0f700000, 0x04700000, 4, LDRBT_EQ, 0x1c04, instArgs{arg_R_12, arg_mem_R_pm_imm12_postindex}},               // LDRBT<c> <Rt>,[<Rn>],#+/-<imm12> cond:4|0|1|0|0|U|1|1|1|Rn:4|Rt:4|imm12:12
-	{0x0f700010, 0x06700000, 4, LDRBT_EQ, 0x1c04, instArgs{arg_R_12, arg_mem_R_pm_R_shift_imm_postindex}},         // LDRBT<c> <Rt>,[<Rn>],+/-<Rm>{, <shift>} cond:4|0|1|1|0|U|1|1|1|Rn:4|Rt:4|imm5:5|type:2|0|Rm:4
-	{0x0e500ff0, 0x000000d0, 4, LDRD_EQ, 0x1c04, instArgs{arg_R1_12, arg_R2_12, arg_mem_R_pm_R_W}},                // LDRD<c> <Rt1>,<Rt2>,[<Rn>,+/-<Rm>]{!} cond:4|0|0|0|P|U|0|W|0|Rn:4|Rt:4|(0)|(0)|(0)|(0)|1|1|0|1|Rm:4
-	{0x0e5000f0, 0x000000d0, 3, LDRD_EQ, 0x1c04, instArgs{arg_R1_12, arg_R2_12, arg_mem_R_pm_R_W}},                // LDRD<c> <Rt1>,<Rt2>,[<Rn>,+/-<Rm>]{!} cond:4|0|0|0|P|U|0|W|0|Rn:4|Rt:4|(0)|(0)|(0)|(0)|1|1|0|1|Rm:4
-	{0x0e5000f0, 0x004000d0, 2, LDRD_EQ, 0x1c04, instArgs{arg_R1_12, arg_R2_12, arg_mem_R_pm_imm8_W}},             // LDRD<c> <Rt1>,<Rt2>,[<Rn>{,#+/-<imm8>}]{!} cond:4|0|0|0|P|U|1|W|0|Rn:4|Rt:4|imm4H:4|1|1|0|1|imm4L:4
-	{0x0ff00fff, 0x01900f9f, 4, LDREX_EQ, 0x1c04, instArgs{arg_R_12, arg_mem_R}},                                  // LDREX<c> <Rt>,[<Rn>] cond:4|0|0|0|1|1|0|0|1|Rn:4|Rt:4|(1)|(1)|(1)|(1)|1|0|0|1|(1)|(1)|(1)|(1)
-	{0x0ff000f0, 0x01900f9f, 3, LDREX_EQ, 0x1c04, instArgs{arg_R_12, arg_mem_R}},                                  // LDREX<c> <Rt>,[<Rn>] cond:4|0|0|0|1|1|0|0|1|Rn:4|Rt:4|(1)|(1)|(1)|(1)|1|0|0|1|(1)|(1)|(1)|(1)
-	{0x0ff00fff, 0x01d00f9f, 4, LDREXB_EQ, 0x1c04, instArgs{arg_R_12, arg_mem_R}},                                 // LDREXB<c> <Rt>, [<Rn>] cond:4|0|0|0|1|1|1|0|1|Rn:4|Rt:4|(1)|(1)|(1)|(1)|1|0|0|1|(1)|(1)|(1)|(1)
-	{0x0ff000f0, 0x01d00f9f, 3, LDREXB_EQ, 0x1c04, instArgs{arg_R_12, arg_mem_R}},                                 // LDREXB<c> <Rt>, [<Rn>] cond:4|0|0|0|1|1|1|0|1|Rn:4|Rt:4|(1)|(1)|(1)|(1)|1|0|0|1|(1)|(1)|(1)|(1)
-	{0x0ff00fff, 0x01b00f9f, 4, LDREXD_EQ, 0x1c04, instArgs{arg_R1_12, arg_R2_12, arg_mem_R}},                     // LDREXD<c> <Rt1>,<Rt2>,[<Rn>] cond:4|0|0|0|1|1|0|1|1|Rn:4|Rt:4|(1)|(1)|(1)|(1)|1|0|0|1|(1)|(1)|(1)|(1)
-	{0x0ff000f0, 0x01b00f9f, 3, LDREXD_EQ, 0x1c04, instArgs{arg_R1_12, arg_R2_12, arg_mem_R}},                     // LDREXD<c> <Rt1>,<Rt2>,[<Rn>] cond:4|0|0|0|1|1|0|1|1|Rn:4|Rt:4|(1)|(1)|(1)|(1)|1|0|0|1|(1)|(1)|(1)|(1)
-	{0x0ff00fff, 0x01f00f9f, 4, LDREXH_EQ, 0x1c04, instArgs{arg_R_12, arg_mem_R}},                                 // LDREXH<c> <Rt>, [<Rn>] cond:4|0|0|0|1|1|1|1|1|Rn:4|Rt:4|(1)|(1)|(1)|(1)|1|0|0|1|(1)|(1)|(1)|(1)
-	{0x0ff000f0, 0x01f00f9f, 3, LDREXH_EQ, 0x1c04, instArgs{arg_R_12, arg_mem_R}},                                 // LDREXH<c> <Rt>, [<Rn>] cond:4|0|0|0|1|1|1|1|1|Rn:4|Rt:4|(1)|(1)|(1)|(1)|1|0|0|1|(1)|(1)|(1)|(1)
-	{0x0e500ff0, 0x001000b0, 2, LDRH_EQ, 0x1c04, instArgs{arg_R_12, arg_mem_R_pm_R_W}},                            // LDRH<c> <Rt>,[<Rn>,+/-<Rm>]{!} cond:4|0|0|0|P|U|0|W|1|Rn:4|Rt:4|0|0|0|0|1|0|1|1|Rm:4
-	{0x0e5000f0, 0x005000b0, 2, LDRH_EQ, 0x1c04, instArgs{arg_R_12, arg_mem_R_pm_imm8_W}},                         // LDRH<c> <Rt>,[<Rn>{,#+/-<imm8>}]{!} cond:4|0|0|0|P|U|1|W|1|Rn:4|Rt:4|imm4H:4|1|0|1|1|imm4L:4
-	{0x0f7000f0, 0x007000b0, 4, LDRHT_EQ, 0x1c04, instArgs{arg_R_12, arg_mem_R_pm_imm8_postindex}},                // LDRHT<c> <Rt>, [<Rn>] {,#+/-<imm8>} cond:4|0|0|0|0|U|1|1|1|Rn:4|Rt:4|imm4H:4|1|0|1|1|imm4L:4
-	{0x0f700ff0, 0x003000b0, 4, LDRHT_EQ, 0x1c04, instArgs{arg_R_12, arg_mem_R_pm_R_postindex}},                   // LDRHT<c> <Rt>, [<Rn>], +/-<Rm> cond:4|0|0|0|0|U|0|1|1|Rn:4|Rt:4|0|0|0|0|1|0|1|1|Rm:4
-	{0x0e500ff0, 0x001000d0, 2, LDRSB_EQ, 0x1c04, instArgs{arg_R_12, arg_mem_R_pm_R_W}},                           // LDRSB<c> <Rt>,[<Rn>,+/-<Rm>]{!} cond:4|0|0|0|P|U|0|W|1|Rn:4|Rt:4|0|0|0|0|1|1|0|1|Rm:4
-	{0x0e5000f0, 0x005000d0, 2, LDRSB_EQ, 0x1c04, instArgs{arg_R_12, arg_mem_R_pm_imm8_W}},                        // LDRSB<c> <Rt>,[<Rn>{,#+/-<imm8>}]{!} cond:4|0|0|0|P|U|1|W|1|Rn:4|Rt:4|imm4H:4|1|1|0|1|imm4L:4
-	{0x0f7000f0, 0x007000d0, 4, LDRSBT_EQ, 0x1c04, instArgs{arg_R_12, arg_mem_R_pm_imm8_postindex}},               // LDRSBT<c> <Rt>, [<Rn>] {,#+/-<imm8>} cond:4|0|0|0|0|U|1|1|1|Rn:4|Rt:4|imm4H:4|1|1|0|1|imm4L:4
-	{0x0f700ff0, 0x003000d0, 4, LDRSBT_EQ, 0x1c04, instArgs{arg_R_12, arg_mem_R_pm_R_postindex}},                  // LDRSBT<c> <Rt>, [<Rn>], +/-<Rm> cond:4|0|0|0|0|U|0|1|1|Rn:4|Rt:4|0|0|0|0|1|1|0|1|Rm:4
-	{0x0e500ff0, 0x001000f0, 2, LDRSH_EQ, 0x1c04, instArgs{arg_R_12, arg_mem_R_pm_R_W}},                           // LDRSH<c> <Rt>,[<Rn>,+/-<Rm>]{!} cond:4|0|0|0|P|U|0|W|1|Rn:4|Rt:4|0|0|0|0|1|1|1|1|Rm:4
-	{0x0e5000f0, 0x005000f0, 2, LDRSH_EQ, 0x1c04, instArgs{arg_R_12, arg_mem_R_pm_imm8_W}},                        // LDRSH<c> <Rt>,[<Rn>{,#+/-<imm8>}]{!} cond:4|0|0|0|P|U|1|W|1|Rn:4|Rt:4|imm4H:4|1|1|1|1|imm4L:4
-	{0x0f7000f0, 0x007000f0, 4, LDRSHT_EQ, 0x1c04, instArgs{arg_R_12, arg_mem_R_pm_imm8_postindex}},               // LDRSHT<c> <Rt>, [<Rn>] {,#+/-<imm8>} cond:4|0|0|0|0|U|1|1|1|Rn:4|Rt:4|imm4H:4|1|1|1|1|imm4L:4
-	{0x0f700ff0, 0x003000f0, 4, LDRSHT_EQ, 0x1c04, instArgs{arg_R_12, arg_mem_R_pm_R_postindex}},                  // LDRSHT<c> <Rt>, [<Rn>], +/-<Rm> cond:4|0|0|0|0|U|0|1|1|Rn:4|Rt:4|0|0|0|0|1|1|1|1|Rm:4
-	{0x0f700000, 0x04300000, 4, LDRT_EQ, 0x1c04, instArgs{arg_R_12, arg_mem_R_pm_imm12_postindex}},                // LDRT<c> <Rt>, [<Rn>] {,#+/-<imm12>} cond:4|0|1|0|0|U|0|1|1|Rn:4|Rt:4|imm12:12
-	{0x0f700010, 0x06300000, 4, LDRT_EQ, 0x1c04, instArgs{arg_R_12, arg_mem_R_pm_R_shift_imm_postindex}},          // LDRT<c> <Rt>,[<Rn>],+/-<Rm>{, <shift>} cond:4|0|1|1|0|U|0|1|1|Rn:4|Rt:4|imm5:5|type:2|0|Rm:4
-	{0x0fef0070, 0x01a00000, 2, LSL_EQ, 0x14011c04, instArgs{arg_R_12, arg_R_0, arg_imm5_nz}},                     // LSL{S}<c> <Rd>,<Rm>,#<imm5_nz> cond:4|0|0|0|1|1|0|1|S|0|0|0|0|Rd:4|imm5:5|0|0|0|Rm:4
-	{0x0fef00f0, 0x01a00010, 4, LSL_EQ, 0x14011c04, instArgs{arg_R_12, arg_R_0, arg_R_8}},                         // LSL{S}<c> <Rd>,<Rn>,<Rm> cond:4|0|0|0|1|1|0|1|S|0|0|0|0|Rd:4|Rm:4|0|0|0|1|Rn:4
-	{0x0fef0070, 0x01a00020, 4, LSR_EQ, 0x14011c04, instArgs{arg_R_12, arg_R_0, arg_imm5_32}},                     // LSR{S}<c> <Rd>,<Rm>,#<imm5_32> cond:4|0|0|0|1|1|0|1|S|0|0|0|0|Rd:4|imm5:5|0|1|0|Rm:4
-	{0x0fef00f0, 0x01a00030, 4, LSR_EQ, 0x14011c04, instArgs{arg_R_12, arg_R_0, arg_R_8}},                         // LSR{S}<c> <Rd>,<Rn>,<Rm> cond:4|0|0|0|1|1|0|1|S|0|0|0|0|Rd:4|Rm:4|0|0|1|1|Rn:4
-	{0x0fe000f0, 0x00200090, 4, MLA_EQ, 0x14011c04, instArgs{arg_R_16, arg_R_0, arg_R_8, arg_R_12}},               // MLA{S}<c> <Rd>,<Rn>,<Rm>,<Ra> cond:4|0|0|0|0|0|0|1|S|Rd:4|Ra:4|Rm:4|1|0|0|1|Rn:4
-	{0x0ff000f0, 0x00600090, 4, MLS_EQ, 0x1c04, instArgs{arg_R_16, arg_R_0, arg_R_8, arg_R_12}},                   // MLS<c> <Rd>,<Rn>,<Rm>,<Ra> cond:4|0|0|0|0|0|1|1|0|Rd:4|Ra:4|Rm:4|1|0|0|1|Rn:4
-	{0x0ff00000, 0x03400000, 4, MOVT_EQ, 0x1c04, instArgs{arg_R_12, arg_imm_4at16_12at0}},                         // MOVT<c> <Rd>,#<imm12+4> cond:4|0|0|1|1|0|1|0|0|imm4:4|Rd:4|imm12:12
-	{0x0ff00000, 0x03000000, 4, MOVW_EQ, 0x1c04, instArgs{arg_R_12, arg_imm_4at16_12at0}},                         // MOVW<c> <Rd>,#<imm12+4> cond:4|0|0|1|1|0|0|0|0|imm4:4|Rd:4|imm12:12
-	{0x0fef0000, 0x03a00000, 2, MOV_EQ, 0x14011c04, instArgs{arg_R_12, arg_const}},                                // MOV{S}<c> <Rd>,#<const> cond:4|0|0|1|1|1|0|1|S|0|0|0|0|Rd:4|imm12:12
-	{0x0fef0ff0, 0x01a00000, 2, MOV_EQ, 0x14011c04, instArgs{arg_R_12, arg_R_0}},                                  // MOV{S}<c> <Rd>,<Rm> cond:4|0|0|0|1|1|0|1|S|0|0|0|0|Rd:4|0|0|0|0|0|0|0|0|Rm:4
-	{0x0fff0fff, 0x010f0000, 4, MRS_EQ, 0x1c04, instArgs{arg_R_12, arg_APSR}},                                     // MRS<c> <Rd>,APSR cond:4|0|0|0|1|0|0|0|0|(1)|(1)|(1)|(1)|Rd:4|(0)|(0)|(0)|(0)|0|0|0|0|(0)|(0)|(0)|(0)
-	{0x0ff000f0, 0x010f0000, 3, MRS_EQ, 0x1c04, instArgs{arg_R_12, arg_APSR}},                                     // MRS<c> <Rd>,APSR cond:4|0|0|0|1|0|0|0|0|(1)|(1)|(1)|(1)|Rd:4|(0)|(0)|(0)|(0)|0|0|0|0|(0)|(0)|(0)|(0)
-	{0x0ffffff0, 0x012cf000, 4, MSR_EQ, 0x1c04, instArgs{arg_APSR, arg_R_0}},                                      // MSR<c> APSR,<Rn> cond:4|0|0|0|1|0|0|1|0|1|1|0|0|(1)|(1)|(1)|(1)|(0)|(0)|(0)|(0)|0|0|0|0|Rn:4
-	{0x0fff00f0, 0x012cf000, 3, MSR_EQ, 0x1c04, instArgs{arg_APSR, arg_R_0}},                                      // MSR<c> APSR,<Rn> cond:4|0|0|0|1|0|0|1|0|1|1|0|0|(1)|(1)|(1)|(1)|(0)|(0)|(0)|(0)|0|0|0|0|Rn:4
-	{0x0ffff000, 0x032cf000, 4, MSR_EQ, 0x1c04, instArgs{arg_APSR, arg_const}},                                    // MSR<c> APSR,#<const> cond:4|0|0|1|1|0|0|1|0|1|1|0|0|(1)|(1)|(1)|(1)|imm12:12
-	{0x0fff0000, 0x032cf000, 3, MSR_EQ, 0x1c04, instArgs{arg_APSR, arg_const}},                                    // MSR<c> APSR,#<const> cond:4|0|0|1|1|0|0|1|0|1|1|0|0|(1)|(1)|(1)|(1)|imm12:12
-	{0x0fe0f0f0, 0x00000090, 4, MUL_EQ, 0x14011c04, instArgs{arg_R_16, arg_R_0, arg_R_8}},                         // MUL{S}<c> <Rd>,<Rn>,<Rm> cond:4|0|0|0|0|0|0|0|S|Rd:4|(0)|(0)|(0)|(0)|Rm:4|1|0|0|1|Rn:4
-	{0x0fe000f0, 0x00000090, 3, MUL_EQ, 0x14011c04, instArgs{arg_R_16, arg_R_0, arg_R_8}},                         // MUL{S}<c> <Rd>,<Rn>,<Rm> cond:4|0|0|0|0|0|0|0|S|Rd:4|(0)|(0)|(0)|(0)|Rm:4|1|0|0|1|Rn:4
-	{0x0fef0000, 0x03e00000, 2, MVN_EQ, 0x14011c04, instArgs{arg_R_12, arg_const}},                                // MVN{S}<c> <Rd>,#<const> cond:4|0|0|1|1|1|1|1|S|(0)|(0)|(0)|(0)|Rd:4|imm12:12
-	{0x0fe00000, 0x03e00000, 1, MVN_EQ, 0x14011c04, instArgs{arg_R_12, arg_const}},                                // MVN{S}<c> <Rd>,#<const> cond:4|0|0|1|1|1|1|1|S|(0)|(0)|(0)|(0)|Rd:4|imm12:12
-	{0x0fef0090, 0x01e00010, 4, MVN_EQ, 0x14011c04, instArgs{arg_R_12, arg_R_shift_R}},                            // MVN{S}<c> <Rd>,<Rm>,<type> <Rs> cond:4|0|0|0|1|1|1|1|S|(0)|(0)|(0)|(0)|Rd:4|Rs:4|0|type:2|1|Rm:4
-	{0x0fe00090, 0x01e00010, 3, MVN_EQ, 0x14011c04, instArgs{arg_R_12, arg_R_shift_R}},                            // MVN{S}<c> <Rd>,<Rm>,<type> <Rs> cond:4|0|0|0|1|1|1|1|S|(0)|(0)|(0)|(0)|Rd:4|Rs:4|0|type:2|1|Rm:4
-	{0x0fef0010, 0x01e00000, 2, MVN_EQ, 0x14011c04, instArgs{arg_R_12, arg_R_shift_imm}},                          // MVN{S}<c> <Rd>,<Rm>{,<shift>} cond:4|0|0|0|1|1|1|1|S|(0)|(0)|(0)|(0)|Rd:4|imm5:5|type:2|0|Rm:4
-	{0x0fe00010, 0x01e00000, 1, MVN_EQ, 0x14011c04, instArgs{arg_R_12, arg_R_shift_imm}},                          // MVN{S}<c> <Rd>,<Rm>{,<shift>} cond:4|0|0|0|1|1|1|1|S|(0)|(0)|(0)|(0)|Rd:4|imm5:5|type:2|0|Rm:4
-	{0x0fffffff, 0x0320f000, 4, NOP_EQ, 0x1c04, instArgs{}},                                                       // NOP<c> cond:4|0|0|1|1|0|0|1|0|0|0|0|0|(1)|(1)|(1)|(1)|(0)|(0)|(0)|(0)|0|0|0|0|0|0|0|0
-	{0x0fff00ff, 0x0320f000, 3, NOP_EQ, 0x1c04, instArgs{}},                                                       // NOP<c> cond:4|0|0|1|1|0|0|1|0|0|0|0|0|(1)|(1)|(1)|(1)|(0)|(0)|(0)|(0)|0|0|0|0|0|0|0|0
-	{0x0fe00000, 0x03800000, 2, ORR_EQ, 0x14011c04, instArgs{arg_R_12, arg_R_16, arg_const}},                      // ORR{S}<c> <Rd>,<Rn>,#<const> cond:4|0|0|1|1|1|0|0|S|Rn:4|Rd:4|imm12:12
-	{0x0fe00090, 0x01800010, 4, ORR_EQ, 0x14011c04, instArgs{arg_R_12, arg_R_16, arg_R_shift_R}},                  // ORR{S}<c> <Rd>,<Rn>,<Rm>,<type> <Rs> cond:4|0|0|0|1|1|0|0|S|Rn:4|Rd:4|Rs:4|0|type:2|1|Rm:4
-	{0x0fe00010, 0x01800000, 2, ORR_EQ, 0x14011c04, instArgs{arg_R_12, arg_R_16, arg_R_shift_imm}},                // ORR{S}<c> <Rd>,<Rn>,<Rm>{,<shift>} cond:4|0|0|0|1|1|0|0|S|Rn:4|Rd:4|imm5:5|type:2|0|Rm:4
-	{0x0ff00030, 0x06800010, 4, PKHBT_EQ, 0x6011c04, instArgs{arg_R_12, arg_R_16, arg_R_shift_imm}},               // PKH<BT,TB><c> <Rd>,<Rn>,<Rm>{,LSL #<imm5>} cond:4|0|1|1|0|1|0|0|0|Rn:4|Rd:4|imm5:5|tb|0|1|Rm:4
-	{0xff7ff000, 0xf55ff000, 4, PLD, 0x0, instArgs{arg_label_pm_12}},                                              // PLD <label+/-12> 1|1|1|1|0|1|0|1|U|(1)|0|1|1|1|1|1|(1)|(1)|(1)|(1)|imm12:12
-	{0xff3f0000, 0xf55ff000, 3, PLD, 0x0, instArgs{arg_label_pm_12}},                                              // PLD <label+/-12> 1|1|1|1|0|1|0|1|U|(1)|0|1|1|1|1|1|(1)|(1)|(1)|(1)|imm12:12
-	{0xff30f000, 0xf510f000, 2, PLD_W, 0x1601, instArgs{arg_mem_R_pm_imm12_offset}},                               // PLD{W} [<Rn>,#+/-<imm12>] 1|1|1|1|0|1|0|1|U|R|0|1|Rn:4|(1)|(1)|(1)|(1)|imm12:12
-	{0xff300000, 0xf510f000, 1, PLD_W, 0x1601, instArgs{arg_mem_R_pm_imm12_offset}},                               // PLD{W} [<Rn>,#+/-<imm12>] 1|1|1|1|0|1|0|1|U|R|0|1|Rn:4|(1)|(1)|(1)|(1)|imm12:12
-	{0xff30f010, 0xf710f000, 4, PLD_W, 0x1601, instArgs{arg_mem_R_pm_R_shift_imm_offset}},                         // PLD{W} [<Rn>,+/-<Rm>{, <shift>}] 1|1|1|1|0|1|1|1|U|R|0|1|Rn:4|(1)|(1)|(1)|(1)|imm5:5|type:2|0|Rm:4
-	{0xff300010, 0xf710f000, 3, PLD_W, 0x1601, instArgs{arg_mem_R_pm_R_shift_imm_offset}},                         // PLD{W} [<Rn>,+/-<Rm>{, <shift>}] 1|1|1|1|0|1|1|1|U|R|0|1|Rn:4|(1)|(1)|(1)|(1)|imm5:5|type:2|0|Rm:4
-	{0xff70f000, 0xf450f000, 4, PLI, 0x0, instArgs{arg_mem_R_pm_imm12_offset}},                                    // PLI [<Rn>,#+/-<imm12>] 1|1|1|1|0|1|0|0|U|1|0|1|Rn:4|(1)|(1)|(1)|(1)|imm12:12
-	{0xff700000, 0xf450f000, 3, PLI, 0x0, instArgs{arg_mem_R_pm_imm12_offset}},                                    // PLI [<Rn>,#+/-<imm12>] 1|1|1|1|0|1|0|0|U|1|0|1|Rn:4|(1)|(1)|(1)|(1)|imm12:12
-	{0xff70f010, 0xf650f000, 4, PLI, 0x0, instArgs{arg_mem_R_pm_R_shift_imm_offset}},                              // PLI [<Rn>,+/-<Rm>{, <shift>}] 1|1|1|1|0|1|1|0|U|1|0|1|Rn:4|(1)|(1)|(1)|(1)|imm5:5|type:2|0|Rm:4
-	{0xff700010, 0xf650f000, 3, PLI, 0x0, instArgs{arg_mem_R_pm_R_shift_imm_offset}},                              // PLI [<Rn>,+/-<Rm>{, <shift>}] 1|1|1|1|0|1|1|0|U|1|0|1|Rn:4|(1)|(1)|(1)|(1)|imm5:5|type:2|0|Rm:4
-	{0x0fff0000, 0x08bd0000, 4, POP_EQ, 0x1c04, instArgs{arg_registers2}},                                         // POP<c> <registers2> cond:4|1|0|0|0|1|0|1|1|1|1|0|1|register_list:16
-	{0x0fff0fff, 0x049d0004, 4, POP_EQ, 0x1c04, instArgs{arg_registers1}},                                         // POP<c> <registers1> cond:4|0|1|0|0|1|0|0|1|1|1|0|1|Rt:4|0|0|0|0|0|0|0|0|0|1|0|0
-	{0x0fff0000, 0x092d0000, 4, PUSH_EQ, 0x1c04, instArgs{arg_registers2}},                                        // PUSH<c> <registers2> cond:4|1|0|0|1|0|0|1|0|1|1|0|1|register_list:16
-	{0x0fff0fff, 0x052d0004, 4, PUSH_EQ, 0x1c04, instArgs{arg_registers1}},                                        // PUSH<c> <registers1> cond:4|0|1|0|1|0|0|1|0|1|1|0|1|Rt:4|0|0|0|0|0|0|0|0|0|1|0|0
-	{0x0ff00ff0, 0x06200f10, 4, QADD16_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},                         // QADD16<c> <Rd>,<Rn>,<Rm> cond:4|0|1|1|0|0|0|1|0|Rn:4|Rd:4|(1)|(1)|(1)|(1)|0|0|0|1|Rm:4
-	{0x0ff000f0, 0x06200f10, 3, QADD16_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},                         // QADD16<c> <Rd>,<Rn>,<Rm> cond:4|0|1|1|0|0|0|1|0|Rn:4|Rd:4|(1)|(1)|(1)|(1)|0|0|0|1|Rm:4
-	{0x0ff00ff0, 0x06200f90, 4, QADD8_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},                          // QADD8<c> <Rd>,<Rn>,<Rm> cond:4|0|1|1|0|0|0|1|0|Rn:4|Rd:4|(1)|(1)|(1)|(1)|1|0|0|1|Rm:4
-	{0x0ff000f0, 0x06200f90, 3, QADD8_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},                          // QADD8<c> <Rd>,<Rn>,<Rm> cond:4|0|1|1|0|0|0|1|0|Rn:4|Rd:4|(1)|(1)|(1)|(1)|1|0|0|1|Rm:4
-	{0x0ff00ff0, 0x01000050, 4, QADD_EQ, 0x1c04, instArgs{arg_R_12, arg_R_0, arg_R_16}},                           // QADD<c> <Rd>,<Rm>,<Rn> cond:4|0|0|0|1|0|0|0|0|Rn:4|Rd:4|(0)|(0)|(0)|(0)|0|1|0|1|Rm:4
-	{0x0ff000f0, 0x01000050, 3, QADD_EQ, 0x1c04, instArgs{arg_R_12, arg_R_0, arg_R_16}},                           // QADD<c> <Rd>,<Rm>,<Rn> cond:4|0|0|0|1|0|0|0|0|Rn:4|Rd:4|(0)|(0)|(0)|(0)|0|1|0|1|Rm:4
-	{0x0ff00ff0, 0x06200f30, 4, QASX_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},                           // QASX<c> <Rd>,<Rn>,<Rm> cond:4|0|1|1|0|0|0|1|0|Rn:4|Rd:4|(1)|(1)|(1)|(1)|0|0|1|1|Rm:4
-	{0x0ff000f0, 0x06200f30, 3, QASX_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},                           // QASX<c> <Rd>,<Rn>,<Rm> cond:4|0|1|1|0|0|0|1|0|Rn:4|Rd:4|(1)|(1)|(1)|(1)|0|0|1|1|Rm:4
-	{0x0ff00ff0, 0x01400050, 4, QDADD_EQ, 0x1c04, instArgs{arg_R_12, arg_R_0, arg_R_16}},                          // QDADD<c> <Rd>,<Rm>,<Rn> cond:4|0|0|0|1|0|1|0|0|Rn:4|Rd:4|(0)|(0)|(0)|(0)|0|1|0|1|Rm:4
-	{0x0ff000f0, 0x01400050, 3, QDADD_EQ, 0x1c04, instArgs{arg_R_12, arg_R_0, arg_R_16}},                          // QDADD<c> <Rd>,<Rm>,<Rn> cond:4|0|0|0|1|0|1|0|0|Rn:4|Rd:4|(0)|(0)|(0)|(0)|0|1|0|1|Rm:4
-	{0x0ff00ff0, 0x01600050, 4, QDSUB_EQ, 0x1c04, instArgs{arg_R_12, arg_R_0, arg_R_16}},                          // QDSUB<c> <Rd>,<Rm>,<Rn> cond:4|0|0|0|1|0|1|1|0|Rn:4|Rd:4|0|0|0|0|0|1|0|1|Rm:4
-	{0x0ff00ff0, 0x06200f50, 4, QSAX_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},                           // QSAX<c> <Rd>,<Rn>,<Rm> cond:4|0|1|1|0|0|0|1|0|Rn:4|Rd:4|(1)|(1)|(1)|(1)|0|1|0|1|Rm:4
-	{0x0ff000f0, 0x06200f50, 3, QSAX_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},                           // QSAX<c> <Rd>,<Rn>,<Rm> cond:4|0|1|1|0|0|0|1|0|Rn:4|Rd:4|(1)|(1)|(1)|(1)|0|1|0|1|Rm:4
-	{0x0ff00ff0, 0x06200f70, 4, QSUB16_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},                         // QSUB16<c> <Rd>,<Rn>,<Rm> cond:4|0|1|1|0|0|0|1|0|Rn:4|Rd:4|(1)|(1)|(1)|(1)|0|1|1|1|Rm:4
-	{0x0ff000f0, 0x06200f70, 3, QSUB16_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},                         // QSUB16<c> <Rd>,<Rn>,<Rm> cond:4|0|1|1|0|0|0|1|0|Rn:4|Rd:4|(1)|(1)|(1)|(1)|0|1|1|1|Rm:4
-	{0x0ff00ff0, 0x06200ff0, 4, QSUB8_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},                          // QSUB8<c> <Rd>,<Rn>,<Rm> cond:4|0|1|1|0|0|0|1|0|Rn:4|Rd:4|(1)|(1)|(1)|(1)|1|1|1|1|Rm:4
-	{0x0ff000f0, 0x06200ff0, 3, QSUB8_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},                          // QSUB8<c> <Rd>,<Rn>,<Rm> cond:4|0|1|1|0|0|0|1|0|Rn:4|Rd:4|(1)|(1)|(1)|(1)|1|1|1|1|Rm:4
-	{0x0ff00ff0, 0x01200050, 4, QSUB_EQ, 0x1c04, instArgs{arg_R_12, arg_R_0, arg_R_16}},                           // QSUB<c> <Rd>,<Rm>,<Rn> cond:4|0|0|0|1|0|0|1|0|Rn:4|Rd:4|0|0|0|0|0|1|0|1|Rm:4
-	{0x0fff0ff0, 0x06ff0f30, 4, RBIT_EQ, 0x1c04, instArgs{arg_R_12, arg_R_0}},                                     // RBIT<c> <Rd>,<Rm> cond:4|0|1|1|0|1|1|1|1|(1)|(1)|(1)|(1)|Rd:4|(1)|(1)|(1)|(1)|0|0|1|1|Rm:4
-	{0x0ff000f0, 0x06ff0f30, 3, RBIT_EQ, 0x1c04, instArgs{arg_R_12, arg_R_0}},                                     // RBIT<c> <Rd>,<Rm> cond:4|0|1|1|0|1|1|1|1|(1)|(1)|(1)|(1)|Rd:4|(1)|(1)|(1)|(1)|0|0|1|1|Rm:4
-	{0x0fff0ff0, 0x06bf0fb0, 4, REV16_EQ, 0x1c04, instArgs{arg_R_12, arg_R_0}},                                    // REV16<c> <Rd>,<Rm> cond:4|0|1|1|0|1|0|1|1|(1)|(1)|(1)|(1)|Rd:4|(1)|(1)|(1)|(1)|1|0|1|1|Rm:4
-	{0x0ff000f0, 0x06bf0fb0, 3, REV16_EQ, 0x1c04, instArgs{arg_R_12, arg_R_0}},                                    // REV16<c> <Rd>,<Rm> cond:4|0|1|1|0|1|0|1|1|(1)|(1)|(1)|(1)|Rd:4|(1)|(1)|(1)|(1)|1|0|1|1|Rm:4
-	{0x0fff0ff0, 0x06bf0f30, 4, REV_EQ, 0x1c04, instArgs{arg_R_12, arg_R_0}},                                      // REV<c> <Rd>,<Rm> cond:4|0|1|1|0|1|0|1|1|(1)|(1)|(1)|(1)|Rd:4|(1)|(1)|(1)|(1)|0|0|1|1|Rm:4
-	{0x0ff000f0, 0x06bf0f30, 3, REV_EQ, 0x1c04, instArgs{arg_R_12, arg_R_0}},                                      // REV<c> <Rd>,<Rm> cond:4|0|1|1|0|1|0|1|1|(1)|(1)|(1)|(1)|Rd:4|(1)|(1)|(1)|(1)|0|0|1|1|Rm:4
-	{0x0fff0ff0, 0x06ff0fb0, 4, REVSH_EQ, 0x1c04, instArgs{arg_R_12, arg_R_0}},                                    // REVSH<c> <Rd>,<Rm> cond:4|0|1|1|0|1|1|1|1|(1)|(1)|(1)|(1)|Rd:4|(1)|(1)|(1)|(1)|1|0|1|1|Rm:4
-	{0x0ff000f0, 0x06ff0fb0, 3, REVSH_EQ, 0x1c04, instArgs{arg_R_12, arg_R_0}},                                    // REVSH<c> <Rd>,<Rm> cond:4|0|1|1|0|1|1|1|1|(1)|(1)|(1)|(1)|Rd:4|(1)|(1)|(1)|(1)|1|0|1|1|Rm:4
-	{0x0fef0070, 0x01a00060, 2, ROR_EQ, 0x14011c04, instArgs{arg_R_12, arg_R_0, arg_imm5}},                        // ROR{S}<c> <Rd>,<Rm>,#<imm5> cond:4|0|0|0|1|1|0|1|S|0|0|0|0|Rd:4|imm5:5|1|1|0|Rm:4
-	{0x0fef00f0, 0x01a00070, 4, ROR_EQ, 0x14011c04, instArgs{arg_R_12, arg_R_0, arg_R_8}},                         // ROR{S}<c> <Rd>,<Rn>,<Rm> cond:4|0|0|0|1|1|0|1|S|0|0|0|0|Rd:4|Rm:4|0|1|1|1|Rn:4
-	{0x0fef0ff0, 0x01a00060, 4, RRX_EQ, 0x14011c04, instArgs{arg_R_12, arg_R_0}},                                  // RRX{S}<c> <Rd>,<Rm> cond:4|0|0|0|1|1|0|1|S|0|0|0|0|Rd:4|0|0|0|0|0|1|1|0|Rm:4
-	{0x0fe00000, 0x02600000, 2, RSB_EQ, 0x14011c04, instArgs{arg_R_12, arg_R_16, arg_const}},                      // RSB{S}<c> <Rd>,<Rn>,#<const> cond:4|0|0|1|0|0|1|1|S|Rn:4|Rd:4|imm12:12
-	{0x0fe00090, 0x00600010, 4, RSB_EQ, 0x14011c04, instArgs{arg_R_12, arg_R_16, arg_R_shift_R}},                  // RSB{S}<c> <Rd>,<Rn>,<Rm>,<type> <Rs> cond:4|0|0|0|0|0|1|1|S|Rn:4|Rd:4|Rs:4|0|type:2|1|Rm:4
-	{0x0fe00010, 0x00600000, 2, RSB_EQ, 0x14011c04, instArgs{arg_R_12, arg_R_16, arg_R_shift_imm}},                // RSB{S}<c> <Rd>,<Rn>,<Rm>{,<shift>} cond:4|0|0|0|0|0|1|1|S|Rn:4|Rd:4|imm5:5|type:2|0|Rm:4
-	{0x0fe00000, 0x02e00000, 2, RSC_EQ, 0x14011c04, instArgs{arg_R_12, arg_R_16, arg_const}},                      // RSC{S}<c> <Rd>,<Rn>,#<const> cond:4|0|0|1|0|1|1|1|S|Rn:4|Rd:4|imm12:12
-	{0x0fe00090, 0x00e00010, 4, RSC_EQ, 0x14011c04, instArgs{arg_R_12, arg_R_16, arg_R_shift_R}},                  // RSC{S}<c> <Rd>,<Rn>,<Rm>,<type> <Rs> cond:4|0|0|0|0|1|1|1|S|Rn:4|Rd:4|Rs:4|0|type:2|1|Rm:4
-	{0x0fe00010, 0x00e00000, 2, RSC_EQ, 0x14011c04, instArgs{arg_R_12, arg_R_16, arg_R_shift_imm}},                // RSC{S}<c> <Rd>,<Rn>,<Rm>{,<shift>} cond:4|0|0|0|0|1|1|1|S|Rn:4|Rd:4|imm5:5|type:2|0|Rm:4
-	{0x0ff00ff0, 0x06100f10, 4, SADD16_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},                         // SADD16<c> <Rd>,<Rn>,<Rm> cond:4|0|1|1|0|0|0|0|1|Rn:4|Rd:4|(1)|(1)|(1)|(1)|0|0|0|1|Rm:4
-	{0x0ff000f0, 0x06100f10, 3, SADD16_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},                         // SADD16<c> <Rd>,<Rn>,<Rm> cond:4|0|1|1|0|0|0|0|1|Rn:4|Rd:4|(1)|(1)|(1)|(1)|0|0|0|1|Rm:4
-	{0x0ff00ff0, 0x06100f90, 4, SADD8_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},                          // SADD8<c> <Rd>,<Rn>,<Rm> cond:4|0|1|1|0|0|0|0|1|Rn:4|Rd:4|(1)|(1)|(1)|(1)|1|0|0|1|Rm:4
-	{0x0ff000f0, 0x06100f90, 3, SADD8_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},                          // SADD8<c> <Rd>,<Rn>,<Rm> cond:4|0|1|1|0|0|0|0|1|Rn:4|Rd:4|(1)|(1)|(1)|(1)|1|0|0|1|Rm:4
-	{0x0ff00ff0, 0x06100f30, 4, SASX_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},                           // SASX<c> <Rd>,<Rn>,<Rm> cond:4|0|1|1|0|0|0|0|1|Rn:4|Rd:4|(1)|(1)|(1)|(1)|0|0|1|1|Rm:4
-	{0x0ff000f0, 0x06100f30, 3, SASX_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},                           // SASX<c> <Rd>,<Rn>,<Rm> cond:4|0|1|1|0|0|0|0|1|Rn:4|Rd:4|(1)|(1)|(1)|(1)|0|0|1|1|Rm:4
-	{0x0fe00000, 0x02c00000, 2, SBC_EQ, 0x14011c04, instArgs{arg_R_12, arg_R_16, arg_const}},                      // SBC{S}<c> <Rd>,<Rn>,#<const> cond:4|0|0|1|0|1|1|0|S|Rn:4|Rd:4|imm12:12
-	{0x0fe00090, 0x00c00010, 4, SBC_EQ, 0x14011c04, instArgs{arg_R_12, arg_R_16, arg_R_shift_R}},                  // SBC{S}<c> <Rd>,<Rn>,<Rm>,<type> <Rs> cond:4|0|0|0|0|1|1|0|S|Rn:4|Rd:4|Rs:4|0|type:2|1|Rm:4
-	{0x0fe00010, 0x00c00000, 2, SBC_EQ, 0x14011c04, instArgs{arg_R_12, arg_R_16, arg_R_shift_imm}},                // SBC{S}<c> <Rd>,<Rn>,<Rm>{,<shift>} cond:4|0|0|0|0|1|1|0|S|Rn:4|Rd:4|imm5:5|type:2|0|Rm:4
-	{0x0fe00070, 0x07a00050, 4, SBFX_EQ, 0x1c04, instArgs{arg_R_12, arg_R_0, arg_imm5, arg_widthm1}},              // SBFX<c> <Rd>,<Rn>,#<lsb>,#<widthm1> cond:4|0|1|1|1|1|0|1|widthm1:5|Rd:4|lsb:5|1|0|1|Rn:4
-	{0x0ff0f0f0, 0x0710f010, 4, SDIV_EQ, 0x1c04, instArgs{arg_R_16, arg_R_0, arg_R_8}},                            // SDIV<c> <Rd>,<Rn>,<Rm> cond:4|0|1|1|1|0|0|0|1|Rd:4|(1)|(1)|(1)|(1)|Rm:4|0|0|0|1|Rn:4
-	{0x0ff000f0, 0x0710f010, 3, SDIV_EQ, 0x1c04, instArgs{arg_R_16, arg_R_0, arg_R_8}},                            // SDIV<c> <Rd>,<Rn>,<Rm> cond:4|0|1|1|1|0|0|0|1|Rd:4|(1)|(1)|(1)|(1)|Rm:4|0|0|0|1|Rn:4
-	{0x0ff00ff0, 0x06800fb0, 4, SEL_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},                            // SEL<c> <Rd>,<Rn>,<Rm> cond:4|0|1|1|0|1|0|0|0|Rn:4|Rd:4|(1)|(1)|(1)|(1)|1|0|1|1|Rm:4
-	{0x0ff000f0, 0x06800fb0, 3, SEL_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},                            // SEL<c> <Rd>,<Rn>,<Rm> cond:4|0|1|1|0|1|0|0|0|Rn:4|Rd:4|(1)|(1)|(1)|(1)|1|0|1|1|Rm:4
-	{0xfffffdff, 0xf1010000, 4, SETEND, 0x0, instArgs{arg_endian}},                                                // SETEND <endian_specifier> 1|1|1|1|0|0|0|1|0|0|0|0|0|0|0|1|0|0|0|0|0|0|E|(0)|(0)|(0)|(0)|(0)|(0)|(0)|(0)|(0)
-	{0xfffffc00, 0xf1010000, 3, SETEND, 0x0, instArgs{arg_endian}},                                                // SETEND <endian_specifier> 1|1|1|1|0|0|0|1|0|0|0|0|0|0|0|1|0|0|0|0|0|0|E|(0)|(0)|(0)|(0)|(0)|(0)|(0)|(0)|(0)
-	{0x0fffffff, 0x0320f004, 4, SEV_EQ, 0x1c04, instArgs{}},                                                       // SEV<c> cond:4|0|0|1|1|0|0|1|0|0|0|0|0|(1)|(1)|(1)|(1)|(0)|(0)|(0)|(0)|0|0|0|0|0|1|0|0
-	{0x0fff00ff, 0x0320f004, 3, SEV_EQ, 0x1c04, instArgs{}},                                                       // SEV<c> cond:4|0|0|1|1|0|0|1|0|0|0|0|0|(1)|(1)|(1)|(1)|(0)|(0)|(0)|(0)|0|0|0|0|0|1|0|0
-	{0x0ff00ff0, 0x06300f10, 4, SHADD16_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},                        // SHADD16<c> <Rd>,<Rn>,<Rm> cond:4|0|1|1|0|0|0|1|1|Rn:4|Rd:4|(1)|(1)|(1)|(1)|0|0|0|1|Rm:4
-	{0x0ff000f0, 0x06300f10, 3, SHADD16_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},                        // SHADD16<c> <Rd>,<Rn>,<Rm> cond:4|0|1|1|0|0|0|1|1|Rn:4|Rd:4|(1)|(1)|(1)|(1)|0|0|0|1|Rm:4
-	{0x0ff00ff0, 0x06300f90, 4, SHADD8_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},                         // SHADD8<c> <Rd>,<Rn>,<Rm> cond:4|0|1|1|0|0|0|1|1|Rn:4|Rd:4|(1)|(1)|(1)|(1)|1|0|0|1|Rm:4
-	{0x0ff000f0, 0x06300f90, 3, SHADD8_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},                         // SHADD8<c> <Rd>,<Rn>,<Rm> cond:4|0|1|1|0|0|0|1|1|Rn:4|Rd:4|(1)|(1)|(1)|(1)|1|0|0|1|Rm:4
-	{0x0ff00ff0, 0x06300f30, 4, SHASX_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},                          // SHASX<c> <Rd>,<Rn>,<Rm> cond:4|0|1|1|0|0|0|1|1|Rn:4|Rd:4|(1)|(1)|(1)|(1)|0|0|1|1|Rm:4
-	{0x0ff000f0, 0x06300f30, 3, SHASX_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},                          // SHASX<c> <Rd>,<Rn>,<Rm> cond:4|0|1|1|0|0|0|1|1|Rn:4|Rd:4|(1)|(1)|(1)|(1)|0|0|1|1|Rm:4
-	{0x0ff00ff0, 0x06300f50, 4, SHSAX_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},                          // SHSAX<c> <Rd>,<Rn>,<Rm> cond:4|0|1|1|0|0|0|1|1|Rn:4|Rd:4|(1)|(1)|(1)|(1)|0|1|0|1|Rm:4
-	{0x0ff000f0, 0x06300f50, 3, SHSAX_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},                          // SHSAX<c> <Rd>,<Rn>,<Rm> cond:4|0|1|1|0|0|0|1|1|Rn:4|Rd:4|(1)|(1)|(1)|(1)|0|1|0|1|Rm:4
-	{0x0ff00ff0, 0x06300f70, 4, SHSUB16_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},                        // SHSUB16<c> <Rd>,<Rn>,<Rm> cond:4|0|1|1|0|0|0|1|1|Rn:4|Rd:4|(1)|(1)|(1)|(1)|0|1|1|1|Rm:4
-	{0x0ff000f0, 0x06300f70, 3, SHSUB16_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},                        // SHSUB16<c> <Rd>,<Rn>,<Rm> cond:4|0|1|1|0|0|0|1|1|Rn:4|Rd:4|(1)|(1)|(1)|(1)|0|1|1|1|Rm:4
-	{0x0ff00ff0, 0x06300ff0, 4, SHSUB8_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},                         // SHSUB8<c> <Rd>,<Rn>,<Rm> cond:4|0|1|1|0|0|0|1|1|Rn:4|Rd:4|(1)|(1)|(1)|(1)|1|1|1|1|Rm:4
-	{0x0ff000f0, 0x06300ff0, 3, SHSUB8_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},                         // SHSUB8<c> <Rd>,<Rn>,<Rm> cond:4|0|1|1|0|0|0|1|1|Rn:4|Rd:4|(1)|(1)|(1)|(1)|1|1|1|1|Rm:4
-	{0x0ff00090, 0x01000080, 4, SMLABB_EQ, 0x50106011c04, instArgs{arg_R_16, arg_R_0, arg_R_8, arg_R_12}},         // SMLA<x><y><c> <Rd>,<Rn>,<Rm>,<Ra> cond:4|0|0|0|1|0|0|0|0|Rd:4|Ra:4|Rm:4|1|M|N|0|Rn:4
-	{0x0ff000d0, 0x07000010, 2, SMLAD_EQ, 0x5011c04, instArgs{arg_R_16, arg_R_0, arg_R_8, arg_R_12}},              // SMLAD{X}<c> <Rd>,<Rn>,<Rm>,<Ra> cond:4|0|1|1|1|0|0|0|0|Rd:4|Ra:4|Rm:4|0|0|M|1|Rn:4
-	{0x0ff00090, 0x01400080, 4, SMLALBB_EQ, 0x50106011c04, instArgs{arg_R_12, arg_R_16, arg_R_0, arg_R_8}},        // SMLAL<x><y><c> <RdLo>,<RdHi>,<Rn>,<Rm> cond:4|0|0|0|1|0|1|0|0|RdHi:4|RdLo:4|Rm:4|1|M|N|0|Rn:4
-	{0x0ff000d0, 0x07400010, 4, SMLALD_EQ, 0x5011c04, instArgs{arg_R_12, arg_R_16, arg_R_0, arg_R_8}},             // SMLALD{X}<c> <RdLo>,<RdHi>,<Rn>,<Rm> cond:4|0|1|1|1|0|1|0|0|RdHi:4|RdLo:4|Rm:4|0|0|M|1|Rn:4
-	{0x0fe000f0, 0x00e00090, 4, SMLAL_EQ, 0x14011c04, instArgs{arg_R_12, arg_R_16, arg_R_0, arg_R_8}},             // SMLAL{S}<c> <RdLo>,<RdHi>,<Rn>,<Rm> cond:4|0|0|0|0|1|1|1|S|RdHi:4|RdLo:4|Rm:4|1|0|0|1|Rn:4
-	{0x0ff000b0, 0x01200080, 4, SMLAWB_EQ, 0x6011c04, instArgs{arg_R_16, arg_R_0, arg_R_8, arg_R_12}},             // SMLAW<y><c> <Rd>,<Rn>,<Rm>,<Ra> cond:4|0|0|0|1|0|0|1|0|Rd:4|Ra:4|Rm:4|1|M|0|0|Rn:4
-	{0x0ff000d0, 0x07000050, 2, SMLSD_EQ, 0x5011c04, instArgs{arg_R_16, arg_R_0, arg_R_8, arg_R_12}},              // SMLSD{X}<c> <Rd>,<Rn>,<Rm>,<Ra> cond:4|0|1|1|1|0|0|0|0|Rd:4|Ra:4|Rm:4|0|1|M|1|Rn:4
-	{0x0ff000d0, 0x07400050, 4, SMLSLD_EQ, 0x5011c04, instArgs{arg_R_12, arg_R_16, arg_R_0, arg_R_8}},             // SMLSLD{X}<c> <RdLo>,<RdHi>,<Rn>,<Rm> cond:4|0|1|1|1|0|1|0|0|RdHi:4|RdLo:4|Rm:4|0|1|M|1|Rn:4
-	{0x0ff000d0, 0x07500010, 2, SMMLA_EQ, 0x5011c04, instArgs{arg_R_16, arg_R_0, arg_R_8, arg_R_12}},              // SMMLA{R}<c> <Rd>,<Rn>,<Rm>,<Ra> cond:4|0|1|1|1|0|1|0|1|Rd:4|Ra:4|Rm:4|0|0|R|1|Rn:4
-	{0x0ff000d0, 0x075000d0, 4, SMMLS_EQ, 0x5011c04, instArgs{arg_R_16, arg_R_0, arg_R_8, arg_R_12}},              // SMMLS{R}<c> <Rd>,<Rn>,<Rm>,<Ra> cond:4|0|1|1|1|0|1|0|1|Rd:4|Ra:4|Rm:4|1|1|R|1|Rn:4
-	{0x0ff0f0d0, 0x0750f010, 4, SMMUL_EQ, 0x5011c04, instArgs{arg_R_16, arg_R_0, arg_R_8}},                        // SMMUL{R}<c> <Rd>,<Rn>,<Rm> cond:4|0|1|1|1|0|1|0|1|Rd:4|1|1|1|1|Rm:4|0|0|R|1|Rn:4
-	{0x0ff0f0d0, 0x0700f010, 4, SMUAD_EQ, 0x5011c04, instArgs{arg_R_16, arg_R_0, arg_R_8}},                        // SMUAD{X}<c> <Rd>,<Rn>,<Rm> cond:4|0|1|1|1|0|0|0|0|Rd:4|1|1|1|1|Rm:4|0|0|M|1|Rn:4
-	{0x0ff0f090, 0x01600080, 4, SMULBB_EQ, 0x50106011c04, instArgs{arg_R_16, arg_R_0, arg_R_8}},                   // SMUL<x><y><c> <Rd>,<Rn>,<Rm> cond:4|0|0|0|1|0|1|1|0|Rd:4|0|0|0|0|Rm:4|1|M|N|0|Rn:4
-	{0x0fe000f0, 0x00c00090, 4, SMULL_EQ, 0x14011c04, instArgs{arg_R_12, arg_R_16, arg_R_0, arg_R_8}},             // SMULL{S}<c> <RdLo>,<RdHi>,<Rn>,<Rm> cond:4|0|0|0|0|1|1|0|S|RdHi:4|RdLo:4|Rm:4|1|0|0|1|Rn:4
-	{0x0ff0f0b0, 0x012000a0, 4, SMULWB_EQ, 0x6011c04, instArgs{arg_R_16, arg_R_0, arg_R_8}},                       // SMULW<y><c> <Rd>,<Rn>,<Rm> cond:4|0|0|0|1|0|0|1|0|Rd:4|0|0|0|0|Rm:4|1|M|1|0|Rn:4
-	{0x0ff0f0d0, 0x0700f050, 4, SMUSD_EQ, 0x5011c04, instArgs{arg_R_16, arg_R_0, arg_R_8}},                        // SMUSD{X}<c> <Rd>,<Rn>,<Rm> cond:4|0|1|1|1|0|0|0|0|Rd:4|1|1|1|1|Rm:4|0|1|M|1|Rn:4
-	{0x0ff00ff0, 0x06a00f30, 4, SSAT16_EQ, 0x1c04, instArgs{arg_R_12, arg_satimm4m1, arg_R_0}},                    // SSAT16<c> <Rd>,#<sat_imm4m1>,<Rn> cond:4|0|1|1|0|1|0|1|0|sat_imm:4|Rd:4|(1)|(1)|(1)|(1)|0|0|1|1|Rn:4
-	{0x0ff000f0, 0x06a00f30, 3, SSAT16_EQ, 0x1c04, instArgs{arg_R_12, arg_satimm4m1, arg_R_0}},                    // SSAT16<c> <Rd>,#<sat_imm4m1>,<Rn> cond:4|0|1|1|0|1|0|1|0|sat_imm:4|Rd:4|(1)|(1)|(1)|(1)|0|0|1|1|Rn:4
-	{0x0fe00030, 0x06a00010, 4, SSAT_EQ, 0x1c04, instArgs{arg_R_12, arg_satimm5m1, arg_R_shift_imm}},              // SSAT<c> <Rd>,#<sat_imm5m1>,<Rn>{,<shift>} cond:4|0|1|1|0|1|0|1|sat_imm:5|Rd:4|imm5:5|sh|0|1|Rn:4
-	{0x0ff00ff0, 0x06100f50, 4, SSAX_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},                           // SSAX<c> <Rd>,<Rn>,<Rm> cond:4|0|1|1|0|0|0|0|1|Rn:4|Rd:4|(1)|(1)|(1)|(1)|0|1|0|1|Rm:4
-	{0x0ff000f0, 0x06100f50, 3, SSAX_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},                           // SSAX<c> <Rd>,<Rn>,<Rm> cond:4|0|1|1|0|0|0|0|1|Rn:4|Rd:4|(1)|(1)|(1)|(1)|0|1|0|1|Rm:4
-	{0x0ff00ff0, 0x06100f70, 4, SSUB16_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},                         // SSUB16<c> <Rd>,<Rn>,<Rm> cond:4|0|1|1|0|0|0|0|1|Rn:4|Rd:4|(1)|(1)|(1)|(1)|0|1|1|1|Rm:4
-	{0x0ff000f0, 0x06100f70, 3, SSUB16_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},                         // SSUB16<c> <Rd>,<Rn>,<Rm> cond:4|0|1|1|0|0|0|0|1|Rn:4|Rd:4|(1)|(1)|(1)|(1)|0|1|1|1|Rm:4
-	{0x0ff00ff0, 0x06100ff0, 4, SSUB8_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},                          // SSUB8<c> <Rd>,<Rn>,<Rm> cond:4|0|1|1|0|0|0|0|1|Rn:4|Rd:4|(1)|(1)|(1)|(1)|1|1|1|1|Rm:4
-	{0x0ff000f0, 0x06100ff0, 3, SSUB8_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},                          // SSUB8<c> <Rd>,<Rn>,<Rm> cond:4|0|1|1|0|0|0|0|1|Rn:4|Rd:4|(1)|(1)|(1)|(1)|1|1|1|1|Rm:4
-	{0x0fd00000, 0x08800000, 4, STM_EQ, 0x1c04, instArgs{arg_R_16_WB, arg_registers}},                             // STM<c> <Rn>{!},<registers> cond:4|1|0|0|0|1|0|W|0|Rn:4|register_list:16
-	{0x0fd00000, 0x08000000, 4, STMDA_EQ, 0x1c04, instArgs{arg_R_16_WB, arg_registers}},                           // STMDA<c> <Rn>{!},<registers> cond:4|1|0|0|0|0|0|W|0|Rn:4|register_list:16
-	{0x0fd00000, 0x09000000, 2, STMDB_EQ, 0x1c04, instArgs{arg_R_16_WB, arg_registers}},                           // STMDB<c> <Rn>{!},<registers> cond:4|1|0|0|1|0|0|W|0|Rn:4|register_list:16
-	{0x0fd00000, 0x09800000, 4, STMIB_EQ, 0x1c04, instArgs{arg_R_16_WB, arg_registers}},                           // STMIB<c> <Rn>{!},<registers> cond:4|1|0|0|1|1|0|W|0|Rn:4|register_list:16
-	{0x0e500018, 0x06000000, 2, STR_EQ, 0x1c04, instArgs{arg_R_12, arg_mem_R_pm_R_shift_imm_W}},                   // STR<c> <Rt>,[<Rn>,+/-<Rm>{, <shift>}]{!} cond:4|0|1|1|P|U|0|W|0|Rn:4|Rt:4|imm5:5|type:2|0|Rm:4
-	{0x0e500000, 0x04000000, 2, STR_EQ, 0x1c04, instArgs{arg_R_12, arg_mem_R_pm_imm12_W}},                         // STR<c> <Rt>,[<Rn>{,#+/-<imm12>}]{!} cond:4|0|1|0|P|U|0|W|0|Rn:4|Rt:4|imm12:12
-	{0x0e500010, 0x06400000, 2, STRB_EQ, 0x1c04, instArgs{arg_R_12, arg_mem_R_pm_R_shift_imm_W}},                  // STRB<c> <Rt>,[<Rn>,+/-<Rm>{, <shift>}]{!} cond:4|0|1|1|P|U|1|W|0|Rn:4|Rt:4|imm5:5|type:2|0|Rm:4
-	{0x0e500000, 0x04400000, 2, STRB_EQ, 0x1c04, instArgs{arg_R_12, arg_mem_R_pm_imm12_W}},                        // STRB<c> <Rt>,[<Rn>{,#+/-<imm12>}]{!} cond:4|0|1|0|P|U|1|W|0|Rn:4|Rt:4|imm12:12
-	{0x0f700000, 0x04600000, 4, STRBT_EQ, 0x1c04, instArgs{arg_R_12, arg_mem_R_pm_imm12_postindex}},               // STRBT<c> <Rt>,[<Rn>],#+/-<imm12> cond:4|0|1|0|0|U|1|1|0|Rn:4|Rt:4|imm12:12
-	{0x0f700010, 0x06600000, 4, STRBT_EQ, 0x1c04, instArgs{arg_R_12, arg_mem_R_pm_R_shift_imm_postindex}},         // STRBT<c> <Rt>,[<Rn>],+/-<Rm>{, <shift>} cond:4|0|1|1|0|U|1|1|0|Rn:4|Rt:4|imm5:5|type:2|0|Rm:4
-	{0x0e500ff0, 0x000000f0, 4, STRD_EQ, 0x1c04, instArgs{arg_R1_12, arg_R2_12, arg_mem_R_pm_R_W}},                // STRD<c> <Rt1>,<Rt2>,[<Rn>,+/-<Rm>]{!} cond:4|0|0|0|P|U|0|W|0|Rn:4|Rt:4|(0)|(0)|(0)|(0)|1|1|1|1|Rm:4
-	{0x0e5000f0, 0x000000f0, 3, STRD_EQ, 0x1c04, instArgs{arg_R1_12, arg_R2_12, arg_mem_R_pm_R_W}},                // STRD<c> <Rt1>,<Rt2>,[<Rn>,+/-<Rm>]{!} cond:4|0|0|0|P|U|0|W|0|Rn:4|Rt:4|(0)|(0)|(0)|(0)|1|1|1|1|Rm:4
-	{0x0e5000f0, 0x004000f0, 4, STRD_EQ, 0x1c04, instArgs{arg_R1_12, arg_R2_12, arg_mem_R_pm_imm8_W}},             // STRD<c> <Rt1>,<Rt2>,[<Rn>{,#+/-<imm8>}]{!} cond:4|0|0|0|P|U|1|W|0|Rn:4|Rt:4|imm4H:4|1|1|1|1|imm4L:4
-	{0x0ff00ff0, 0x01800f90, 4, STREX_EQ, 0x1c04, instArgs{arg_R_12, arg_R_0, arg_mem_R}},                         // STREX<c> <Rd>,<Rt>,[<Rn>] cond:4|0|0|0|1|1|0|0|0|Rn:4|Rd:4|1|1|1|1|1|0|0|1|Rt:4
-	{0x0ff00ff0, 0x01c00f90, 4, STREXB_EQ, 0x1c04, instArgs{arg_R_12, arg_R_0, arg_mem_R}},                        // STREXB<c> <Rd>,<Rt>,[<Rn>] cond:4|0|0|0|1|1|1|0|0|Rn:4|Rd:4|1|1|1|1|1|0|0|1|Rt:4
-	{0x0ff00ff0, 0x01a00f90, 4, STREXD_EQ, 0x1c04, instArgs{arg_R_12, arg_R1_0, arg_R2_0, arg_mem_R}},             // STREXD<c> <Rd>,<Rt1>,<Rt2>,[<Rn>] cond:4|0|0|0|1|1|0|1|0|Rn:4|Rd:4|1|1|1|1|1|0|0|1|Rt:4
-	{0x0ff00ff0, 0x01e00f90, 4, STREXH_EQ, 0x1c04, instArgs{arg_R_12, arg_R_0, arg_mem_R}},                        // STREXH<c> <Rd>,<Rt>,[<Rn>] cond:4|0|0|0|1|1|1|1|0|Rn:4|Rd:4|1|1|1|1|1|0|0|1|Rt:4
-	{0x0e500ff0, 0x000000b0, 2, STRH_EQ, 0x1c04, instArgs{arg_R_12, arg_mem_R_pm_R_W}},                            // STRH<c> <Rt>,[<Rn>,+/-<Rm>]{!} cond:4|0|0|0|P|U|0|W|0|Rn:4|Rt:4|0|0|0|0|1|0|1|1|Rm:4
-	{0x0e5000f0, 0x004000b0, 2, STRH_EQ, 0x1c04, instArgs{arg_R_12, arg_mem_R_pm_imm8_W}},                         // STRH<c> <Rt>,[<Rn>{,#+/-<imm8>}]{!} cond:4|0|0|0|P|U|1|W|0|Rn:4|Rt:4|imm4H:4|1|0|1|1|imm4L:4
-	{0x0f7000f0, 0x006000b0, 4, STRHT_EQ, 0x1c04, instArgs{arg_R_12, arg_mem_R_pm_imm8_postindex}},                // STRHT<c> <Rt>, [<Rn>] {,#+/-<imm8>} cond:4|0|0|0|0|U|1|1|0|Rn:4|Rt:4|imm4H:4|1|0|1|1|imm4L:4
-	{0x0f700ff0, 0x002000b0, 4, STRHT_EQ, 0x1c04, instArgs{arg_R_12, arg_mem_R_pm_R_postindex}},                   // STRHT<c> <Rt>, [<Rn>], +/-<Rm> cond:4|0|0|0|0|U|0|1|0|Rn:4|Rt:4|0|0|0|0|1|0|1|1|Rm:4
-	{0x0f700000, 0x04200000, 4, STRT_EQ, 0x1c04, instArgs{arg_R_12, arg_mem_R_pm_imm12_postindex}},                // STRT<c> <Rt>, [<Rn>] {,#+/-<imm12>} cond:4|0|1|0|0|U|0|1|0|Rn:4|Rt:4|imm12:12
-	{0x0f700010, 0x06200000, 4, STRT_EQ, 0x1c04, instArgs{arg_R_12, arg_mem_R_pm_R_shift_imm_postindex}},          // STRT<c> <Rt>,[<Rn>],+/-<Rm>{, <shift>} cond:4|0|1|1|0|U|0|1|0|Rn:4|Rt:4|imm5:5|type:2|0|Rm:4
-	{0x0fe00000, 0x02400000, 2, SUB_EQ, 0x14011c04, instArgs{arg_R_12, arg_R_16, arg_const}},                      // SUB{S}<c> <Rd>,<Rn>,#<const> cond:4|0|0|1|0|0|1|0|S|Rn:4|Rd:4|imm12:12
-	{0x0fe00090, 0x00400010, 4, SUB_EQ, 0x14011c04, instArgs{arg_R_12, arg_R_16, arg_R_shift_R}},                  // SUB{S}<c> <Rd>,<Rn>,<Rm>,<type> <Rs> cond:4|0|0|0|0|0|1|0|S|Rn:4|Rd:4|Rs:4|0|type:2|1|Rm:4
-	{0x0fe00010, 0x00400000, 2, SUB_EQ, 0x14011c04, instArgs{arg_R_12, arg_R_16, arg_R_shift_imm}},                // SUB{S}<c> <Rd>,<Rn>,<Rm>{,<shift>} cond:4|0|0|0|0|0|1|0|S|Rn:4|Rd:4|imm5:5|type:2|0|Rm:4
-	{0x0fef0000, 0x024d0000, 2, SUB_EQ, 0x14011c04, instArgs{arg_R_12, arg_SP, arg_const}},                        // SUB{S}<c> <Rd>,SP,#<const> cond:4|0|0|1|0|0|1|0|S|1|1|0|1|Rd:4|imm12:12
-	{0x0fef0010, 0x004d0000, 2, SUB_EQ, 0x14011c04, instArgs{arg_R_12, arg_SP, arg_R_shift_imm}},                  // SUB{S}<c> <Rd>,SP,<Rm>{,<shift>} cond:4|0|0|0|0|0|1|0|S|1|1|0|1|Rd:4|imm5:5|type:2|0|Rm:4
-	{0x0f000000, 0x0f000000, 4, SVC_EQ, 0x1c04, instArgs{arg_imm24}},                                              // SVC<c> #<imm24> cond:4|1|1|1|1|imm24:24
-	{0x0fb00ff0, 0x01000090, 4, SWP_EQ, 0x16011c04, instArgs{arg_R_12, arg_R_0, arg_mem_R}},                       // SWP{B}<c> <Rt>,<Rm>,[<Rn>] cond:4|0|0|0|1|0|B|0|0|Rn:4|Rt:4|0|0|0|0|1|0|0|1|Rm:4
-	{0x0ff003f0, 0x06800070, 2, SXTAB16_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_rotate}},                   // SXTAB16<c> <Rd>,<Rn>,<Rm>{,<rotation>} cond:4|0|1|1|0|1|0|0|0|Rn:4|Rd:4|rotate:2|0|0|0|1|1|1|Rm:4
-	{0x0ff003f0, 0x06a00070, 2, SXTAB_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_rotate}},                     // SXTAB<c> <Rd>,<Rn>,<Rm>{,<rotation>} cond:4|0|1|1|0|1|0|1|0|Rn:4|Rd:4|rotate:2|0|0|0|1|1|1|Rm:4
-	{0x0ff003f0, 0x06b00070, 2, SXTAH_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_rotate}},                     // SXTAH<c> <Rd>,<Rn>,<Rm>{,<rotation>} cond:4|0|1|1|0|1|0|1|1|Rn:4|Rd:4|rotate:2|0|0|0|1|1|1|Rm:4
-	{0x0fff03f0, 0x068f0070, 4, SXTB16_EQ, 0x1c04, instArgs{arg_R_12, arg_R_rotate}},                              // SXTB16<c> <Rd>,<Rm>{,<rotation>} cond:4|0|1|1|0|1|0|0|0|1|1|1|1|Rd:4|rotate:2|0|0|0|1|1|1|Rm:4
-	{0x0fff03f0, 0x06af0070, 4, SXTB_EQ, 0x1c04, instArgs{arg_R_12, arg_R_rotate}},                                // SXTB<c> <Rd>,<Rm>{,<rotation>} cond:4|0|1|1|0|1|0|1|0|1|1|1|1|Rd:4|rotate:2|0|0|0|1|1|1|Rm:4
-	{0x0fff03f0, 0x06bf0070, 4, SXTH_EQ, 0x1c04, instArgs{arg_R_12, arg_R_rotate}},                                // SXTH<c> <Rd>,<Rm>{,<rotation>} cond:4|0|1|1|0|1|0|1|1|1|1|1|1|Rd:4|rotate:2|0|0|0|1|1|1|Rm:4
-	{0x0ff0f000, 0x03300000, 4, TEQ_EQ, 0x1c04, instArgs{arg_R_16, arg_const}},                                    // TEQ<c> <Rn>,#<const> cond:4|0|0|1|1|0|0|1|1|Rn:4|(0)|(0)|(0)|(0)|imm12:12
-	{0x0ff00000, 0x03300000, 3, TEQ_EQ, 0x1c04, instArgs{arg_R_16, arg_const}},                                    // TEQ<c> <Rn>,#<const> cond:4|0|0|1|1|0|0|1|1|Rn:4|(0)|(0)|(0)|(0)|imm12:12
-	{0x0ff0f090, 0x01300010, 4, TEQ_EQ, 0x1c04, instArgs{arg_R_16, arg_R_shift_R}},                                // TEQ<c> <Rn>,<Rm>,<type> <Rs> cond:4|0|0|0|1|0|0|1|1|Rn:4|(0)|(0)|(0)|(0)|Rs:4|0|type:2|1|Rm:4
-	{0x0ff00090, 0x01300010, 3, TEQ_EQ, 0x1c04, instArgs{arg_R_16, arg_R_shift_R}},                                // TEQ<c> <Rn>,<Rm>,<type> <Rs> cond:4|0|0|0|1|0|0|1|1|Rn:4|(0)|(0)|(0)|(0)|Rs:4|0|type:2|1|Rm:4
-	{0x0ff0f010, 0x01300000, 4, TEQ_EQ, 0x1c04, instArgs{arg_R_16, arg_R_shift_imm}},                              // TEQ<c> <Rn>,<Rm>{,<shift>} cond:4|0|0|0|1|0|0|1|1|Rn:4|(0)|(0)|(0)|(0)|imm5:5|type:2|0|Rm:4
-	{0x0ff00010, 0x01300000, 3, TEQ_EQ, 0x1c04, instArgs{arg_R_16, arg_R_shift_imm}},                              // TEQ<c> <Rn>,<Rm>{,<shift>} cond:4|0|0|0|1|0|0|1|1|Rn:4|(0)|(0)|(0)|(0)|imm5:5|type:2|0|Rm:4
-	{0x0ff0f000, 0x03100000, 4, TST_EQ, 0x1c04, instArgs{arg_R_16, arg_const}},                                    // TST<c> <Rn>,#<const> cond:4|0|0|1|1|0|0|0|1|Rn:4|(0)|(0)|(0)|(0)|imm12:12
-	{0x0ff00000, 0x03100000, 3, TST_EQ, 0x1c04, instArgs{arg_R_16, arg_const}},                                    // TST<c> <Rn>,#<const> cond:4|0|0|1|1|0|0|0|1|Rn:4|(0)|(0)|(0)|(0)|imm12:12
-	{0x0ff0f090, 0x01100010, 4, TST_EQ, 0x1c04, instArgs{arg_R_16, arg_R_shift_R}},                                // TST<c> <Rn>,<Rm>,<type> <Rs> cond:4|0|0|0|1|0|0|0|1|Rn:4|(0)|(0)|(0)|(0)|Rs:4|0|type:2|1|Rm:4
-	{0x0ff00090, 0x01100010, 3, TST_EQ, 0x1c04, instArgs{arg_R_16, arg_R_shift_R}},                                // TST<c> <Rn>,<Rm>,<type> <Rs> cond:4|0|0|0|1|0|0|0|1|Rn:4|(0)|(0)|(0)|(0)|Rs:4|0|type:2|1|Rm:4
-	{0x0ff0f010, 0x01100000, 4, TST_EQ, 0x1c04, instArgs{arg_R_16, arg_R_shift_imm}},                              // TST<c> <Rn>,<Rm>{,<shift>} cond:4|0|0|0|1|0|0|0|1|Rn:4|(0)|(0)|(0)|(0)|imm5:5|type:2|0|Rm:4
-	{0x0ff00010, 0x01100000, 3, TST_EQ, 0x1c04, instArgs{arg_R_16, arg_R_shift_imm}},                              // TST<c> <Rn>,<Rm>{,<shift>} cond:4|0|0|0|1|0|0|0|1|Rn:4|(0)|(0)|(0)|(0)|imm5:5|type:2|0|Rm:4
-	{0x0ff00ff0, 0x06500f10, 4, UADD16_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},                         // UADD16<c> <Rd>,<Rn>,<Rm> cond:4|0|1|1|0|0|1|0|1|Rn:4|Rd:4|(1)|(1)|(1)|(1)|0|0|0|1|Rm:4
-	{0x0ff000f0, 0x06500f10, 3, UADD16_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},                         // UADD16<c> <Rd>,<Rn>,<Rm> cond:4|0|1|1|0|0|1|0|1|Rn:4|Rd:4|(1)|(1)|(1)|(1)|0|0|0|1|Rm:4
-	{0x0ff00ff0, 0x06500f90, 4, UADD8_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},                          // UADD8<c> <Rd>,<Rn>,<Rm> cond:4|0|1|1|0|0|1|0|1|Rn:4|Rd:4|(1)|(1)|(1)|(1)|1|0|0|1|Rm:4
-	{0x0ff000f0, 0x06500f90, 3, UADD8_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},                          // UADD8<c> <Rd>,<Rn>,<Rm> cond:4|0|1|1|0|0|1|0|1|Rn:4|Rd:4|(1)|(1)|(1)|(1)|1|0|0|1|Rm:4
-	{0x0ff00ff0, 0x06500f30, 4, UASX_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},                           // UASX<c> <Rd>,<Rn>,<Rm> cond:4|0|1|1|0|0|1|0|1|Rn:4|Rd:4|(1)|(1)|(1)|(1)|0|0|1|1|Rm:4
-	{0x0ff000f0, 0x06500f30, 3, UASX_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},                           // UASX<c> <Rd>,<Rn>,<Rm> cond:4|0|1|1|0|0|1|0|1|Rn:4|Rd:4|(1)|(1)|(1)|(1)|0|0|1|1|Rm:4
-	{0x0fe00070, 0x07e00050, 4, UBFX_EQ, 0x1c04, instArgs{arg_R_12, arg_R_0, arg_imm5, arg_widthm1}},              // UBFX<c> <Rd>,<Rn>,#<lsb>,#<widthm1> cond:4|0|1|1|1|1|1|1|widthm1:5|Rd:4|lsb:5|1|0|1|Rn:4
-	{0x0ff0f0f0, 0x0730f010, 4, UDIV_EQ, 0x1c04, instArgs{arg_R_16, arg_R_0, arg_R_8}},                            // UDIV<c> <Rd>,<Rn>,<Rm> cond:4|0|1|1|1|0|0|1|1|Rd:4|(1)|(1)|(1)|(1)|Rm:4|0|0|0|1|Rn:4
-	{0x0ff000f0, 0x0730f010, 3, UDIV_EQ, 0x1c04, instArgs{arg_R_16, arg_R_0, arg_R_8}},                            // UDIV<c> <Rd>,<Rn>,<Rm> cond:4|0|1|1|1|0|0|1|1|Rd:4|(1)|(1)|(1)|(1)|Rm:4|0|0|0|1|Rn:4
-	{0x0ff00ff0, 0x06700f10, 4, UHADD16_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},                        // UHADD16<c> <Rd>,<Rn>,<Rm> cond:4|0|1|1|0|0|1|1|1|Rn:4|Rd:4|(1)|(1)|(1)|(1)|0|0|0|1|Rm:4
-	{0x0ff000f0, 0x06700f10, 3, UHADD16_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},                        // UHADD16<c> <Rd>,<Rn>,<Rm> cond:4|0|1|1|0|0|1|1|1|Rn:4|Rd:4|(1)|(1)|(1)|(1)|0|0|0|1|Rm:4
-	{0x0ff00ff0, 0x06700f90, 4, UHADD8_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},                         // UHADD8<c> <Rd>,<Rn>,<Rm> cond:4|0|1|1|0|0|1|1|1|Rn:4|Rd:4|(1)|(1)|(1)|(1)|1|0|0|1|Rm:4
-	{0x0ff000f0, 0x06700f90, 3, UHADD8_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},                         // UHADD8<c> <Rd>,<Rn>,<Rm> cond:4|0|1|1|0|0|1|1|1|Rn:4|Rd:4|(1)|(1)|(1)|(1)|1|0|0|1|Rm:4
-	{0x0ff00ff0, 0x06700f30, 4, UHASX_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},                          // UHASX<c> <Rd>,<Rn>,<Rm> cond:4|0|1|1|0|0|1|1|1|Rn:4|Rd:4|(1)|(1)|(1)|(1)|0|0|1|1|Rm:4
-	{0x0ff000f0, 0x06700f30, 3, UHASX_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},                          // UHASX<c> <Rd>,<Rn>,<Rm> cond:4|0|1|1|0|0|1|1|1|Rn:4|Rd:4|(1)|(1)|(1)|(1)|0|0|1|1|Rm:4
-	{0x0ff00ff0, 0x06700f50, 4, UHSAX_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},                          // UHSAX<c> <Rd>,<Rn>,<Rm> cond:4|0|1|1|0|0|1|1|1|Rn:4|Rd:4|(1)|(1)|(1)|(1)|0|1|0|1|Rm:4
-	{0x0ff000f0, 0x06700f50, 3, UHSAX_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},                          // UHSAX<c> <Rd>,<Rn>,<Rm> cond:4|0|1|1|0|0|1|1|1|Rn:4|Rd:4|(1)|(1)|(1)|(1)|0|1|0|1|Rm:4
-	{0x0ff00ff0, 0x06700f70, 4, UHSUB16_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},                        // UHSUB16<c> <Rd>,<Rn>,<Rm> cond:4|0|1|1|0|0|1|1|1|Rn:4|Rd:4|(1)|(1)|(1)|(1)|0|1|1|1|Rm:4
-	{0x0ff000f0, 0x06700f70, 3, UHSUB16_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},                        // UHSUB16<c> <Rd>,<Rn>,<Rm> cond:4|0|1|1|0|0|1|1|1|Rn:4|Rd:4|(1)|(1)|(1)|(1)|0|1|1|1|Rm:4
-	{0x0ff00ff0, 0x06700ff0, 4, UHSUB8_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},                         // UHSUB8<c> <Rd>,<Rn>,<Rm> cond:4|0|1|1|0|0|1|1|1|Rn:4|Rd:4|(1)|(1)|(1)|(1)|1|1|1|1|Rm:4
-	{0x0ff000f0, 0x06700ff0, 3, UHSUB8_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},                         // UHSUB8<c> <Rd>,<Rn>,<Rm> cond:4|0|1|1|0|0|1|1|1|Rn:4|Rd:4|(1)|(1)|(1)|(1)|1|1|1|1|Rm:4
-	{0x0ff000f0, 0x00400090, 4, UMAAL_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0, arg_R_8}},                 // UMAAL<c> <RdLo>,<RdHi>,<Rn>,<Rm> cond:4|0|0|0|0|0|1|0|0|RdHi:4|RdLo:4|Rm:4|1|0|0|1|Rn:4
-	{0x0fe000f0, 0x00a00090, 4, UMLAL_EQ, 0x14011c04, instArgs{arg_R_12, arg_R_16, arg_R_0, arg_R_8}},             // UMLAL{S}<c> <RdLo>,<RdHi>,<Rn>,<Rm> cond:4|0|0|0|0|1|0|1|S|RdHi:4|RdLo:4|Rm:4|1|0|0|1|Rn:4
-	{0x0fe000f0, 0x00800090, 4, UMULL_EQ, 0x14011c04, instArgs{arg_R_12, arg_R_16, arg_R_0, arg_R_8}},             // UMULL{S}<c> <RdLo>,<RdHi>,<Rn>,<Rm> cond:4|0|0|0|0|1|0|0|S|RdHi:4|RdLo:4|Rm:4|1|0|0|1|Rn:4
-	{0x0ff00ff0, 0x06600f10, 4, UQADD16_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},                        // UQADD16<c> <Rd>,<Rn>,<Rm> cond:4|0|1|1|0|0|1|1|0|Rn:4|Rd:4|(1)|(1)|(1)|(1)|0|0|0|1|Rm:4
-	{0x0ff000f0, 0x06600f10, 3, UQADD16_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},                        // UQADD16<c> <Rd>,<Rn>,<Rm> cond:4|0|1|1|0|0|1|1|0|Rn:4|Rd:4|(1)|(1)|(1)|(1)|0|0|0|1|Rm:4
-	{0x0ff00ff0, 0x06600f90, 4, UQADD8_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},                         // UQADD8<c> <Rd>,<Rn>,<Rm> cond:4|0|1|1|0|0|1|1|0|Rn:4|Rd:4|(1)|(1)|(1)|(1)|1|0|0|1|Rm:4
-	{0x0ff000f0, 0x06600f90, 3, UQADD8_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},                         // UQADD8<c> <Rd>,<Rn>,<Rm> cond:4|0|1|1|0|0|1|1|0|Rn:4|Rd:4|(1)|(1)|(1)|(1)|1|0|0|1|Rm:4
-	{0x0ff00ff0, 0x06600f30, 4, UQASX_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},                          // UQASX<c> <Rd>,<Rn>,<Rm> cond:4|0|1|1|0|0|1|1|0|Rn:4|Rd:4|(1)|(1)|(1)|(1)|0|0|1|1|Rm:4
-	{0x0ff000f0, 0x06600f30, 3, UQASX_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},                          // UQASX<c> <Rd>,<Rn>,<Rm> cond:4|0|1|1|0|0|1|1|0|Rn:4|Rd:4|(1)|(1)|(1)|(1)|0|0|1|1|Rm:4
-	{0x0ff00ff0, 0x06600f50, 4, UQSAX_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},                          // UQSAX<c> <Rd>,<Rn>,<Rm> cond:4|0|1|1|0|0|1|1|0|Rn:4|Rd:4|(1)|(1)|(1)|(1)|0|1|0|1|Rm:4
-	{0x0ff000f0, 0x06600f50, 3, UQSAX_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},                          // UQSAX<c> <Rd>,<Rn>,<Rm> cond:4|0|1|1|0|0|1|1|0|Rn:4|Rd:4|(1)|(1)|(1)|(1)|0|1|0|1|Rm:4
-	{0x0ff00ff0, 0x06600f70, 4, UQSUB16_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},                        // UQSUB16<c> <Rd>,<Rn>,<Rm> cond:4|0|1|1|0|0|1|1|0|Rn:4|Rd:4|(1)|(1)|(1)|(1)|0|1|1|1|Rm:4
-	{0x0ff000f0, 0x06600f70, 3, UQSUB16_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},                        // UQSUB16<c> <Rd>,<Rn>,<Rm> cond:4|0|1|1|0|0|1|1|0|Rn:4|Rd:4|(1)|(1)|(1)|(1)|0|1|1|1|Rm:4
-	{0x0ff00ff0, 0x06600ff0, 4, UQSUB8_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},                         // UQSUB8<c> <Rd>,<Rn>,<Rm> cond:4|0|1|1|0|0|1|1|0|Rn:4|Rd:4|(1)|(1)|(1)|(1)|1|1|1|1|Rm:4
-	{0x0ff000f0, 0x06600ff0, 3, UQSUB8_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},                         // UQSUB8<c> <Rd>,<Rn>,<Rm> cond:4|0|1|1|0|0|1|1|0|Rn:4|Rd:4|(1)|(1)|(1)|(1)|1|1|1|1|Rm:4
-	{0x0ff0f0f0, 0x0780f010, 4, USAD8_EQ, 0x1c04, instArgs{arg_R_16, arg_R_0, arg_R_8}},                           // USAD8<c> <Rd>,<Rn>,<Rm> cond:4|0|1|1|1|1|0|0|0|Rd:4|1|1|1|1|Rm:4|0|0|0|1|Rn:4
-	{0x0ff000f0, 0x07800010, 2, USADA8_EQ, 0x1c04, instArgs{arg_R_16, arg_R_0, arg_R_8, arg_R_12}},                // USADA8<c> <Rd>,<Rn>,<Rm>,<Ra> cond:4|0|1|1|1|1|0|0|0|Rd:4|Ra:4|Rm:4|0|0|0|1|Rn:4
-	{0x0ff00ff0, 0x06e00f30, 4, USAT16_EQ, 0x1c04, instArgs{arg_R_12, arg_satimm4, arg_R_0}},                      // USAT16<c> <Rd>,#<sat_imm4>,<Rn> cond:4|0|1|1|0|1|1|1|0|sat_imm:4|Rd:4|(1)|(1)|(1)|(1)|0|0|1|1|Rn:4
-	{0x0ff000f0, 0x06e00f30, 3, USAT16_EQ, 0x1c04, instArgs{arg_R_12, arg_satimm4, arg_R_0}},                      // USAT16<c> <Rd>,#<sat_imm4>,<Rn> cond:4|0|1|1|0|1|1|1|0|sat_imm:4|Rd:4|(1)|(1)|(1)|(1)|0|0|1|1|Rn:4
-	{0x0fe00030, 0x06e00010, 4, USAT_EQ, 0x1c04, instArgs{arg_R_12, arg_satimm5, arg_R_shift_imm}},                // USAT<c> <Rd>,#<sat_imm5>,<Rn>{,<shift>} cond:4|0|1|1|0|1|1|1|sat_imm:5|Rd:4|imm5:5|sh|0|1|Rn:4
-	{0x0ff00ff0, 0x06500f50, 4, USAX_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},                           // USAX<c> <Rd>,<Rn>,<Rm> cond:4|0|1|1|0|0|1|0|1|Rn:4|Rd:4|(1)|(1)|(1)|(1)|0|1|0|1|Rm:4
-	{0x0ff000f0, 0x06500f50, 3, USAX_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},                           // USAX<c> <Rd>,<Rn>,<Rm> cond:4|0|1|1|0|0|1|0|1|Rn:4|Rd:4|(1)|(1)|(1)|(1)|0|1|0|1|Rm:4
-	{0x0ff00ff0, 0x06500f70, 4, USUB16_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},                         // USUB16<c> <Rd>,<Rn>,<Rm> cond:4|0|1|1|0|0|1|0|1|Rn:4|Rd:4|(1)|(1)|(1)|(1)|0|1|1|1|Rm:4
-	{0x0ff000f0, 0x06500f70, 3, USUB16_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},                         // USUB16<c> <Rd>,<Rn>,<Rm> cond:4|0|1|1|0|0|1|0|1|Rn:4|Rd:4|(1)|(1)|(1)|(1)|0|1|1|1|Rm:4
-	{0x0ff00ff0, 0x06500ff0, 4, USUB8_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},                          // USUB8<c> <Rd>,<Rn>,<Rm> cond:4|0|1|1|0|0|1|0|1|Rn:4|Rd:4|(1)|(1)|(1)|(1)|1|1|1|1|Rm:4
-	{0x0ff000f0, 0x06500ff0, 3, USUB8_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},                          // USUB8<c> <Rd>,<Rn>,<Rm> cond:4|0|1|1|0|0|1|0|1|Rn:4|Rd:4|(1)|(1)|(1)|(1)|1|1|1|1|Rm:4
-	{0x0ff003f0, 0x06c00070, 2, UXTAB16_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_rotate}},                   // UXTAB16<c> <Rd>,<Rn>,<Rm>{,<rotation>} cond:4|0|1|1|0|1|1|0|0|Rn:4|Rd:4|rotate:2|0|0|0|1|1|1|Rm:4
-	{0x0ff003f0, 0x06e00070, 2, UXTAB_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_rotate}},                     // UXTAB<c> <Rd>,<Rn>,<Rm>{,<rotation>} cond:4|0|1|1|0|1|1|1|0|Rn:4|Rd:4|rotate:2|0|0|0|1|1|1|Rm:4
-	{0x0ff003f0, 0x06f00070, 2, UXTAH_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_rotate}},                     // UXTAH<c> <Rd>,<Rn>,<Rm>{,<rotation>} cond:4|0|1|1|0|1|1|1|1|Rn:4|Rd:4|rotate:2|0|0|0|1|1|1|Rm:4
-	{0x0fff03f0, 0x06cf0070, 4, UXTB16_EQ, 0x1c04, instArgs{arg_R_12, arg_R_rotate}},                              // UXTB16<c> <Rd>,<Rm>{,<rotation>} cond:4|0|1|1|0|1|1|0|0|1|1|1|1|Rd:4|rotate:2|0|0|0|1|1|1|Rm:4
-	{0x0fff03f0, 0x06ef0070, 4, UXTB_EQ, 0x1c04, instArgs{arg_R_12, arg_R_rotate}},                                // UXTB<c> <Rd>,<Rm>{,<rotation>} cond:4|0|1|1|0|1|1|1|0|1|1|1|1|Rd:4|rotate:2|0|0|0|1|1|1|Rm:4
-	{0x0fff03f0, 0x06ff0070, 4, UXTH_EQ, 0x1c04, instArgs{arg_R_12, arg_R_rotate}},                                // UXTH<c> <Rd>,<Rm>{,<rotation>} cond:4|0|1|1|0|1|1|1|1|1|1|1|1|Rd:4|rotate:2|0|0|0|1|1|1|Rm:4
-	{0x0fb00e10, 0x0e000a00, 4, VMLA_EQ_F32, 0x60108011c04, instArgs{arg_Sd_Dd, arg_Sn_Dn, arg_Sm_Dm}},            // V<MLA,MLS><c>.F<32,64> <Sd,Dd>, <Sn,Dn>, <Sm,Dm> cond:4|1|1|1|0|0|D|0|0|Vn:4|Vd:4|1|0|1|sz|N|op|M|0|Vm:4
-	{0x0fbf0ed0, 0x0eb00ac0, 4, VABS_EQ_F32, 0x8011c04, instArgs{arg_Sd_Dd, arg_Sm_Dm}},                           // VABS<c>.F<32,64> <Sd,Dd>, <Sm,Dm> cond:4|1|1|1|0|1|D|1|1|0|0|0|0|Vd:4|1|0|1|sz|1|1|M|0|Vm:4
-	{0x0fb00e50, 0x0e300a00, 4, VADD_EQ_F32, 0x8011c04, instArgs{arg_Sd_Dd, arg_Sn_Dn, arg_Sm_Dm}},                // VADD<c>.F<32,64> <Sd,Dd>, <Sn,Dn>, <Sm,Dm> cond:4|1|1|1|0|0|D|1|1|Vn:4|Vd:4|1|0|1|sz|N|0|M|0|Vm:4
-	{0x0fbf0e7f, 0x0eb50a40, 4, VCMP_EQ_F32, 0x70108011c04, instArgs{arg_Sd_Dd, arg_fp_0}},                        // VCMP{E}<c>.F<32,64> <Sd,Dd>, #0.0 cond:4|1|1|1|0|1|D|1|1|0|1|0|1|Vd:4|1|0|1|sz|E|1|0|0|(0)|(0)|(0)|(0)
-	{0x0fbf0e70, 0x0eb50a40, 3, VCMP_EQ_F32, 0x70108011c04, instArgs{arg_Sd_Dd, arg_fp_0}},                        // VCMP{E}<c>.F<32,64> <Sd,Dd>, #0.0 cond:4|1|1|1|0|1|D|1|1|0|1|0|1|Vd:4|1|0|1|sz|E|1|0|0|(0)|(0)|(0)|(0)
-	{0x0fbf0e50, 0x0eb40a40, 4, VCMP_EQ_F32, 0x70108011c04, instArgs{arg_Sd_Dd, arg_Sm_Dm}},                       // VCMP{E}<c>.F<32,64> <Sd,Dd>, <Sm,Dm> cond:4|1|1|1|0|1|D|1|1|0|1|0|0|Vd:4|1|0|1|sz|E|1|M|0|Vm:4
-	{0x0fbe0e50, 0x0eba0a40, 4, VCVT_EQ_F32_FXS16, 0x801100107011c04, instArgs{arg_Sd_Dd, arg_Sd_Dd, arg_fbits}},  // VCVT<c>.F<32,64>.FX<S,U><16,32> <Sd,Dd>, <Sd,Dd>, #<fbits> cond:4|1|1|1|0|1|D|1|1|1|0|1|U|Vd:4|1|0|1|sz|sx|1|i|0|imm4:4
-	{0x0fbe0e50, 0x0ebe0a40, 4, VCVT_EQ_FXS16_F32, 0x1001070108011c04, instArgs{arg_Sd_Dd, arg_Sd_Dd, arg_fbits}}, // VCVT<c>.FX<S,U><16,32>.F<32,64> <Sd,Dd>, <Sd,Dd>, #<fbits> cond:4|1|1|1|0|1|D|1|1|1|1|1|U|Vd:4|1|0|1|sz|sx|1|i|0|imm4:4
-	{0x0fbf0ed0, 0x0eb70ac0, 4, VCVT_EQ_F64_F32, 0x8011c04, instArgs{arg_Dd_Sd, arg_Sm_Dm}},                       // VCVT<c>.<F64.F32,F32.F64> <Dd,Sd>, <Sm,Dm> cond:4|1|1|1|0|1|D|1|1|0|1|1|1|Vd:4|1|0|1|sz|1|1|M|0|Vm:4
-	{0x0fbe0f50, 0x0eb20a40, 4, VCVTB_EQ_F32_F16, 0x70110011c04, instArgs{arg_Sd, arg_Sm}},                        // VCVT<B,T><c>.<F32.F16,F16.F32> <Sd>, <Sm> cond:4|1|1|1|0|1|D|1|1|0|0|1|op|Vd:4|1|0|1|0|T|1|M|0|Vm:4
-	{0x0fbf0e50, 0x0eb80a40, 4, VCVT_EQ_F32_U32, 0x80107011c04, instArgs{arg_Sd_Dd, arg_Sm}},                      // VCVT<c>.F<32,64>.<U,S>32 <Sd,Dd>, <Sm> cond:4|1|1|1|0|1|D|1|1|1|0|0|0|Vd:4|1|0|1|sz|op|1|M|0|Vm:4
-	{0x0fbe0e50, 0x0ebc0a40, 4, VCVTR_EQ_U32_F32, 0x701100108011c04, instArgs{arg_Sd, arg_Sm_Dm}},                 // VCVT<R,><c>.<U,S>32.F<32,64> <Sd>, <Sm,Dm> cond:4|1|1|1|0|1|D|1|1|1|1|0|signed|Vd:4|1|0|1|sz|op|1|M|0|Vm:4
-	{0x0fb00e50, 0x0e800a00, 4, VDIV_EQ_F32, 0x8011c04, instArgs{arg_Sd_Dd, arg_Sn_Dn, arg_Sm_Dm}},                // VDIV<c>.F<32,64> <Sd,Dd>, <Sn,Dn>, <Sm,Dm> cond:4|1|1|1|0|1|D|0|0|Vn:4|Vd:4|1|0|1|sz|N|0|M|0|Vm:4
-	{0x0f300e00, 0x0d100a00, 4, VLDR_EQ, 0x1c04, instArgs{arg_Sd_Dd, arg_mem_R_pm_imm8at0_offset}},                // VLDR<c> <Sd,Dd>, [<Rn>{,#+/-<imm8>}] cond:4|1|1|0|1|U|D|0|1|Rn:4|Vd:4|1|0|1|sz|imm8:8
-	{0x0ff00f7f, 0x0e000a10, 4, VMOV_EQ, 0x1c04, instArgs{arg_Sn, arg_R_12}},                                      // VMOV<c> <Sn>, <Rt> cond:4|1|1|1|0|0|0|0|0|Vn:4|Rt:4|1|0|1|0|N|0|0|1|0|0|0|0
-	{0x0ff00f7f, 0x0e100a10, 4, VMOV_EQ, 0x1c04, instArgs{arg_R_12, arg_Sn}},                                      // VMOV<c> <Rt>, <Sn> cond:4|1|1|1|0|0|0|0|1|Vn:4|Rt:4|1|0|1|0|N|0|0|1|0|0|0|0
-	{0x0fd00f7f, 0x0e100b10, 4, VMOV_EQ_32, 0x1c04, instArgs{arg_R_12, arg_Dn_half}},                              // VMOV<c>.32 <Rt>, <Dn[x]> cond:4|1|1|1|0|0|0|opc1|1|Vn:4|Rt:4|1|0|1|1|N|0|0|1|0|0|0|0
-	{0x0fd00f7f, 0x0e000b10, 4, VMOV_EQ_32, 0x1c04, instArgs{arg_Dn_half, arg_R_12}},                              // VMOV<c>.32 <Dd[x]>, <Rt> cond:4|1|1|1|0|0|0|opc1|0|Vd:4|Rt:4|1|0|1|1|D|0|0|1|0|0|0|0
-	{0x0fb00ef0, 0x0eb00a00, 4, VMOV_EQ_F32, 0x8011c04, instArgs{arg_Sd_Dd, arg_imm_vfp}},                         // VMOV<c>.F<32,64> <Sd,Dd>, #<imm_vfp> cond:4|1|1|1|0|1|D|1|1|imm4H:4|Vd:4|1|0|1|sz|0|0|0|0|imm4L:4
-	{0x0fbf0ed0, 0x0eb00a40, 4, VMOV_EQ_F32, 0x8011c04, instArgs{arg_Sd_Dd, arg_Sm_Dm}},                           // VMOV<c>.F<32,64> <Sd,Dd>, <Sm,Dm> cond:4|1|1|1|0|1|D|1|1|0|0|0|0|Vd:4|1|0|1|sz|0|1|M|0|Vm:4
-	{0x0fff0fff, 0x0ef10a10, 4, VMRS_EQ, 0x1c04, instArgs{arg_R_12_nzcv, arg_FPSCR}},                              // VMRS<c> <Rt_nzcv>, FPSCR cond:4|1|1|1|0|1|1|1|1|0|0|0|1|Rt:4|1|0|1|0|0|0|0|1|0|0|0|0
-	{0x0fff0fff, 0x0ee10a10, 4, VMSR_EQ, 0x1c04, instArgs{arg_FPSCR, arg_R_12}},                                   // VMSR<c> FPSCR, <Rt> cond:4|1|1|1|0|1|1|1|0|0|0|0|1|Rt:4|1|0|1|0|0|0|0|1|0|0|0|0
-	{0x0fb00e50, 0x0e200a00, 4, VMUL_EQ_F32, 0x8011c04, instArgs{arg_Sd_Dd, arg_Sn_Dn, arg_Sm_Dm}},                // VMUL<c>.F<32,64> <Sd,Dd>, <Sn,Dn>, <Sm,Dm> cond:4|1|1|1|0|0|D|1|0|Vn:4|Vd:4|1|0|1|sz|N|0|M|0|Vm:4
-	{0x0fbf0ed0, 0x0eb10a40, 4, VNEG_EQ_F32, 0x8011c04, instArgs{arg_Sd_Dd, arg_Sm_Dm}},                           // VNEG<c>.F<32,64> <Sd,Dd>, <Sm,Dm> cond:4|1|1|1|0|1|D|1|1|0|0|0|1|Vd:4|1|0|1|sz|0|1|M|0|Vm:4
-	{0x0fb00e10, 0x0e100a00, 4, VNMLS_EQ_F32, 0x60108011c04, instArgs{arg_Sd_Dd, arg_Sn_Dn, arg_Sm_Dm}},           // VN<MLS,MLA><c>.F<32,64> <Sd,Dd>, <Sn,Dn>, <Sm,Dm> cond:4|1|1|1|0|0|D|0|1|Vn:4|Vd:4|1|0|1|sz|N|op|M|0|Vm:4
-	{0x0fb00e50, 0x0e200a40, 4, VNMUL_EQ_F32, 0x8011c04, instArgs{arg_Sd_Dd, arg_Sn_Dn, arg_Sm_Dm}},               // VNMUL<c>.F<32,64> <Sd,Dd>, <Sn,Dn>, <Sm,Dm> cond:4|1|1|1|0|0|D|1|0|Vn:4|Vd:4|1|0|1|sz|N|1|M|0|Vm:4
-	{0x0fbf0ed0, 0x0eb10ac0, 4, VSQRT_EQ_F32, 0x8011c04, instArgs{arg_Sd_Dd, arg_Sm_Dm}},                          // VSQRT<c>.F<32,64> <Sd,Dd>, <Sm,Dm> cond:4|1|1|1|0|1|D|1|1|0|0|0|1|Vd:4|1|0|1|sz|1|1|M|0|Vm:4
-	{0x0f300e00, 0x0d000a00, 4, VSTR_EQ, 0x1c04, instArgs{arg_Sd_Dd, arg_mem_R_pm_imm8at0_offset}},                // VSTR<c> <Sd,Dd>, [<Rn>{,#+/-<imm8>}] cond:4|1|1|0|1|U|D|0|0|Rn:4|Vd:4|1|0|1|sz|imm8:8
-	{0x0fb00e50, 0x0e300a40, 4, VSUB_EQ_F32, 0x8011c04, instArgs{arg_Sd_Dd, arg_Sn_Dn, arg_Sm_Dm}},                // VSUB<c>.F<32,64> <Sd,Dd>, <Sn,Dn>, <Sm,Dm> cond:4|1|1|1|0|0|D|1|1|Vn:4|Vd:4|1|0|1|sz|N|1|M|0|Vm:4
-	{0x0fffffff, 0x0320f002, 4, WFE_EQ, 0x1c04, instArgs{}},                                                       // WFE<c> cond:4|0|0|1|1|0|0|1|0|0|0|0|0|(1)|(1)|(1)|(1)|(0)|(0)|(0)|(0)|0|0|0|0|0|0|1|0
-	{0x0fff00ff, 0x0320f002, 3, WFE_EQ, 0x1c04, instArgs{}},                                                       // WFE<c> cond:4|0|0|1|1|0|0|1|0|0|0|0|0|(1)|(1)|(1)|(1)|(0)|(0)|(0)|(0)|0|0|0|0|0|0|1|0
-	{0x0fffffff, 0x0320f003, 4, WFI_EQ, 0x1c04, instArgs{}},                                                       // WFI<c> cond:4|0|0|1|1|0|0|1|0|0|0|0|0|(1)|(1)|(1)|(1)|(0)|(0)|(0)|(0)|0|0|0|0|0|0|1|1
-	{0x0fff00ff, 0x0320f003, 3, WFI_EQ, 0x1c04, instArgs{}},                                                       // WFI<c> cond:4|0|0|1|1|0|0|1|0|0|0|0|0|(1)|(1)|(1)|(1)|(0)|(0)|(0)|(0)|0|0|0|0|0|0|1|1
-	{0x0fffffff, 0x0320f001, 4, YIELD_EQ, 0x1c04, instArgs{}},                                                     // YIELD<c> cond:4|0|0|1|1|0|0|1|0|0|0|0|0|(1)|(1)|(1)|(1)|(0)|(0)|(0)|(0)|0|0|0|0|0|0|0|1
-	{0x0fff00ff, 0x0320f001, 3, YIELD_EQ, 0x1c04, instArgs{}},                                                     // YIELD<c> cond:4|0|0|1|1|0|0|1|0|0|0|0|0|(1)|(1)|(1)|(1)|(0)|(0)|(0)|(0)|0|0|0|0|0|0|0|1
-	{0xffffffff, 0xf7fabcfd, 4, UNDEF, 0x0, instArgs{}},                                                           // UNDEF 1|1|1|1|0|1|1|1|1|1|1|1|1|0|1|0|1|0|1|1|1|1|0|0|1|1|1|1|1|1|0|1
+	{0x0fe00000, 0x02a00000, 2, ADC_EQ, 0x14011c04, instArgs{arg_R_12, arg_R_16, arg_const}},
+	{0x0fe00090, 0x00a00010, 4, ADC_EQ, 0x14011c04, instArgs{arg_R_12, arg_R_16, arg_R_shift_R}},
+	{0x0fe00010, 0x00a00000, 2, ADC_EQ, 0x14011c04, instArgs{arg_R_12, arg_R_16, arg_R_shift_imm}},
+	{0x0fe00000, 0x02800000, 2, ADD_EQ, 0x14011c04, instArgs{arg_R_12, arg_R_16, arg_const}},
+	{0x0fe00090, 0x00800010, 4, ADD_EQ, 0x14011c04, instArgs{arg_R_12, arg_R_16, arg_R_shift_R}},
+	{0x0fe00010, 0x00800000, 2, ADD_EQ, 0x14011c04, instArgs{arg_R_12, arg_R_16, arg_R_shift_imm}},
+	{0x0fef0000, 0x028d0000, 2, ADD_EQ, 0x14011c04, instArgs{arg_R_12, arg_SP, arg_const}},
+	{0x0fef0010, 0x008d0000, 2, ADD_EQ, 0x14011c04, instArgs{arg_R_12, arg_SP, arg_R_shift_imm}},
+	{0x0fe00000, 0x02000000, 2, AND_EQ, 0x14011c04, instArgs{arg_R_12, arg_R_16, arg_const}},
+	{0x0fe00090, 0x00000010, 4, AND_EQ, 0x14011c04, instArgs{arg_R_12, arg_R_16, arg_R_shift_R}},
+	{0x0fe00010, 0x00000000, 2, AND_EQ, 0x14011c04, instArgs{arg_R_12, arg_R_16, arg_R_shift_imm}},
+	{0x0fef0070, 0x01a00040, 4, ASR_EQ, 0x14011c04, instArgs{arg_R_12, arg_R_0, arg_imm5_32}},
+	{0x0fef00f0, 0x01a00050, 4, ASR_EQ, 0x14011c04, instArgs{arg_R_12, arg_R_0, arg_R_8}},
+	{0x0f000000, 0x0a000000, 4, B_EQ, 0x1c04, instArgs{arg_label24}},
+	{0x0fe0007f, 0x07c0001f, 4, BFC_EQ, 0x1c04, instArgs{arg_R_12, arg_imm5, arg_lsb_width}},
+	{0x0fe00070, 0x07c00010, 2, BFI_EQ, 0x1c04, instArgs{arg_R_12, arg_R_0, arg_imm5, arg_lsb_width}},
+	{0x0fe00000, 0x03c00000, 2, BIC_EQ, 0x14011c04, instArgs{arg_R_12, arg_R_16, arg_const}},
+	{0x0fe00090, 0x01c00010, 4, BIC_EQ, 0x14011c04, instArgs{arg_R_12, arg_R_16, arg_R_shift_R}},
+	{0x0fe00010, 0x01c00000, 2, BIC_EQ, 0x14011c04, instArgs{arg_R_12, arg_R_16, arg_R_shift_imm}},
+	{0x0ff000f0, 0x01200070, 4, BKPT_EQ, 0x1c04, instArgs{arg_imm_12at8_4at0}},
+	{0x0f000000, 0x0b000000, 4, BL_EQ, 0x1c04, instArgs{arg_label24}},
+	{0xfe000000, 0xfa000000, 4, BLX, 0x0, instArgs{arg_label24H}},
+	{0x0ffffff0, 0x012fff30, 4, BLX_EQ, 0x1c04, instArgs{arg_R_0}},
+	{0x0ff000f0, 0x012fff30, 3, BLX_EQ, 0x1c04, instArgs{arg_R_0}},
+	{0x0ffffff0, 0x012fff10, 4, BX_EQ, 0x1c04, instArgs{arg_R_0}},
+	{0x0ff000f0, 0x012fff10, 3, BX_EQ, 0x1c04, instArgs{arg_R_0}},
+	{0x0ffffff0, 0x012fff20, 4, BXJ_EQ, 0x1c04, instArgs{arg_R_0}},
+	{0x0ff000f0, 0x012fff20, 3, BXJ_EQ, 0x1c04, instArgs{arg_R_0}},
+	{0xffffffff, 0xf57ff01f, 4, CLREX, 0x0, instArgs{}},
+	{0xfff000f0, 0xf57ff01f, 3, CLREX, 0x0, instArgs{}},
+	{0x0fff0ff0, 0x016f0f10, 4, CLZ_EQ, 0x1c04, instArgs{arg_R_12, arg_R_0}},
+	{0x0ff000f0, 0x016f0f10, 3, CLZ_EQ, 0x1c04, instArgs{arg_R_12, arg_R_0}},
+	{0x0ff0f000, 0x03700000, 4, CMN_EQ, 0x1c04, instArgs{arg_R_16, arg_const}},
+	{0x0ff00000, 0x03700000, 3, CMN_EQ, 0x1c04, instArgs{arg_R_16, arg_const}},
+	{0x0ff0f090, 0x01700010, 4, CMN_EQ, 0x1c04, instArgs{arg_R_16, arg_R_shift_R}},
+	{0x0ff00090, 0x01700010, 3, CMN_EQ, 0x1c04, instArgs{arg_R_16, arg_R_shift_R}},
+	{0x0ff0f010, 0x01700000, 4, CMN_EQ, 0x1c04, instArgs{arg_R_16, arg_R_shift_imm}},
+	{0x0ff00010, 0x01700000, 3, CMN_EQ, 0x1c04, instArgs{arg_R_16, arg_R_shift_imm}},
+	{0x0ff0f000, 0x03500000, 4, CMP_EQ, 0x1c04, instArgs{arg_R_16, arg_const}},
+	{0x0ff00000, 0x03500000, 3, CMP_EQ, 0x1c04, instArgs{arg_R_16, arg_const}},
+	{0x0ff0f090, 0x01500010, 4, CMP_EQ, 0x1c04, instArgs{arg_R_16, arg_R_shift_R}},
+	{0x0ff00090, 0x01500010, 3, CMP_EQ, 0x1c04, instArgs{arg_R_16, arg_R_shift_R}},
+	{0x0ff0f010, 0x01500000, 4, CMP_EQ, 0x1c04, instArgs{arg_R_16, arg_R_shift_imm}},
+	{0x0ff00010, 0x01500000, 3, CMP_EQ, 0x1c04, instArgs{arg_R_16, arg_R_shift_imm}},
+	{0x0ffffff0, 0x0320f0f0, 4, DBG_EQ, 0x1c04, instArgs{arg_option}},
+	{0x0fff00f0, 0x0320f0f0, 3, DBG_EQ, 0x1c04, instArgs{arg_option}},
+	{0xfffffff0, 0xf57ff050, 4, DMB, 0x0, instArgs{arg_option}},
+	{0xfff000f0, 0xf57ff050, 3, DMB, 0x0, instArgs{arg_option}},
+	{0xfffffff0, 0xf57ff040, 4, DSB, 0x0, instArgs{arg_option}},
+	{0xfff000f0, 0xf57ff040, 3, DSB, 0x0, instArgs{arg_option}},
+	{0x0fe00000, 0x02200000, 2, EOR_EQ, 0x14011c04, instArgs{arg_R_12, arg_R_16, arg_const}},
+	{0x0fe00090, 0x00200010, 4, EOR_EQ, 0x14011c04, instArgs{arg_R_12, arg_R_16, arg_R_shift_R}},
+	{0x0fe00010, 0x00200000, 2, EOR_EQ, 0x14011c04, instArgs{arg_R_12, arg_R_16, arg_R_shift_imm}},
+	{0xfffffff0, 0xf57ff060, 4, ISB, 0x0, instArgs{arg_option}},
+	{0xfff000f0, 0xf57ff060, 3, ISB, 0x0, instArgs{arg_option}},
+	{0x0fd00000, 0x08900000, 2, LDM_EQ, 0x1c04, instArgs{arg_R_16_WB, arg_registers}},
+	{0x0fd00000, 0x08100000, 4, LDMDA_EQ, 0x1c04, instArgs{arg_R_16_WB, arg_registers}},
+	{0x0fd00000, 0x09100000, 4, LDMDB_EQ, 0x1c04, instArgs{arg_R_16_WB, arg_registers}},
+	{0x0fd00000, 0x09900000, 4, LDMIB_EQ, 0x1c04, instArgs{arg_R_16_WB, arg_registers}},
+	{0x0f7f0000, 0x051f0000, 4, LDR_EQ, 0x1c04, instArgs{arg_R_12, arg_label_pm_12}},
+	{0x0e5f0000, 0x051f0000, 3, LDR_EQ, 0x1c04, instArgs{arg_R_12, arg_label_pm_12}},
+	{0x0e500010, 0x06100000, 2, LDR_EQ, 0x1c04, instArgs{arg_R_12, arg_mem_R_pm_R_shift_imm_W}},
+	{0x0e500000, 0x04100000, 2, LDR_EQ, 0x1c04, instArgs{arg_R_12, arg_mem_R_pm_imm12_W}},
+	{0x0f7f0000, 0x055f0000, 4, LDRB_EQ, 0x1c04, instArgs{arg_R_12, arg_label_pm_12}},
+	{0x0e5f0000, 0x055f0000, 3, LDRB_EQ, 0x1c04, instArgs{arg_R_12, arg_label_pm_12}},
+	{0x0e500010, 0x06500000, 2, LDRB_EQ, 0x1c04, instArgs{arg_R_12, arg_mem_R_pm_R_shift_imm_W}},
+	{0x0e500000, 0x04500000, 2, LDRB_EQ, 0x1c04, instArgs{arg_R_12, arg_mem_R_pm_imm12_W}},
+	{0x0f700000, 0x04700000, 4, LDRBT_EQ, 0x1c04, instArgs{arg_R_12, arg_mem_R_pm_imm12_postindex}},
+	{0x0f700010, 0x06700000, 4, LDRBT_EQ, 0x1c04, instArgs{arg_R_12, arg_mem_R_pm_R_shift_imm_postindex}},
+	{0x0e500ff0, 0x000000d0, 4, LDRD_EQ, 0x1c04, instArgs{arg_R1_12, arg_R2_12, arg_mem_R_pm_R_W}},
+	{0x0e5000f0, 0x000000d0, 3, LDRD_EQ, 0x1c04, instArgs{arg_R1_12, arg_R2_12, arg_mem_R_pm_R_W}},
+	{0x0e5000f0, 0x004000d0, 2, LDRD_EQ, 0x1c04, instArgs{arg_R1_12, arg_R2_12, arg_mem_R_pm_imm8_W}},
+	{0x0ff00fff, 0x01900f9f, 4, LDREX_EQ, 0x1c04, instArgs{arg_R_12, arg_mem_R}},
+	{0x0ff000f0, 0x01900f9f, 3, LDREX_EQ, 0x1c04, instArgs{arg_R_12, arg_mem_R}},
+	{0x0ff00fff, 0x01d00f9f, 4, LDREXB_EQ, 0x1c04, instArgs{arg_R_12, arg_mem_R}},
+	{0x0ff000f0, 0x01d00f9f, 3, LDREXB_EQ, 0x1c04, instArgs{arg_R_12, arg_mem_R}},
+	{0x0ff00fff, 0x01b00f9f, 4, LDREXD_EQ, 0x1c04, instArgs{arg_R1_12, arg_R2_12, arg_mem_R}},
+	{0x0ff000f0, 0x01b00f9f, 3, LDREXD_EQ, 0x1c04, instArgs{arg_R1_12, arg_R2_12, arg_mem_R}},
+	{0x0ff00fff, 0x01f00f9f, 4, LDREXH_EQ, 0x1c04, instArgs{arg_R_12, arg_mem_R}},
+	{0x0ff000f0, 0x01f00f9f, 3, LDREXH_EQ, 0x1c04, instArgs{arg_R_12, arg_mem_R}},
+	{0x0e500ff0, 0x001000b0, 2, LDRH_EQ, 0x1c04, instArgs{arg_R_12, arg_mem_R_pm_R_W}},
+	{0x0e5000f0, 0x005000b0, 2, LDRH_EQ, 0x1c04, instArgs{arg_R_12, arg_mem_R_pm_imm8_W}},
+	{0x0f7000f0, 0x007000b0, 4, LDRHT_EQ, 0x1c04, instArgs{arg_R_12, arg_mem_R_pm_imm8_postindex}},
+	{0x0f700ff0, 0x003000b0, 4, LDRHT_EQ, 0x1c04, instArgs{arg_R_12, arg_mem_R_pm_R_postindex}},
+	{0x0e500ff0, 0x001000d0, 2, LDRSB_EQ, 0x1c04, instArgs{arg_R_12, arg_mem_R_pm_R_W}},
+	{0x0e5000f0, 0x005000d0, 2, LDRSB_EQ, 0x1c04, instArgs{arg_R_12, arg_mem_R_pm_imm8_W}},
+	{0x0f7000f0, 0x007000d0, 4, LDRSBT_EQ, 0x1c04, instArgs{arg_R_12, arg_mem_R_pm_imm8_postindex}},
+	{0x0f700ff0, 0x003000d0, 4, LDRSBT_EQ, 0x1c04, instArgs{arg_R_12, arg_mem_R_pm_R_postindex}},
+	{0x0e500ff0, 0x001000f0, 2, LDRSH_EQ, 0x1c04, instArgs{arg_R_12, arg_mem_R_pm_R_W}},
+	{0x0e5000f0, 0x005000f0, 2, LDRSH_EQ, 0x1c04, instArgs{arg_R_12, arg_mem_R_pm_imm8_W}},
+	{0x0f7000f0, 0x007000f0, 4, LDRSHT_EQ, 0x1c04, instArgs{arg_R_12, arg_mem_R_pm_imm8_postindex}},
+	{0x0f700ff0, 0x003000f0, 4, LDRSHT_EQ, 0x1c04, instArgs{arg_R_12, arg_mem_R_pm_R_postindex}},
+	{0x0f700000, 0x04300000, 4, LDRT_EQ, 0x1c04, instArgs{arg_R_12, arg_mem_R_pm_imm12_postindex}},
+	{0x0f700010, 0x06300000, 4, LDRT_EQ, 0x1c04, instArgs{arg_R_12, arg_mem_R_pm_R_shift_imm_postindex}},
+	{0x0fef0070, 0x01a00000, 2, LSL_EQ, 0x14011c04, instArgs{arg_R_12, arg_R_0, arg_imm5_nz}},
+	{0x0fef00f0, 0x01a00010, 4, LSL_EQ, 0x14011c04, instArgs{arg_R_12, arg_R_0, arg_R_8}},
+	{0x0fef0070, 0x01a00020, 4, LSR_EQ, 0x14011c04, instArgs{arg_R_12, arg_R_0, arg_imm5_32}},
+	{0x0fef00f0, 0x01a00030, 4, LSR_EQ, 0x14011c04, instArgs{arg_R_12, arg_R_0, arg_R_8}},
+	{0x0fe000f0, 0x00200090, 4, MLA_EQ, 0x14011c04, instArgs{arg_R_16, arg_R_0, arg_R_8, arg_R_12}},
+	{0x0ff000f0, 0x00600090, 4, MLS_EQ, 0x1c04, instArgs{arg_R_16, arg_R_0, arg_R_8, arg_R_12}},
+	{0x0ff00000, 0x03400000, 4, MOVT_EQ, 0x1c04, instArgs{arg_R_12, arg_imm_4at16_12at0}},
+	{0x0ff00000, 0x03000000, 4, MOVW_EQ, 0x1c04, instArgs{arg_R_12, arg_imm_4at16_12at0}},
+	{0x0fef0000, 0x03a00000, 2, MOV_EQ, 0x14011c04, instArgs{arg_R_12, arg_const}},
+	{0x0fef0ff0, 0x01a00000, 2, MOV_EQ, 0x14011c04, instArgs{arg_R_12, arg_R_0}},
+	{0x0fff0fff, 0x010f0000, 4, MRS_EQ, 0x1c04, instArgs{arg_R_12, arg_APSR}},
+	{0x0ff000f0, 0x010f0000, 3, MRS_EQ, 0x1c04, instArgs{arg_R_12, arg_APSR}},
+	{0x0ffffff0, 0x012cf000, 4, MSR_EQ, 0x1c04, instArgs{arg_APSR, arg_R_0}},
+	{0x0fff00f0, 0x012cf000, 3, MSR_EQ, 0x1c04, instArgs{arg_APSR, arg_R_0}},
+	{0x0ffff000, 0x032cf000, 4, MSR_EQ, 0x1c04, instArgs{arg_APSR, arg_const}},
+	{0x0fff0000, 0x032cf000, 3, MSR_EQ, 0x1c04, instArgs{arg_APSR, arg_const}},
+	{0x0fe0f0f0, 0x00000090, 4, MUL_EQ, 0x14011c04, instArgs{arg_R_16, arg_R_0, arg_R_8}},
+	{0x0fe000f0, 0x00000090, 3, MUL_EQ, 0x14011c04, instArgs{arg_R_16, arg_R_0, arg_R_8}},
+	{0x0fef0000, 0x03e00000, 2, MVN_EQ, 0x14011c04, instArgs{arg_R_12, arg_const}},
+	{0x0fe00000, 0x03e00000, 1, MVN_EQ, 0x14011c04, instArgs{arg_R_12, arg_const}},
+	{0x0fef0090, 0x01e00010, 4, MVN_EQ, 0x14011c04, instArgs{arg_R_12, arg_R_shift_R}},
+	{0x0fe00090, 0x01e00010, 3, MVN_EQ, 0x14011c04, instArgs{arg_R_12, arg_R_shift_R}},
+	{0x0fef0010, 0x01e00000, 2, MVN_EQ, 0x14011c04, instArgs{arg_R_12, arg_R_shift_imm}},
+	{0x0fe00010, 0x01e00000, 1, MVN_EQ, 0x14011c04, instArgs{arg_R_12, arg_R_shift_imm}},
+	{0x0fffffff, 0x0320f000, 4, NOP_EQ, 0x1c04, instArgs{}},
+	{0x0fff00ff, 0x0320f000, 3, NOP_EQ, 0x1c04, instArgs{}},
+	{0x0fe00000, 0x03800000, 2, ORR_EQ, 0x14011c04, instArgs{arg_R_12, arg_R_16, arg_const}},
+	{0x0fe00090, 0x01800010, 4, ORR_EQ, 0x14011c04, instArgs{arg_R_12, arg_R_16, arg_R_shift_R}},
+	{0x0fe00010, 0x01800000, 2, ORR_EQ, 0x14011c04, instArgs{arg_R_12, arg_R_16, arg_R_shift_imm}},
+	{0x0ff00030, 0x06800010, 4, PKHBT_EQ, 0x6011c04, instArgs{arg_R_12, arg_R_16, arg_R_shift_imm}},
+	{0xff7ff000, 0xf55ff000, 4, PLD, 0x0, instArgs{arg_label_pm_12}},
+	{0xff3f0000, 0xf55ff000, 3, PLD, 0x0, instArgs{arg_label_pm_12}},
+	{0xff30f000, 0xf510f000, 2, PLD_W, 0x1601, instArgs{arg_mem_R_pm_imm12_offset}},
+	{0xff300000, 0xf510f000, 1, PLD_W, 0x1601, instArgs{arg_mem_R_pm_imm12_offset}},
+	{0xff30f010, 0xf710f000, 4, PLD_W, 0x1601, instArgs{arg_mem_R_pm_R_shift_imm_offset}},
+	{0xff300010, 0xf710f000, 3, PLD_W, 0x1601, instArgs{arg_mem_R_pm_R_shift_imm_offset}},
+	{0xff70f000, 0xf450f000, 4, PLI, 0x0, instArgs{arg_mem_R_pm_imm12_offset}},
+	{0xff700000, 0xf450f000, 3, PLI, 0x0, instArgs{arg_mem_R_pm_imm12_offset}},
+	{0xff70f010, 0xf650f000, 4, PLI, 0x0, instArgs{arg_mem_R_pm_R_shift_imm_offset}},
+	{0xff700010, 0xf650f000, 3, PLI, 0x0, instArgs{arg_mem_R_pm_R_shift_imm_offset}},
+	{0x0fff0000, 0x08bd0000, 4, POP_EQ, 0x1c04, instArgs{arg_registers2}},
+	{0x0fff0fff, 0x049d0004, 4, POP_EQ, 0x1c04, instArgs{arg_registers1}},
+	{0x0fff0000, 0x092d0000, 4, PUSH_EQ, 0x1c04, instArgs{arg_registers2}},
+	{0x0fff0fff, 0x052d0004, 4, PUSH_EQ, 0x1c04, instArgs{arg_registers1}},
+	{0x0ff00ff0, 0x06200f10, 4, QADD16_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},
+	{0x0ff000f0, 0x06200f10, 3, QADD16_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},
+	{0x0ff00ff0, 0x06200f90, 4, QADD8_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},
+	{0x0ff000f0, 0x06200f90, 3, QADD8_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},
+	{0x0ff00ff0, 0x01000050, 4, QADD_EQ, 0x1c04, instArgs{arg_R_12, arg_R_0, arg_R_16}},
+	{0x0ff000f0, 0x01000050, 3, QADD_EQ, 0x1c04, instArgs{arg_R_12, arg_R_0, arg_R_16}},
+	{0x0ff00ff0, 0x06200f30, 4, QASX_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},
+	{0x0ff000f0, 0x06200f30, 3, QASX_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},
+	{0x0ff00ff0, 0x01400050, 4, QDADD_EQ, 0x1c04, instArgs{arg_R_12, arg_R_0, arg_R_16}},
+	{0x0ff000f0, 0x01400050, 3, QDADD_EQ, 0x1c04, instArgs{arg_R_12, arg_R_0, arg_R_16}},
+	{0x0ff00ff0, 0x01600050, 4, QDSUB_EQ, 0x1c04, instArgs{arg_R_12, arg_R_0, arg_R_16}},
+	{0x0ff00ff0, 0x06200f50, 4, QSAX_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},
+	{0x0ff000f0, 0x06200f50, 3, QSAX_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},
+	{0x0ff00ff0, 0x06200f70, 4, QSUB16_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},
+	{0x0ff000f0, 0x06200f70, 3, QSUB16_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},
+	{0x0ff00ff0, 0x06200ff0, 4, QSUB8_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},
+	{0x0ff000f0, 0x06200ff0, 3, QSUB8_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},
+	{0x0ff00ff0, 0x01200050, 4, QSUB_EQ, 0x1c04, instArgs{arg_R_12, arg_R_0, arg_R_16}},
+	{0x0fff0ff0, 0x06ff0f30, 4, RBIT_EQ, 0x1c04, instArgs{arg_R_12, arg_R_0}},
+	{0x0ff000f0, 0x06ff0f30, 3, RBIT_EQ, 0x1c04, instArgs{arg_R_12, arg_R_0}},
+	{0x0fff0ff0, 0x06bf0fb0, 4, REV16_EQ, 0x1c04, instArgs{arg_R_12, arg_R_0}},
+	{0x0ff000f0, 0x06bf0fb0, 3, REV16_EQ, 0x1c04, instArgs{arg_R_12, arg_R_0}},
+	{0x0fff0ff0, 0x06bf0f30, 4, REV_EQ, 0x1c04, instArgs{arg_R_12, arg_R_0}},
+	{0x0ff000f0, 0x06bf0f30, 3, REV_EQ, 0x1c04, instArgs{arg_R_12, arg_R_0}},
+	{0x0fff0ff0, 0x06ff0fb0, 4, REVSH_EQ, 0x1c04, instArgs{arg_R_12, arg_R_0}},
+	{0x0ff000f0, 0x06ff0fb0, 3, REVSH_EQ, 0x1c04, instArgs{arg_R_12, arg_R_0}},
+	{0x0fef0070, 0x01a00060, 2, ROR_EQ, 0x14011c04, instArgs{arg_R_12, arg_R_0, arg_imm5}},
+	{0x0fef00f0, 0x01a00070, 4, ROR_EQ, 0x14011c04, instArgs{arg_R_12, arg_R_0, arg_R_8}},
+	{0x0fef0ff0, 0x01a00060, 4, RRX_EQ, 0x14011c04, instArgs{arg_R_12, arg_R_0}},
+	{0x0fe00000, 0x02600000, 2, RSB_EQ, 0x14011c04, instArgs{arg_R_12, arg_R_16, arg_const}},
+	{0x0fe00090, 0x00600010, 4, RSB_EQ, 0x14011c04, instArgs{arg_R_12, arg_R_16, arg_R_shift_R}},
+	{0x0fe00010, 0x00600000, 2, RSB_EQ, 0x14011c04, instArgs{arg_R_12, arg_R_16, arg_R_shift_imm}},
+	{0x0fe00000, 0x02e00000, 2, RSC_EQ, 0x14011c04, instArgs{arg_R_12, arg_R_16, arg_const}},
+	{0x0fe00090, 0x00e00010, 4, RSC_EQ, 0x14011c04, instArgs{arg_R_12, arg_R_16, arg_R_shift_R}},
+	{0x0fe00010, 0x00e00000, 2, RSC_EQ, 0x14011c04, instArgs{arg_R_12, arg_R_16, arg_R_shift_imm}},
+	{0x0ff00ff0, 0x06100f10, 4, SADD16_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},
+	{0x0ff000f0, 0x06100f10, 3, SADD16_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},
+	{0x0ff00ff0, 0x06100f90, 4, SADD8_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},
+	{0x0ff000f0, 0x06100f90, 3, SADD8_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},
+	{0x0ff00ff0, 0x06100f30, 4, SASX_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},
+	{0x0ff000f0, 0x06100f30, 3, SASX_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},
+	{0x0fe00000, 0x02c00000, 2, SBC_EQ, 0x14011c04, instArgs{arg_R_12, arg_R_16, arg_const}},
+	{0x0fe00090, 0x00c00010, 4, SBC_EQ, 0x14011c04, instArgs{arg_R_12, arg_R_16, arg_R_shift_R}},
+	{0x0fe00010, 0x00c00000, 2, SBC_EQ, 0x14011c04, instArgs{arg_R_12, arg_R_16, arg_R_shift_imm}},
+	{0x0fe00070, 0x07a00050, 4, SBFX_EQ, 0x1c04, instArgs{arg_R_12, arg_R_0, arg_imm5, arg_widthm1}},
+	{0x0ff0f0f0, 0x0710f010, 4, SDIV_EQ, 0x1c04, instArgs{arg_R_16, arg_R_0, arg_R_8}},
+	{0x0ff000f0, 0x0710f010, 3, SDIV_EQ, 0x1c04, instArgs{arg_R_16, arg_R_0, arg_R_8}},
+	{0x0ff00ff0, 0x06800fb0, 4, SEL_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},
+	{0x0ff000f0, 0x06800fb0, 3, SEL_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},
+	{0xfffffdff, 0xf1010000, 4, SETEND, 0x0, instArgs{arg_endian}},
+	{0xfffffc00, 0xf1010000, 3, SETEND, 0x0, instArgs{arg_endian}},
+	{0x0fffffff, 0x0320f004, 4, SEV_EQ, 0x1c04, instArgs{}},
+	{0x0fff00ff, 0x0320f004, 3, SEV_EQ, 0x1c04, instArgs{}},
+	{0x0ff00ff0, 0x06300f10, 4, SHADD16_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},
+	{0x0ff000f0, 0x06300f10, 3, SHADD16_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},
+	{0x0ff00ff0, 0x06300f90, 4, SHADD8_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},
+	{0x0ff000f0, 0x06300f90, 3, SHADD8_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},
+	{0x0ff00ff0, 0x06300f30, 4, SHASX_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},
+	{0x0ff000f0, 0x06300f30, 3, SHASX_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},
+	{0x0ff00ff0, 0x06300f50, 4, SHSAX_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},
+	{0x0ff000f0, 0x06300f50, 3, SHSAX_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},
+	{0x0ff00ff0, 0x06300f70, 4, SHSUB16_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},
+	{0x0ff000f0, 0x06300f70, 3, SHSUB16_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},
+	{0x0ff00ff0, 0x06300ff0, 4, SHSUB8_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},
+	{0x0ff000f0, 0x06300ff0, 3, SHSUB8_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},
+	{0x0ff00090, 0x01000080, 4, SMLABB_EQ, 0x50106011c04, instArgs{arg_R_16, arg_R_0, arg_R_8, arg_R_12}},
+	{0x0ff000d0, 0x07000010, 2, SMLAD_EQ, 0x5011c04, instArgs{arg_R_16, arg_R_0, arg_R_8, arg_R_12}},
+	{0x0ff00090, 0x01400080, 4, SMLALBB_EQ, 0x50106011c04, instArgs{arg_R_12, arg_R_16, arg_R_0, arg_R_8}},
+	{0x0ff000d0, 0x07400010, 4, SMLALD_EQ, 0x5011c04, instArgs{arg_R_12, arg_R_16, arg_R_0, arg_R_8}},
+	{0x0fe000f0, 0x00e00090, 4, SMLAL_EQ, 0x14011c04, instArgs{arg_R_12, arg_R_16, arg_R_0, arg_R_8}},
+	{0x0ff000b0, 0x01200080, 4, SMLAWB_EQ, 0x6011c04, instArgs{arg_R_16, arg_R_0, arg_R_8, arg_R_12}},
+	{0x0ff000d0, 0x07000050, 2, SMLSD_EQ, 0x5011c04, instArgs{arg_R_16, arg_R_0, arg_R_8, arg_R_12}},
+	{0x0ff000d0, 0x07400050, 4, SMLSLD_EQ, 0x5011c04, instArgs{arg_R_12, arg_R_16, arg_R_0, arg_R_8}},
+	{0x0ff000d0, 0x07500010, 2, SMMLA_EQ, 0x5011c04, instArgs{arg_R_16, arg_R_0, arg_R_8, arg_R_12}},
+	{0x0ff000d0, 0x075000d0, 4, SMMLS_EQ, 0x5011c04, instArgs{arg_R_16, arg_R_0, arg_R_8, arg_R_12}},
+	{0x0ff0f0d0, 0x0750f010, 4, SMMUL_EQ, 0x5011c04, instArgs{arg_R_16, arg_R_0, arg_R_8}},
+	{0x0ff0f0d0, 0x0700f010, 4, SMUAD_EQ, 0x5011c04, instArgs{arg_R_16, arg_R_0, arg_R_8}},
+	{0x0ff0f090, 0x01600080, 4, SMULBB_EQ, 0x50106011c04, instArgs{arg_R_16, arg_R_0, arg_R_8}},
+	{0x0fe000f0, 0x00c00090, 4, SMULL_EQ, 0x14011c04, instArgs{arg_R_12, arg_R_16, arg_R_0, arg_R_8}},
+	{0x0ff0f0b0, 0x012000a0, 4, SMULWB_EQ, 0x6011c04, instArgs{arg_R_16, arg_R_0, arg_R_8}},
+	{0x0ff0f0d0, 0x0700f050, 4, SMUSD_EQ, 0x5011c04, instArgs{arg_R_16, arg_R_0, arg_R_8}},
+	{0x0ff00ff0, 0x06a00f30, 4, SSAT16_EQ, 0x1c04, instArgs{arg_R_12, arg_satimm4m1, arg_R_0}},
+	{0x0ff000f0, 0x06a00f30, 3, SSAT16_EQ, 0x1c04, instArgs{arg_R_12, arg_satimm4m1, arg_R_0}},
+	{0x0fe00030, 0x06a00010, 4, SSAT_EQ, 0x1c04, instArgs{arg_R_12, arg_satimm5m1, arg_R_shift_imm}},
+	{0x0ff00ff0, 0x06100f50, 4, SSAX_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},
+	{0x0ff000f0, 0x06100f50, 3, SSAX_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},
+	{0x0ff00ff0, 0x06100f70, 4, SSUB16_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},
+	{0x0ff000f0, 0x06100f70, 3, SSUB16_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},
+	{0x0ff00ff0, 0x06100ff0, 4, SSUB8_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},
+	{0x0ff000f0, 0x06100ff0, 3, SSUB8_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},
+	{0x0fd00000, 0x08800000, 4, STM_EQ, 0x1c04, instArgs{arg_R_16_WB, arg_registers}},
+	{0x0fd00000, 0x08000000, 4, STMDA_EQ, 0x1c04, instArgs{arg_R_16_WB, arg_registers}},
+	{0x0fd00000, 0x09000000, 2, STMDB_EQ, 0x1c04, instArgs{arg_R_16_WB, arg_registers}},
+	{0x0fd00000, 0x09800000, 4, STMIB_EQ, 0x1c04, instArgs{arg_R_16_WB, arg_registers}},
+	{0x0e500018, 0x06000000, 2, STR_EQ, 0x1c04, instArgs{arg_R_12, arg_mem_R_pm_R_shift_imm_W}},
+	{0x0e500000, 0x04000000, 2, STR_EQ, 0x1c04, instArgs{arg_R_12, arg_mem_R_pm_imm12_W}},
+	{0x0e500010, 0x06400000, 2, STRB_EQ, 0x1c04, instArgs{arg_R_12, arg_mem_R_pm_R_shift_imm_W}},
+	{0x0e500000, 0x04400000, 2, STRB_EQ, 0x1c04, instArgs{arg_R_12, arg_mem_R_pm_imm12_W}},
+	{0x0f700000, 0x04600000, 4, STRBT_EQ, 0x1c04, instArgs{arg_R_12, arg_mem_R_pm_imm12_postindex}},
+	{0x0f700010, 0x06600000, 4, STRBT_EQ, 0x1c04, instArgs{arg_R_12, arg_mem_R_pm_R_shift_imm_postindex}},
+	{0x0e500ff0, 0x000000f0, 4, STRD_EQ, 0x1c04, instArgs{arg_R1_12, arg_R2_12, arg_mem_R_pm_R_W}},
+	{0x0e5000f0, 0x000000f0, 3, STRD_EQ, 0x1c04, instArgs{arg_R1_12, arg_R2_12, arg_mem_R_pm_R_W}},
+	{0x0e5000f0, 0x004000f0, 4, STRD_EQ, 0x1c04, instArgs{arg_R1_12, arg_R2_12, arg_mem_R_pm_imm8_W}},
+	{0x0ff00ff0, 0x01800f90, 4, STREX_EQ, 0x1c04, instArgs{arg_R_12, arg_R_0, arg_mem_R}},
+	{0x0ff00ff0, 0x01c00f90, 4, STREXB_EQ, 0x1c04, instArgs{arg_R_12, arg_R_0, arg_mem_R}},
+	{0x0ff00ff0, 0x01a00f90, 4, STREXD_EQ, 0x1c04, instArgs{arg_R_12, arg_R1_0, arg_R2_0, arg_mem_R}},
+	{0x0ff00ff0, 0x01e00f90, 4, STREXH_EQ, 0x1c04, instArgs{arg_R_12, arg_R_0, arg_mem_R}},
+	{0x0e500ff0, 0x000000b0, 2, STRH_EQ, 0x1c04, instArgs{arg_R_12, arg_mem_R_pm_R_W}},
+	{0x0e5000f0, 0x004000b0, 2, STRH_EQ, 0x1c04, instArgs{arg_R_12, arg_mem_R_pm_imm8_W}},
+	{0x0f7000f0, 0x006000b0, 4, STRHT_EQ, 0x1c04, instArgs{arg_R_12, arg_mem_R_pm_imm8_postindex}},
+	{0x0f700ff0, 0x002000b0, 4, STRHT_EQ, 0x1c04, instArgs{arg_R_12, arg_mem_R_pm_R_postindex}},
+	{0x0f700000, 0x04200000, 4, STRT_EQ, 0x1c04, instArgs{arg_R_12, arg_mem_R_pm_imm12_postindex}},
+	{0x0f700010, 0x06200000, 4, STRT_EQ, 0x1c04, instArgs{arg_R_12, arg_mem_R_pm_R_shift_imm_postindex}},
+	{0x0fe00000, 0x02400000, 2, SUB_EQ, 0x14011c04, instArgs{arg_R_12, arg_R_16, arg_const}},
+	{0x0fe00090, 0x00400010, 4, SUB_EQ, 0x14011c04, instArgs{arg_R_12, arg_R_16, arg_R_shift_R}},
+	{0x0fe00010, 0x00400000, 2, SUB_EQ, 0x14011c04, instArgs{arg_R_12, arg_R_16, arg_R_shift_imm}},
+	{0x0fef0000, 0x024d0000, 2, SUB_EQ, 0x14011c04, instArgs{arg_R_12, arg_SP, arg_const}},
+	{0x0fef0010, 0x004d0000, 2, SUB_EQ, 0x14011c04, instArgs{arg_R_12, arg_SP, arg_R_shift_imm}},
+	{0x0f000000, 0x0f000000, 4, SVC_EQ, 0x1c04, instArgs{arg_imm24}},
+	{0x0fb00ff0, 0x01000090, 4, SWP_EQ, 0x16011c04, instArgs{arg_R_12, arg_R_0, arg_mem_R}},
+	{0x0ff003f0, 0x06800070, 2, SXTAB16_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_rotate}},
+	{0x0ff003f0, 0x06a00070, 2, SXTAB_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_rotate}},
+	{0x0ff003f0, 0x06b00070, 2, SXTAH_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_rotate}},
+	{0x0fff03f0, 0x068f0070, 4, SXTB16_EQ, 0x1c04, instArgs{arg_R_12, arg_R_rotate}},
+	{0x0fff03f0, 0x06af0070, 4, SXTB_EQ, 0x1c04, instArgs{arg_R_12, arg_R_rotate}},
+	{0x0fff03f0, 0x06bf0070, 4, SXTH_EQ, 0x1c04, instArgs{arg_R_12, arg_R_rotate}},
+	{0x0ff0f000, 0x03300000, 4, TEQ_EQ, 0x1c04, instArgs{arg_R_16, arg_const}},
+	{0x0ff00000, 0x03300000, 3, TEQ_EQ, 0x1c04, instArgs{arg_R_16, arg_const}},
+	{0x0ff0f090, 0x01300010, 4, TEQ_EQ, 0x1c04, instArgs{arg_R_16, arg_R_shift_R}},
+	{0x0ff00090, 0x01300010, 3, TEQ_EQ, 0x1c04, instArgs{arg_R_16, arg_R_shift_R}},
+	{0x0ff0f010, 0x01300000, 4, TEQ_EQ, 0x1c04, instArgs{arg_R_16, arg_R_shift_imm}},
+	{0x0ff00010, 0x01300000, 3, TEQ_EQ, 0x1c04, instArgs{arg_R_16, arg_R_shift_imm}},
+	{0x0ff0f000, 0x03100000, 4, TST_EQ, 0x1c04, instArgs{arg_R_16, arg_const}},
+	{0x0ff00000, 0x03100000, 3, TST_EQ, 0x1c04, instArgs{arg_R_16, arg_const}},
+	{0x0ff0f090, 0x01100010, 4, TST_EQ, 0x1c04, instArgs{arg_R_16, arg_R_shift_R}},
+	{0x0ff00090, 0x01100010, 3, TST_EQ, 0x1c04, instArgs{arg_R_16, arg_R_shift_R}},
+	{0x0ff0f010, 0x01100000, 4, TST_EQ, 0x1c04, instArgs{arg_R_16, arg_R_shift_imm}},
+	{0x0ff00010, 0x01100000, 3, TST_EQ, 0x1c04, instArgs{arg_R_16, arg_R_shift_imm}},
+	{0x0ff00ff0, 0x06500f10, 4, UADD16_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},
+	{0x0ff000f0, 0x06500f10, 3, UADD16_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},
+	{0x0ff00ff0, 0x06500f90, 4, UADD8_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},
+	{0x0ff000f0, 0x06500f90, 3, UADD8_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},
+	{0x0ff00ff0, 0x06500f30, 4, UASX_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},
+	{0x0ff000f0, 0x06500f30, 3, UASX_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},
+	{0x0fe00070, 0x07e00050, 4, UBFX_EQ, 0x1c04, instArgs{arg_R_12, arg_R_0, arg_imm5, arg_widthm1}},
+	{0x0ff0f0f0, 0x0730f010, 4, UDIV_EQ, 0x1c04, instArgs{arg_R_16, arg_R_0, arg_R_8}},
+	{0x0ff000f0, 0x0730f010, 3, UDIV_EQ, 0x1c04, instArgs{arg_R_16, arg_R_0, arg_R_8}},
+	{0x0ff00ff0, 0x06700f10, 4, UHADD16_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},
+	{0x0ff000f0, 0x06700f10, 3, UHADD16_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},
+	{0x0ff00ff0, 0x06700f90, 4, UHADD8_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},
+	{0x0ff000f0, 0x06700f90, 3, UHADD8_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},
+	{0x0ff00ff0, 0x06700f30, 4, UHASX_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},
+	{0x0ff000f0, 0x06700f30, 3, UHASX_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},
+	{0x0ff00ff0, 0x06700f50, 4, UHSAX_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},
+	{0x0ff000f0, 0x06700f50, 3, UHSAX_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},
+	{0x0ff00ff0, 0x06700f70, 4, UHSUB16_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},
+	{0x0ff000f0, 0x06700f70, 3, UHSUB16_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},
+	{0x0ff00ff0, 0x06700ff0, 4, UHSUB8_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},
+	{0x0ff000f0, 0x06700ff0, 3, UHSUB8_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},
+	{0x0ff000f0, 0x00400090, 4, UMAAL_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0, arg_R_8}},
+	{0x0fe000f0, 0x00a00090, 4, UMLAL_EQ, 0x14011c04, instArgs{arg_R_12, arg_R_16, arg_R_0, arg_R_8}},
+	{0x0fe000f0, 0x00800090, 4, UMULL_EQ, 0x14011c04, instArgs{arg_R_12, arg_R_16, arg_R_0, arg_R_8}},
+	{0x0ff00ff0, 0x06600f10, 4, UQADD16_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},
+	{0x0ff000f0, 0x06600f10, 3, UQADD16_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},
+	{0x0ff00ff0, 0x06600f90, 4, UQADD8_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},
+	{0x0ff000f0, 0x06600f90, 3, UQADD8_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},
+	{0x0ff00ff0, 0x06600f30, 4, UQASX_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},
+	{0x0ff000f0, 0x06600f30, 3, UQASX_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},
+	{0x0ff00ff0, 0x06600f50, 4, UQSAX_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},
+	{0x0ff000f0, 0x06600f50, 3, UQSAX_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},
+	{0x0ff00ff0, 0x06600f70, 4, UQSUB16_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},
+	{0x0ff000f0, 0x06600f70, 3, UQSUB16_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},
+	{0x0ff00ff0, 0x06600ff0, 4, UQSUB8_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},
+	{0x0ff000f0, 0x06600ff0, 3, UQSUB8_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},
+	{0x0ff0f0f0, 0x0780f010, 4, USAD8_EQ, 0x1c04, instArgs{arg_R_16, arg_R_0, arg_R_8}},
+	{0x0ff000f0, 0x07800010, 2, USADA8_EQ, 0x1c04, instArgs{arg_R_16, arg_R_0, arg_R_8, arg_R_12}},
+	{0x0ff00ff0, 0x06e00f30, 4, USAT16_EQ, 0x1c04, instArgs{arg_R_12, arg_satimm4, arg_R_0}},
+	{0x0ff000f0, 0x06e00f30, 3, USAT16_EQ, 0x1c04, instArgs{arg_R_12, arg_satimm4, arg_R_0}},
+	{0x0fe00030, 0x06e00010, 4, USAT_EQ, 0x1c04, instArgs{arg_R_12, arg_satimm5, arg_R_shift_imm}},
+	{0x0ff00ff0, 0x06500f50, 4, USAX_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},
+	{0x0ff000f0, 0x06500f50, 3, USAX_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},
+	{0x0ff00ff0, 0x06500f70, 4, USUB16_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},
+	{0x0ff000f0, 0x06500f70, 3, USUB16_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},
+	{0x0ff00ff0, 0x06500ff0, 4, USUB8_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},
+	{0x0ff000f0, 0x06500ff0, 3, USUB8_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_0}},
+	{0x0ff003f0, 0x06c00070, 2, UXTAB16_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_rotate}},
+	{0x0ff003f0, 0x06e00070, 2, UXTAB_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_rotate}},
+	{0x0ff003f0, 0x06f00070, 2, UXTAH_EQ, 0x1c04, instArgs{arg_R_12, arg_R_16, arg_R_rotate}},
+	{0x0fff03f0, 0x06cf0070, 4, UXTB16_EQ, 0x1c04, instArgs{arg_R_12, arg_R_rotate}},
+	{0x0fff03f0, 0x06ef0070, 4, UXTB_EQ, 0x1c04, instArgs{arg_R_12, arg_R_rotate}},
+	{0x0fff03f0, 0x06ff0070, 4, UXTH_EQ, 0x1c04, instArgs{arg_R_12, arg_R_rotate}},
+	{0x0fb00e10, 0x0e000a00, 4, VMLA_EQ_F32, 0x60108011c04, instArgs{arg_Sd_Dd, arg_Sn_Dn, arg_Sm_Dm}},
+	{0x0fbf0ed0, 0x0eb00ac0, 4, VABS_EQ_F32, 0x8011c04, instArgs{arg_Sd_Dd, arg_Sm_Dm}},
+	{0x0fb00e50, 0x0e300a00, 4, VADD_EQ_F32, 0x8011c04, instArgs{arg_Sd_Dd, arg_Sn_Dn, arg_Sm_Dm}},
+	{0x0fbf0e7f, 0x0eb50a40, 4, VCMP_EQ_F32, 0x70108011c04, instArgs{arg_Sd_Dd, arg_fp_0}},
+	{0x0fbf0e70, 0x0eb50a40, 3, VCMP_EQ_F32, 0x70108011c04, instArgs{arg_Sd_Dd, arg_fp_0}},
+	{0x0fbf0e50, 0x0eb40a40, 4, VCMP_EQ_F32, 0x70108011c04, instArgs{arg_Sd_Dd, arg_Sm_Dm}},
+	{0x0fbe0e50, 0x0eba0a40, 4, VCVT_EQ_F32_FXS16, 0x801100107011c04, instArgs{arg_Sd_Dd, arg_Sd_Dd, arg_fbits}},
+	{0x0fbe0e50, 0x0ebe0a40, 4, VCVT_EQ_FXS16_F32, 0x1001070108011c04, instArgs{arg_Sd_Dd, arg_Sd_Dd, arg_fbits}},
+	{0x0fbf0ed0, 0x0eb70ac0, 4, VCVT_EQ_F64_F32, 0x8011c04, instArgs{arg_Dd_Sd, arg_Sm_Dm}},
+	{0x0fbe0f50, 0x0eb20a40, 4, VCVTB_EQ_F32_F16, 0x70110011c04, instArgs{arg_Sd, arg_Sm}},
+	{0x0fbf0e50, 0x0eb80a40, 4, VCVT_EQ_F32_U32, 0x80107011c04, instArgs{arg_Sd_Dd, arg_Sm}},
+	{0x0fbe0e50, 0x0ebc0a40, 4, VCVTR_EQ_U32_F32, 0x701100108011c04, instArgs{arg_Sd, arg_Sm_Dm}},
+	{0x0fb00e50, 0x0e800a00, 4, VDIV_EQ_F32, 0x8011c04, instArgs{arg_Sd_Dd, arg_Sn_Dn, arg_Sm_Dm}},
+	{0x0f300e00, 0x0d100a00, 4, VLDR_EQ, 0x1c04, instArgs{arg_Sd_Dd, arg_mem_R_pm_imm8at0_offset}},
+	{0x0ff00f7f, 0x0e000a10, 4, VMOV_EQ, 0x1c04, instArgs{arg_Sn, arg_R_12}},
+	{0x0ff00f7f, 0x0e100a10, 4, VMOV_EQ, 0x1c04, instArgs{arg_R_12, arg_Sn}},
+	{0x0fd00f7f, 0x0e100b10, 4, VMOV_EQ_32, 0x1c04, instArgs{arg_R_12, arg_Dn_half}},
+	{0x0fd00f7f, 0x0e000b10, 4, VMOV_EQ_32, 0x1c04, instArgs{arg_Dn_half, arg_R_12}},
+	{0x0fb00ef0, 0x0eb00a00, 4, VMOV_EQ_F32, 0x8011c04, instArgs{arg_Sd_Dd, arg_imm_vfp}},
+	{0x0fbf0ed0, 0x0eb00a40, 4, VMOV_EQ_F32, 0x8011c04, instArgs{arg_Sd_Dd, arg_Sm_Dm}},
+	{0x0fff0fff, 0x0ef10a10, 4, VMRS_EQ, 0x1c04, instArgs{arg_R_12_nzcv, arg_FPSCR}},
+	{0x0fff0fff, 0x0ee10a10, 4, VMSR_EQ, 0x1c04, instArgs{arg_FPSCR, arg_R_12}},
+	{0x0fb00e50, 0x0e200a00, 4, VMUL_EQ_F32, 0x8011c04, instArgs{arg_Sd_Dd, arg_Sn_Dn, arg_Sm_Dm}},
+	{0x0fbf0ed0, 0x0eb10a40, 4, VNEG_EQ_F32, 0x8011c04, instArgs{arg_Sd_Dd, arg_Sm_Dm}},
+	{0x0fb00e10, 0x0e100a00, 4, VNMLS_EQ_F32, 0x60108011c04, instArgs{arg_Sd_Dd, arg_Sn_Dn, arg_Sm_Dm}},
+	{0x0fb00e50, 0x0e200a40, 4, VNMUL_EQ_F32, 0x8011c04, instArgs{arg_Sd_Dd, arg_Sn_Dn, arg_Sm_Dm}},
+	{0x0fbf0ed0, 0x0eb10ac0, 4, VSQRT_EQ_F32, 0x8011c04, instArgs{arg_Sd_Dd, arg_Sm_Dm}},
+	{0x0f300e00, 0x0d000a00, 4, VSTR_EQ, 0x1c04, instArgs{arg_Sd_Dd, arg_mem_R_pm_imm8at0_offset}},
+	{0x0fb00e50, 0x0e300a40, 4, VSUB_EQ_F32, 0x8011c04, instArgs{arg_Sd_Dd, arg_Sn_Dn, arg_Sm_Dm}},
+	{0x0fffffff, 0x0320f002, 4, WFE_EQ, 0x1c04, instArgs{}},
+	{0x0fff00ff, 0x0320f002, 3, WFE_EQ, 0x1c04, instArgs{}},
+	{0x0fffffff, 0x0320f003, 4, WFI_EQ, 0x1c04, instArgs{}},
+	{0x0fff00ff, 0x0320f003, 3, WFI_EQ, 0x1c04, instArgs{}},
+	{0x0fffffff, 0x0320f001, 4, YIELD_EQ, 0x1c04, instArgs{}},
+	{0x0fff00ff, 0x0320f001, 3, YIELD_EQ, 0x1c04, instArgs{}},
+	{0xffffffff, 0xf7fabcfd, 4, UNDEF, 0x0, instArgs{}},
 }

@@ -1,7 +1,3 @@
-// Copyright 2016 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
 // This file implements TestFormats; a test that verifies
 // format strings in the compiler (this directory and all
 // subdirectories, recursively).
@@ -36,6 +32,7 @@ import (
 	"bytes"
 	"flag"
 	"fmt"
+	"github.com/dave/golib/src/internal/testenv"
 	"go/ast"
 	"go/build"
 	"go/constant"
@@ -44,7 +41,6 @@ import (
 	"go/parser"
 	"go/token"
 	"go/types"
-	"internal/testenv"
 	"io/ioutil"
 	"log"
 	"os"
@@ -73,16 +69,15 @@ type File struct {
 }
 
 func TestFormats(t *testing.T) {
-	testenv.MustHaveGoBuild(t) // more restrictive than necessary, but that's ok
+	testenv.MustHaveGoBuild(t)
 
-	// process all directories
 	filepath.Walk(".", func(path string, info os.FileInfo, err error) error {
 		if info.IsDir() {
 			if info.Name() == "testdata" {
 				return filepath.SkipDir
 			}
 
-			importPath := filepath.Join("cmd/compile", path)
+			importPath := filepath.Join("github.com/dave/golib/src/cmd/compile", path)
 			if blacklistedPackages[filepath.ToSlash(importPath)] {
 				return filepath.SkipDir
 			}
@@ -90,7 +85,7 @@ func TestFormats(t *testing.T) {
 			pkg, err := build.Import(importPath, path, 0)
 			if err != nil {
 				if _, ok := err.(*build.NoGoError); ok {
-					return nil // nothing to do here
+					return nil
 				}
 				t.Fatal(err)
 			}
@@ -99,29 +94,24 @@ func TestFormats(t *testing.T) {
 		return nil
 	})
 
-	// test and rewrite formats
-	updatedFiles := make(map[string]File) // files that were rewritten
+	updatedFiles := make(map[string]File)
 	for _, p := range callSites {
-		// test current format literal and determine updated one
+
 		out := formatReplace(p.str, func(index int, in string) string {
 			if in == "*" {
-				return in // cannot rewrite '*' (as in "%*d")
+				return in
 			}
-			// in != '*'
-			typ := p.types[index]
-			format := typ + " " + in // e.g., "*Node %n"
 
-			// check if format is known
+			typ := p.types[index]
+			format := typ + " " + in
+
 			out, known := knownFormats[format]
 
-			// record format if not yet found
 			_, found := foundFormats[format]
 			if !found {
 				foundFormats[format] = true
 			}
 
-			// report an error if the format is unknown and this is the first
-			// time we see it; ignore "%v" and "%T" which are always valid
 			if !known && !found && in != "%v" && in != "%T" {
 				t.Errorf("%s: unknown format %q for %s argument", posString(p.arg), in, typ)
 			}
@@ -132,13 +122,11 @@ func TestFormats(t *testing.T) {
 			return out
 		})
 
-		// replace existing format literal if it changed
 		if out != p.str {
-			// we cannot replace the argument if it's not a string literal for now
-			// (e.g., it may be "foo" + "bar")
+
 			lit, ok := p.arg.(*ast.BasicLit)
 			if !ok {
-				delete(callSites, p.call) // treat as if we hadn't found this site
+				delete(callSites, p.call)
 				continue
 			}
 
@@ -146,7 +134,6 @@ func TestFormats(t *testing.T) {
 				fmt.Printf("%s:\n\t- %q\n\t+ %q\n", posString(p.arg), p.str, out)
 			}
 
-			// find argument index of format argument
 			index := -1
 			for i, arg := range p.call.Args {
 				if p.arg == arg {
@@ -155,14 +142,12 @@ func TestFormats(t *testing.T) {
 				}
 			}
 			if index < 0 {
-				// we may have processed the same call site twice,
-				// but that shouldn't happen
+
 				panic("internal error: matching argument not found")
 			}
 
-			// replace literal
-			new := *lit                    // make a copy
-			new.Value = strconv.Quote(out) // this may introduce "-quotes where there were `-quotes
+			new := *lit
+			new.Value = strconv.Quote(out)
 			p.call.Args[index] = &new
 			updatedFiles[p.file.name] = p.file
 		}
@@ -186,7 +171,6 @@ func TestFormats(t *testing.T) {
 		}
 	}
 
-	// report all function names containing a format string
 	if len(callSites) > 0 && testing.Verbose() {
 		set := make(map[string]bool)
 		for _, p := range callSites {
@@ -200,7 +184,6 @@ func TestFormats(t *testing.T) {
 		printList(list)
 	}
 
-	// report all formats found
 	if len(foundFormats) > 0 && testing.Verbose() {
 		var list []string
 		for s := range foundFormats {
@@ -211,7 +194,6 @@ func TestFormats(t *testing.T) {
 		fmt.Println("}")
 	}
 
-	// check that knownFormats is up to date
 	if !testing.Verbose() && !*update {
 		var mismatch bool
 		for s := range foundFormats {
@@ -233,20 +215,18 @@ func TestFormats(t *testing.T) {
 		}
 	}
 
-	// all format strings of calls must be in the formatStrings set (self-verification)
 	for _, p := range callSites {
 		if lit, ok := p.arg.(*ast.BasicLit); ok && lit.Kind == token.STRING {
 			if formatStrings[lit] {
-				// ok
+
 				delete(formatStrings, lit)
 			} else {
-				// this should never happen
+
 				panic(fmt.Sprintf("internal error: format string not found (%s)", posString(lit)))
 			}
 		}
 	}
 
-	// if we have any strings left, we may need to update them manually
 	if len(formatStrings) > 0 && filesUpdated {
 		var list []string
 		for lit := range formatStrings {
@@ -277,20 +257,17 @@ func collectPkgFormats(t *testing.T, pkg *build.Package) {
 	filenames = append(filenames, pkg.CgoFiles...)
 	filenames = append(filenames, pkg.TestGoFiles...)
 
-	// TODO(gri) verify _test files outside package
 	for _, name := range pkg.XTestGoFiles {
-		// don't process this test itself
+
 		if name != "fmt_test.go" && testing.Verbose() {
 			fmt.Printf("WARNING: %s not processed\n", filepath.Join(pkg.Dir, name))
 		}
 	}
 
-	// make filenames relative to .
 	for i, name := range filenames {
 		filenames[i] = filepath.Join(pkg.Dir, name)
 	}
 
-	// parse all files
 	files := make([]*ast.File, len(filenames))
 	for i, filename := range filenames {
 		f, err := parser.ParseFile(fset, filename, nil, parser.ParseComments)
@@ -300,14 +277,12 @@ func collectPkgFormats(t *testing.T, pkg *build.Package) {
 		files[i] = f
 	}
 
-	// typecheck package
 	conf := types.Config{Importer: importer.Default()}
 	etypes := make(map[ast.Expr]types.TypeAndValue)
 	if _, err := conf.Check(pkg.ImportPath, fset, files, &types.Info{Types: etypes}); err != nil {
 		t.Fatal(err)
 	}
 
-	// collect all potential format strings (for extra verification later)
 	for _, file := range files {
 		ast.Inspect(file, func(n ast.Node) bool {
 			if s, ok := stringLit(n); ok && isFormat(s) {
@@ -317,32 +292,30 @@ func collectPkgFormats(t *testing.T, pkg *build.Package) {
 		})
 	}
 
-	// collect all formats/arguments of calls with format strings
 	for index, file := range files {
 		ast.Inspect(file, func(n ast.Node) bool {
 			if call, ok := n.(*ast.CallExpr); ok {
-				// ignore blacklisted functions
+
 				if blacklistedFunctions[nodeString(call.Fun)] {
 					return true
 				}
-				// look for an arguments that might be a format string
+
 				for i, arg := range call.Args {
 					if s, ok := stringVal(etypes[arg]); ok && isFormat(s) {
-						// make sure we have enough arguments
+
 						n := numFormatArgs(s)
 						if i+1+n > len(call.Args) {
 							t.Errorf("%s: not enough format args (blacklist %s?)", posString(call), nodeString(call.Fun))
-							break // ignore this call
+							break
 						}
-						// assume last n arguments are to be formatted;
-						// determine their types
+
 						argTypes := make([]string, n)
 						for i, arg := range call.Args[len(call.Args)-n:] {
 							if tv, ok := etypes[arg]; ok {
 								argTypes[i] = typeString(tv.Type)
 							}
 						}
-						// collect call site
+
 						if callSites[call] != nil {
 							panic("internal error: file processed twice?")
 						}
@@ -353,7 +326,7 @@ func collectPkgFormats(t *testing.T, pkg *build.Package) {
 							str:   s,
 							types: argTypes,
 						}
-						break // at most one format per argument list
+						break
 					}
 				}
 			}
@@ -383,7 +356,7 @@ func posString(n ast.Node) string {
 func nodeString(n ast.Node) string {
 	var buf bytes.Buffer
 	if err := format.Node(&buf, fset, n); err != nil {
-		log.Fatal(err) // should always succeed
+		log.Fatal(err)
 	}
 	return buf.String()
 }
@@ -400,7 +373,7 @@ func stringLit(n ast.Node) (string, bool) {
 	if lit, ok := n.(*ast.BasicLit); ok && lit.Kind == token.STRING {
 		s, err := strconv.Unquote(lit.Value)
 		if err != nil {
-			log.Fatal(err) // should not happen with correct ASTs
+			log.Fatal(err)
 		}
 		return s, true
 	}
@@ -424,13 +397,13 @@ func stringVal(tv types.TypeAndValue) (string, bool) {
 // the entire specifier. The result of f is the index of
 // the rune at which iteration continues.
 func formatIter(s string, f func(i, j int) int) {
-	i := 0     // index after current rune
+	i := 0
 	var r rune // current rune
 
 	next := func() {
 		r1, w := utf8.DecodeRuneInString(s[i:])
 		if w == 0 {
-			r1 = -1 // signal end-of-string
+			r1 = -1
 		}
 		r = r1
 		i += w
@@ -471,8 +444,7 @@ func formatIter(s string, f func(i, j int) int) {
 				digits()
 			}
 			index()
-			// accept any letter (a-z, A-Z) as format verb;
-			// ignore anything else
+
 			if 'a' <= r && r <= 'z' || 'A' <= r && r <= 'Z' {
 				i = f(i0-1, i)
 			}
@@ -484,7 +456,7 @@ func formatIter(s string, f func(i, j int) int) {
 func isFormat(s string) (yes bool) {
 	formatIter(s, func(i, j int) int {
 		yes = true
-		return len(s) // stop iteration
+		return len(s)
 	})
 	return
 }
@@ -515,7 +487,7 @@ func formatReplace(in string, f func(i int, s string) string) string {
 	i0 := 0
 	index := 0
 	formatIter(in, func(i, j int) int {
-		if sub := in[i:j]; sub != "*" { // ignore calls for "*" width/length specifiers
+		if sub := in[i:j]; sub != "*" {
 			buf = append(buf, in[i0:i]...)
 			buf = append(buf, f(index, sub)...)
 			i0 = j
@@ -536,15 +508,14 @@ var blacklistedPackages = map[string]bool{}
 var blacklistedFunctions = map[string]bool{}
 
 func init() {
-	// verify that knownFormats entries are correctly formatted
+
 	for key, val := range knownFormats {
-		// key must be "typename format", and format starts with a '%'
-		// (formats containing '*' alone are not collected in this table)
+
 		i := strings.Index(key, "%")
 		if i < 0 || !oneFormat(key[i:]) {
 			log.Fatalf("incorrect knownFormats key: %q", key)
 		}
-		// val must be "format" or ""
+
 		if val != "" && !oneFormat(val) {
 			log.Fatalf("incorrect knownFormats value: %q (key = %q)", val, key)
 		}
@@ -556,152 +527,152 @@ func init() {
 // An empty new format means that the format should remain unchanged.
 // To print out a new table, run: go test -run Formats -v.
 var knownFormats = map[string]string{
-	"*bytes.Buffer %s":                                "",
-	"*cmd/compile/internal/gc.Mpflt %v":               "",
-	"*cmd/compile/internal/gc.Mpint %v":               "",
-	"*cmd/compile/internal/gc.Node %#v":               "",
-	"*cmd/compile/internal/gc.Node %+S":               "",
-	"*cmd/compile/internal/gc.Node %+v":               "",
-	"*cmd/compile/internal/gc.Node %0j":               "",
-	"*cmd/compile/internal/gc.Node %L":                "",
-	"*cmd/compile/internal/gc.Node %S":                "",
-	"*cmd/compile/internal/gc.Node %j":                "",
-	"*cmd/compile/internal/gc.Node %p":                "",
-	"*cmd/compile/internal/gc.Node %v":                "",
-	"*cmd/compile/internal/ssa.Block %s":              "",
-	"*cmd/compile/internal/ssa.Block %v":              "",
-	"*cmd/compile/internal/ssa.Func %s":               "",
-	"*cmd/compile/internal/ssa.Func %v":               "",
-	"*cmd/compile/internal/ssa.Register %s":           "",
-	"*cmd/compile/internal/ssa.Register %v":           "",
-	"*cmd/compile/internal/ssa.SparseTreeNode %v":     "",
-	"*cmd/compile/internal/ssa.Value %s":              "",
-	"*cmd/compile/internal/ssa.Value %v":              "",
-	"*cmd/compile/internal/ssa.sparseTreeMapEntry %v": "",
-	"*cmd/compile/internal/types.Field %p":            "",
-	"*cmd/compile/internal/types.Field %v":            "",
-	"*cmd/compile/internal/types.Sym %+v":             "",
-	"*cmd/compile/internal/types.Sym %0S":             "",
-	"*cmd/compile/internal/types.Sym %S":              "",
-	"*cmd/compile/internal/types.Sym %p":              "",
-	"*cmd/compile/internal/types.Sym %v":              "",
-	"*cmd/compile/internal/types.Type %#v":            "",
-	"*cmd/compile/internal/types.Type %+v":            "",
-	"*cmd/compile/internal/types.Type %-S":            "",
-	"*cmd/compile/internal/types.Type %0S":            "",
-	"*cmd/compile/internal/types.Type %L":             "",
-	"*cmd/compile/internal/types.Type %S":             "",
-	"*cmd/compile/internal/types.Type %p":             "",
-	"*cmd/compile/internal/types.Type %s":             "",
-	"*cmd/compile/internal/types.Type %v":             "",
-	"*cmd/internal/obj.Addr %v":                       "",
-	"*cmd/internal/obj.LSym %v":                       "",
-	"*math/big.Int %#x":                               "",
-	"*math/big.Int %s":                                "",
-	"*math/big.Int %v":                                "",
-	"[16]byte %x":                                     "",
-	"[]*cmd/compile/internal/gc.Node %v":              "",
-	"[]*cmd/compile/internal/ssa.Block %v":            "",
-	"[]*cmd/compile/internal/ssa.Value %v":            "",
-	"[][]string %q":                                   "",
-	"[]byte %s":                                       "",
-	"[]byte %x":                                       "",
-	"[]cmd/compile/internal/ssa.Edge %v":              "",
-	"[]cmd/compile/internal/ssa.ID %v":                "",
-	"[]cmd/compile/internal/ssa.posetNode %v":         "",
-	"[]cmd/compile/internal/ssa.posetUndo %v":         "",
-	"[]cmd/compile/internal/syntax.token %s":          "",
-	"[]string %v":                                     "",
-	"[]uint32 %v":                                     "",
-	"bool %v":                                         "",
-	"byte %08b":                                       "",
-	"byte %c":                                         "",
-	"byte %v":                                         "",
-	"cmd/compile/internal/arm.shift %d":               "",
-	"cmd/compile/internal/gc.Class %d":                "",
-	"cmd/compile/internal/gc.Class %s":                "",
-	"cmd/compile/internal/gc.Class %v":                "",
-	"cmd/compile/internal/gc.Ctype %d":                "",
-	"cmd/compile/internal/gc.Ctype %v":                "",
-	"cmd/compile/internal/gc.Level %d":                "",
-	"cmd/compile/internal/gc.Level %v":                "",
-	"cmd/compile/internal/gc.Nodes %#v":               "",
-	"cmd/compile/internal/gc.Nodes %+v":               "",
-	"cmd/compile/internal/gc.Nodes %.v":               "",
-	"cmd/compile/internal/gc.Nodes %v":                "",
-	"cmd/compile/internal/gc.Op %#v":                  "",
-	"cmd/compile/internal/gc.Op %v":                   "",
-	"cmd/compile/internal/gc.Val %#v":                 "",
-	"cmd/compile/internal/gc.Val %T":                  "",
-	"cmd/compile/internal/gc.Val %v":                  "",
-	"cmd/compile/internal/gc.fmtMode %d":              "",
-	"cmd/compile/internal/gc.initKind %d":             "",
-	"cmd/compile/internal/gc.itag %v":                 "",
-	"cmd/compile/internal/ssa.BranchPrediction %d":    "",
-	"cmd/compile/internal/ssa.Edge %v":                "",
-	"cmd/compile/internal/ssa.GCNode %v":              "",
-	"cmd/compile/internal/ssa.ID %d":                  "",
-	"cmd/compile/internal/ssa.ID %v":                  "",
-	"cmd/compile/internal/ssa.LocPair %s":             "",
-	"cmd/compile/internal/ssa.LocalSlot %s":           "",
-	"cmd/compile/internal/ssa.LocalSlot %v":           "",
-	"cmd/compile/internal/ssa.Location %T":            "",
-	"cmd/compile/internal/ssa.Location %s":            "",
-	"cmd/compile/internal/ssa.Op %s":                  "",
-	"cmd/compile/internal/ssa.Op %v":                  "",
-	"cmd/compile/internal/ssa.ValAndOff %s":           "",
-	"cmd/compile/internal/ssa.domain %v":              "",
-	"cmd/compile/internal/ssa.posetNode %v":           "",
-	"cmd/compile/internal/ssa.posetTestOp %v":         "",
-	"cmd/compile/internal/ssa.rbrank %d":              "",
-	"cmd/compile/internal/ssa.regMask %d":             "",
-	"cmd/compile/internal/ssa.register %d":            "",
-	"cmd/compile/internal/syntax.Expr %#v":            "",
-	"cmd/compile/internal/syntax.Node %T":             "",
-	"cmd/compile/internal/syntax.Operator %s":         "",
-	"cmd/compile/internal/syntax.Pos %s":              "",
-	"cmd/compile/internal/syntax.Pos %v":              "",
-	"cmd/compile/internal/syntax.position %s":         "",
-	"cmd/compile/internal/syntax.token %q":            "",
-	"cmd/compile/internal/syntax.token %s":            "",
-	"cmd/compile/internal/types.EType %d":             "",
-	"cmd/compile/internal/types.EType %s":             "",
-	"cmd/compile/internal/types.EType %v":             "",
-	"error %v":                                        "",
-	"float64 %.2f":                                    "",
-	"float64 %.3f":                                    "",
-	"float64 %.6g":                                    "",
-	"float64 %g":                                      "",
-	"int %-12d":                                       "",
-	"int %-6d":                                        "",
-	"int %-8o":                                        "",
-	"int %02d":                                        "",
-	"int %6d":                                         "",
-	"int %c":                                          "",
-	"int %d":                                          "",
-	"int %v":                                          "",
-	"int %x":                                          "",
-	"int16 %d":                                        "",
-	"int16 %x":                                        "",
-	"int32 %d":                                        "",
-	"int32 %v":                                        "",
-	"int32 %x":                                        "",
-	"int64 %+d":                                       "",
-	"int64 %-10d":                                     "",
-	"int64 %.5d":                                      "",
-	"int64 %X":                                        "",
-	"int64 %d":                                        "",
-	"int64 %v":                                        "",
-	"int64 %x":                                        "",
-	"int8 %d":                                         "",
-	"int8 %x":                                         "",
-	"interface{} %#v":                                 "",
-	"interface{} %T":                                  "",
-	"interface{} %q":                                  "",
-	"interface{} %s":                                  "",
-	"interface{} %v":                                  "",
-	"map[*cmd/compile/internal/gc.Node]*cmd/compile/internal/ssa.Value %v": "",
-	"map[cmd/compile/internal/ssa.ID]uint32 %v":                            "",
+	"*bytes.Buffer %s":                                                          "",
+	"*github.com/dave/golib/src/cmd/compile/internal/gc.Mpflt %v":               "",
+	"*github.com/dave/golib/src/cmd/compile/internal/gc.Mpint %v":               "",
+	"*github.com/dave/golib/src/cmd/compile/internal/gc.Node %#v":               "",
+	"*github.com/dave/golib/src/cmd/compile/internal/gc.Node %+S":               "",
+	"*github.com/dave/golib/src/cmd/compile/internal/gc.Node %+v":               "",
+	"*github.com/dave/golib/src/cmd/compile/internal/gc.Node %0j":               "",
+	"*github.com/dave/golib/src/cmd/compile/internal/gc.Node %L":                "",
+	"*github.com/dave/golib/src/cmd/compile/internal/gc.Node %S":                "",
+	"*github.com/dave/golib/src/cmd/compile/internal/gc.Node %j":                "",
+	"*github.com/dave/golib/src/cmd/compile/internal/gc.Node %p":                "",
+	"*github.com/dave/golib/src/cmd/compile/internal/gc.Node %v":                "",
+	"*github.com/dave/golib/src/cmd/compile/internal/ssa.Block %s":              "",
+	"*github.com/dave/golib/src/cmd/compile/internal/ssa.Block %v":              "",
+	"*github.com/dave/golib/src/cmd/compile/internal/ssa.Func %s":               "",
+	"*github.com/dave/golib/src/cmd/compile/internal/ssa.Func %v":               "",
+	"*github.com/dave/golib/src/cmd/compile/internal/ssa.Register %s":           "",
+	"*github.com/dave/golib/src/cmd/compile/internal/ssa.Register %v":           "",
+	"*github.com/dave/golib/src/cmd/compile/internal/ssa.SparseTreeNode %v":     "",
+	"*github.com/dave/golib/src/cmd/compile/internal/ssa.Value %s":              "",
+	"*github.com/dave/golib/src/cmd/compile/internal/ssa.Value %v":              "",
+	"*github.com/dave/golib/src/cmd/compile/internal/ssa.sparseTreeMapEntry %v": "",
+	"*github.com/dave/golib/src/cmd/compile/internal/types.Field %p":            "",
+	"*github.com/dave/golib/src/cmd/compile/internal/types.Field %v":            "",
+	"*github.com/dave/golib/src/cmd/compile/internal/types.Sym %+v":             "",
+	"*github.com/dave/golib/src/cmd/compile/internal/types.Sym %0S":             "",
+	"*github.com/dave/golib/src/cmd/compile/internal/types.Sym %S":              "",
+	"*github.com/dave/golib/src/cmd/compile/internal/types.Sym %p":              "",
+	"*github.com/dave/golib/src/cmd/compile/internal/types.Sym %v":              "",
+	"*github.com/dave/golib/src/cmd/compile/internal/types.Type %#v":            "",
+	"*github.com/dave/golib/src/cmd/compile/internal/types.Type %+v":            "",
+	"*github.com/dave/golib/src/cmd/compile/internal/types.Type %-S":            "",
+	"*github.com/dave/golib/src/cmd/compile/internal/types.Type %0S":            "",
+	"*github.com/dave/golib/src/cmd/compile/internal/types.Type %L":             "",
+	"*github.com/dave/golib/src/cmd/compile/internal/types.Type %S":             "",
+	"*github.com/dave/golib/src/cmd/compile/internal/types.Type %p":             "",
+	"*github.com/dave/golib/src/cmd/compile/internal/types.Type %s":             "",
+	"*github.com/dave/golib/src/cmd/compile/internal/types.Type %v":             "",
+	"*github.com/dave/golib/src/cmd/internal/obj.Addr %v":                       "",
+	"*github.com/dave/golib/src/cmd/internal/obj.LSym %v":                       "",
+	"*math/big.Int %#x":                                                         "",
+	"*math/big.Int %s":                                                          "",
+	"*math/big.Int %v":                                                          "",
+	"[16]byte %x":                                                               "",
+	"[]*github.com/dave/golib/src/cmd/compile/internal/gc.Node %v":   "",
+	"[]*github.com/dave/golib/src/cmd/compile/internal/ssa.Block %v": "",
+	"[]*github.com/dave/golib/src/cmd/compile/internal/ssa.Value %v": "",
+	"[][]string %q": "",
+	"[]byte %s":     "",
+	"[]byte %x":     "",
+	"[]github.com/dave/golib/src/cmd/compile/internal/ssa.Edge %v":      "",
+	"[]github.com/dave/golib/src/cmd/compile/internal/ssa.ID %v":        "",
+	"[]github.com/dave/golib/src/cmd/compile/internal/ssa.posetNode %v": "",
+	"[]github.com/dave/golib/src/cmd/compile/internal/ssa.posetUndo %v": "",
+	"[]github.com/dave/golib/src/cmd/compile/internal/syntax.token %s":  "",
+	"[]string %v": "",
+	"[]uint32 %v": "",
+	"bool %v":     "",
+	"byte %08b":   "",
+	"byte %c":     "",
+	"byte %v":     "",
+	"github.com/dave/golib/src/cmd/compile/internal/arm.shift %d":            "",
+	"github.com/dave/golib/src/cmd/compile/internal/gc.Class %d":             "",
+	"github.com/dave/golib/src/cmd/compile/internal/gc.Class %s":             "",
+	"github.com/dave/golib/src/cmd/compile/internal/gc.Class %v":             "",
+	"github.com/dave/golib/src/cmd/compile/internal/gc.Ctype %d":             "",
+	"github.com/dave/golib/src/cmd/compile/internal/gc.Ctype %v":             "",
+	"github.com/dave/golib/src/cmd/compile/internal/gc.Level %d":             "",
+	"github.com/dave/golib/src/cmd/compile/internal/gc.Level %v":             "",
+	"github.com/dave/golib/src/cmd/compile/internal/gc.Nodes %#v":            "",
+	"github.com/dave/golib/src/cmd/compile/internal/gc.Nodes %+v":            "",
+	"github.com/dave/golib/src/cmd/compile/internal/gc.Nodes %.v":            "",
+	"github.com/dave/golib/src/cmd/compile/internal/gc.Nodes %v":             "",
+	"github.com/dave/golib/src/cmd/compile/internal/gc.Op %#v":               "",
+	"github.com/dave/golib/src/cmd/compile/internal/gc.Op %v":                "",
+	"github.com/dave/golib/src/cmd/compile/internal/gc.Val %#v":              "",
+	"github.com/dave/golib/src/cmd/compile/internal/gc.Val %T":               "",
+	"github.com/dave/golib/src/cmd/compile/internal/gc.Val %v":               "",
+	"github.com/dave/golib/src/cmd/compile/internal/gc.fmtMode %d":           "",
+	"github.com/dave/golib/src/cmd/compile/internal/gc.initKind %d":          "",
+	"github.com/dave/golib/src/cmd/compile/internal/gc.itag %v":              "",
+	"github.com/dave/golib/src/cmd/compile/internal/ssa.BranchPrediction %d": "",
+	"github.com/dave/golib/src/cmd/compile/internal/ssa.Edge %v":             "",
+	"github.com/dave/golib/src/cmd/compile/internal/ssa.GCNode %v":           "",
+	"github.com/dave/golib/src/cmd/compile/internal/ssa.ID %d":               "",
+	"github.com/dave/golib/src/cmd/compile/internal/ssa.ID %v":               "",
+	"github.com/dave/golib/src/cmd/compile/internal/ssa.LocPair %s":          "",
+	"github.com/dave/golib/src/cmd/compile/internal/ssa.LocalSlot %s":        "",
+	"github.com/dave/golib/src/cmd/compile/internal/ssa.LocalSlot %v":        "",
+	"github.com/dave/golib/src/cmd/compile/internal/ssa.Location %T":         "",
+	"github.com/dave/golib/src/cmd/compile/internal/ssa.Location %s":         "",
+	"github.com/dave/golib/src/cmd/compile/internal/ssa.Op %s":               "",
+	"github.com/dave/golib/src/cmd/compile/internal/ssa.Op %v":               "",
+	"github.com/dave/golib/src/cmd/compile/internal/ssa.ValAndOff %s":        "",
+	"github.com/dave/golib/src/cmd/compile/internal/ssa.domain %v":           "",
+	"github.com/dave/golib/src/cmd/compile/internal/ssa.posetNode %v":        "",
+	"github.com/dave/golib/src/cmd/compile/internal/ssa.posetTestOp %v":      "",
+	"github.com/dave/golib/src/cmd/compile/internal/ssa.rbrank %d":           "",
+	"github.com/dave/golib/src/cmd/compile/internal/ssa.regMask %d":          "",
+	"github.com/dave/golib/src/cmd/compile/internal/ssa.register %d":         "",
+	"github.com/dave/golib/src/cmd/compile/internal/syntax.Expr %#v":         "",
+	"github.com/dave/golib/src/cmd/compile/internal/syntax.Node %T":          "",
+	"github.com/dave/golib/src/cmd/compile/internal/syntax.Operator %s":      "",
+	"github.com/dave/golib/src/cmd/compile/internal/syntax.Pos %s":           "",
+	"github.com/dave/golib/src/cmd/compile/internal/syntax.Pos %v":           "",
+	"github.com/dave/golib/src/cmd/compile/internal/syntax.position %s":      "",
+	"github.com/dave/golib/src/cmd/compile/internal/syntax.token %q":         "",
+	"github.com/dave/golib/src/cmd/compile/internal/syntax.token %s":         "",
+	"github.com/dave/golib/src/cmd/compile/internal/types.EType %d":          "",
+	"github.com/dave/golib/src/cmd/compile/internal/types.EType %s":          "",
+	"github.com/dave/golib/src/cmd/compile/internal/types.EType %v":          "",
+	"error %v":        "",
+	"float64 %.2f":    "",
+	"float64 %.3f":    "",
+	"float64 %.6g":    "",
+	"float64 %g":      "",
+	"int %-12d":       "",
+	"int %-6d":        "",
+	"int %-8o":        "",
+	"int %02d":        "",
+	"int %6d":         "",
+	"int %c":          "",
+	"int %d":          "",
+	"int %v":          "",
+	"int %x":          "",
+	"int16 %d":        "",
+	"int16 %x":        "",
+	"int32 %d":        "",
+	"int32 %v":        "",
+	"int32 %x":        "",
+	"int64 %+d":       "",
+	"int64 %-10d":     "",
+	"int64 %.5d":      "",
+	"int64 %X":        "",
+	"int64 %d":        "",
+	"int64 %v":        "",
+	"int64 %x":        "",
+	"int8 %d":         "",
+	"int8 %x":         "",
+	"interface{} %#v": "",
+	"interface{} %T":  "",
+	"interface{} %q":  "",
+	"interface{} %s":  "",
+	"interface{} %v":  "",
+	"map[*github.com/dave/golib/src/cmd/compile/internal/gc.Node]*github.com/dave/golib/src/cmd/compile/internal/ssa.Value %v": "",
+	"map[github.com/dave/golib/src/cmd/compile/internal/ssa.ID]uint32 %v":                                                      "",
 	"reflect.Type %s":  "",
 	"rune %#U":         "",
 	"rune %c":          "",

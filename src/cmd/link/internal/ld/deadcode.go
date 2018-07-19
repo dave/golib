@@ -1,14 +1,10 @@
-// Copyright 2016 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
 package ld
 
 import (
-	"cmd/internal/objabi"
-	"cmd/internal/sys"
-	"cmd/link/internal/sym"
 	"fmt"
+	"github.com/dave/golib/src/cmd/internal/objabi"
+	"github.com/dave/golib/src/cmd/internal/sys"
+	"github.com/dave/golib/src/cmd/link/internal/sym"
 	"strings"
 	"unicode"
 )
@@ -45,9 +41,9 @@ import (
 // of reachable types are marked reachable.
 //
 // Any unreached text symbols are removed from ctxt.Textp.
-func deadcode(ctxt *Link) {
+func (psess *PackageSession) deadcode(ctxt *Link) {
 	if ctxt.Debugvlog != 0 {
-		ctxt.Logf("%5.2f deadcode\n", Cputime())
+		ctxt.Logf("%5.2f deadcode\n", psess.Cputime())
 	}
 
 	d := &deadcodepass{
@@ -55,27 +51,22 @@ func deadcode(ctxt *Link) {
 		ifaceMethod: make(map[methodsig]bool),
 	}
 
-	// First, flood fill any symbols directly reachable in the call
-	// graph from *flagEntrySymbol. Ignore all methods not directly called.
-	d.init()
-	d.flood()
+	d.init(psess)
+	d.flood(psess)
 
 	callSym := ctxt.Syms.ROLookup("reflect.Value.Call", 0)
 	methSym := ctxt.Syms.ROLookup("reflect.Value.Method", 0)
 	reflectSeen := false
 
 	if ctxt.DynlinkingGo() {
-		// Exported methods may satisfy interfaces we don't know
-		// about yet when dynamically linking.
+
 		reflectSeen = true
 	}
 
 	for {
 		if !reflectSeen {
 			if d.reflectMethod || (callSym != nil && callSym.Attr.Reachable()) || (methSym != nil && methSym.Attr.Reachable()) {
-				// Methods might be called via reflection. Give up on
-				// static analysis, mark all exported methods of
-				// all reachable types as reachable.
+
 				reflectSeen = true
 			}
 		}
@@ -87,7 +78,7 @@ func deadcode(ctxt *Link) {
 		var rem []methodref
 		for _, m := range d.markableMethods {
 			if (reflectSeen && m.isExported()) || d.ifaceMethod[m.m] {
-				d.markMethod(m)
+				d.markMethod(psess, m)
 			} else {
 				rem = append(rem, m)
 			}
@@ -95,13 +86,12 @@ func deadcode(ctxt *Link) {
 		d.markableMethods = rem
 
 		if len(d.markQueue) == 0 {
-			// No new work was discovered. Done.
+
 			break
 		}
-		d.flood()
+		d.flood(psess)
 	}
 
-	// Remove all remaining unreached R_METHODOFF relocations.
 	for _, m := range d.markableMethods {
 		for _, r := range m.r {
 			d.cleanupReloc(r)
@@ -109,8 +99,7 @@ func deadcode(ctxt *Link) {
 	}
 
 	if ctxt.BuildMode != BuildModeShared {
-		// Keep a itablink if the symbol it points at is being kept.
-		// (When BuildModeShared, always keep itablinks.)
+
 		for _, s := range ctxt.Syms.Allsym {
 			if strings.HasPrefix(s.Name, "go.itablink.") {
 				s.Attr.Set(sym.AttrReachable, len(s.R) == 1 && s.R[0].Sym.Attr.Reachable())
@@ -122,7 +111,6 @@ func deadcode(ctxt *Link) {
 		lib.Textp = lib.Textp[:0]
 	}
 
-	// Remove dead text but keep file information (z symbols).
 	textp := make([]*sym.Symbol, 0, len(ctxt.Textp))
 	for _, s := range ctxt.Textp {
 		if s.Attr.Reachable() {
@@ -175,14 +163,14 @@ func (d *deadcodepass) cleanupReloc(r *sym.Reloc) {
 }
 
 // mark appends a symbol to the mark queue for flood filling.
-func (d *deadcodepass) mark(s, parent *sym.Symbol) {
+func (d *deadcodepass) mark(psess *PackageSession, s, parent *sym.Symbol) {
 	if s == nil || s.Attr.Reachable() {
 		return
 	}
 	if s.Attr.ReflectMethod() {
 		d.reflectMethod = true
 	}
-	if *flagDumpDep {
+	if *psess.flagDumpDep {
 		p := "_"
 		if parent != nil {
 			p = parent.Name
@@ -195,73 +183,68 @@ func (d *deadcodepass) mark(s, parent *sym.Symbol) {
 }
 
 // markMethod marks a method as reachable.
-func (d *deadcodepass) markMethod(m methodref) {
+func (d *deadcodepass) markMethod(psess *PackageSession, m methodref) {
 	for _, r := range m.r {
-		d.mark(r.Sym, m.src)
+		d.mark(psess, r.Sym, m.src)
 		r.Type = objabi.R_ADDROFF
 	}
 }
 
 // init marks all initial symbols as reachable.
 // In a typical binary, this is *flagEntrySymbol.
-func (d *deadcodepass) init() {
+func (d *deadcodepass) init(psess *PackageSession) {
 	var names []string
 
 	if d.ctxt.Arch.Family == sys.ARM {
-		// mark some functions that are only referenced after linker code editing
+
 		names = append(names, "runtime.read_tls_fallback")
 	}
 
 	if d.ctxt.BuildMode == BuildModeShared {
-		// Mark all symbols defined in this library as reachable when
-		// building a shared library.
+
 		for _, s := range d.ctxt.Syms.Allsym {
 			if s.Type != 0 && s.Type != sym.SDYNIMPORT {
-				d.mark(s, nil)
+				d.mark(psess, s, nil)
 			}
 		}
 	} else {
-		// In a normal binary, start at main.main and the init
-		// functions and mark what is reachable from there.
 
 		if d.ctxt.linkShared && (d.ctxt.BuildMode == BuildModeExe || d.ctxt.BuildMode == BuildModePIE) {
 			names = append(names, "main.main", "main.init")
 		} else {
-			// The external linker refers main symbol directly.
+
 			if d.ctxt.LinkMode == LinkExternal && (d.ctxt.BuildMode == BuildModeExe || d.ctxt.BuildMode == BuildModePIE) {
 				if d.ctxt.HeadType == objabi.Hwindows && d.ctxt.Arch.Family == sys.I386 {
-					*flagEntrySymbol = "_main"
+					*psess.flagEntrySymbol = "_main"
 				} else {
-					*flagEntrySymbol = "main"
+					*psess.flagEntrySymbol = "main"
 				}
 			}
-			names = append(names, *flagEntrySymbol)
+			names = append(names, *psess.flagEntrySymbol)
 			if d.ctxt.BuildMode == BuildModePlugin {
-				names = append(names, objabi.PathToPrefix(*flagPluginPath)+".init", objabi.PathToPrefix(*flagPluginPath)+".main", "go.plugin.tabs")
+				names = append(names, objabi.PathToPrefix(*psess.flagPluginPath)+".init", objabi.PathToPrefix(*psess.flagPluginPath)+".main", "go.plugin.tabs")
 
-				// We don't keep the go.plugin.exports symbol,
-				// but we do keep the symbols it refers to.
 				exports := d.ctxt.Syms.ROLookup("go.plugin.exports", 0)
 				if exports != nil {
 					for _, r := range exports.R {
-						d.mark(r.Sym, nil)
+						d.mark(psess, r.Sym, nil)
 					}
 				}
 			}
 		}
-		for _, s := range dynexp {
-			d.mark(s, nil)
+		for _, s := range psess.dynexp {
+			d.mark(psess, s, nil)
 		}
 	}
 
 	for _, name := range names {
-		d.mark(d.ctxt.Syms.ROLookup(name, 0), nil)
+		d.mark(psess, d.ctxt.Syms.ROLookup(name, 0), nil)
 	}
 }
 
 // flood fills symbols reachable from the markQueue symbols.
 // As it goes, it collects methodref and interface method declarations.
-func (d *deadcodepass) flood() {
+func (d *deadcodepass) flood(psess *PackageSession) {
 	for len(d.markQueue) > 0 {
 		s := d.markQueue[0]
 		d.markQueue = d.markQueue[1:]
@@ -271,7 +254,7 @@ func (d *deadcodepass) flood() {
 			}
 			if s.FuncInfo != nil {
 				for _, a := range s.FuncInfo.Autom {
-					d.mark(a.Gotype, s)
+					d.mark(psess, a.Gotype, s)
 				}
 			}
 
@@ -279,12 +262,11 @@ func (d *deadcodepass) flood() {
 
 		if strings.HasPrefix(s.Name, "type.") && s.Name[5] != '.' {
 			if len(s.P) == 0 {
-				// Probably a bug. The undefined symbol check
-				// later will give a better error than deadcode.
+
 				continue
 			}
 			if decodetypeKind(d.ctxt.Arch, s)&kindMask == kindInterface {
-				for _, sig := range decodeIfaceMethods(d.ctxt.Arch, s) {
+				for _, sig := range psess.decodeIfaceMethods(d.ctxt.Arch, s) {
 					if d.ctxt.Debugvlog > 1 {
 						d.ctxt.Logf("reached iface method: %s\n", sig)
 					}
@@ -293,7 +275,7 @@ func (d *deadcodepass) flood() {
 			}
 		}
 
-		mpos := 0 // 0-3, the R_METHODOFF relocs of runtime.uncommontype
+		mpos := 0
 		var methods []methodref
 		for i := range s.R {
 			r := &s.R[i]
@@ -301,17 +283,14 @@ func (d *deadcodepass) flood() {
 				continue
 			}
 			if r.Type == objabi.R_WEAKADDROFF {
-				// An R_WEAKADDROFF relocation is not reason
-				// enough to mark the pointed-to symbol as
-				// reachable.
+
 				continue
 			}
 			if r.Type != objabi.R_METHODOFF {
-				d.mark(r.Sym, s)
+				d.mark(psess, r.Sym, s)
 				continue
 			}
-			// Collect rtype pointers to methods for
-			// later processing in deadcode.
+
 			if mpos == 0 {
 				m := methodref{src: s}
 				m.r[0] = r
@@ -325,10 +304,8 @@ func (d *deadcodepass) flood() {
 			}
 		}
 		if len(methods) > 0 {
-			// Decode runtime type information for type methods
-			// to help work out which methods can be called
-			// dynamically via interfaces.
-			methodsigs := decodetypeMethods(d.ctxt.Arch, s)
+
+			methodsigs := psess.decodetypeMethods(d.ctxt.Arch, s)
 			if len(methods) != len(methodsigs) {
 				panic(fmt.Sprintf("%q has %d method relocations for %d methods", s.Name, len(methods), len(methodsigs)))
 			}
@@ -345,11 +322,11 @@ func (d *deadcodepass) flood() {
 
 		if s.FuncInfo != nil {
 			for i := range s.FuncInfo.Funcdata {
-				d.mark(s.FuncInfo.Funcdata[i], s)
+				d.mark(psess, s.FuncInfo.Funcdata[i], s)
 			}
 		}
-		d.mark(s.Gotype, s)
-		d.mark(s.Sub, s)
-		d.mark(s.Outer, s)
+		d.mark(psess, s.Gotype, s)
+		d.mark(psess, s.Sub, s)
+		d.mark(psess, s.Outer, s)
 	}
 }

@@ -1,7 +1,3 @@
-// Copyright 2014 The Go Authors.  All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
 package ppc64asm
 
 import (
@@ -146,7 +142,7 @@ func Decode(src []byte, ord binary.ByteOrder) (inst Inst, err error) {
 	if decoderCover == nil {
 		decoderCover = make([]bool, len(instFormats))
 	}
-	inst.Len = 4 // only 4-byte instructions are supported
+	inst.Len = 4
 	ui := ord.Uint32(src[:inst.Len])
 	inst.Enc = ui
 	for i, iform := range instFormats {
@@ -157,7 +153,7 @@ func Decode(src []byte, ord binary.ByteOrder) (inst Inst, err error) {
 			if debugDecode {
 				log.Printf("Decode(%#x): unused bit is 1 for Op %s", ui, iform.Op)
 			}
-			// to match GNU objdump (libopcodes), we ignore don't care bits
+
 		}
 		for i, argfield := range iform.Args {
 			if argfield == nil {

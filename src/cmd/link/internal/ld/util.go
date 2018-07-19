@@ -1,46 +1,43 @@
-// Copyright 2015 The Go Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
 package ld
 
 import (
-	"cmd/link/internal/sym"
 	"encoding/binary"
 	"fmt"
+	"github.com/dave/golib/src/cmd/link/internal/sym"
 	"os"
 	"time"
 )
 
-var startTime time.Time
-
 // TODO(josharian): delete. See issue 19865.
-func Cputime() float64 {
-	if startTime.IsZero() {
-		startTime = time.Now()
+func (psess *PackageSession) Cputime() float64 {
+	if psess.startTime.IsZero() {
+		psess.
+			startTime = time.Now()
 	}
-	return time.Since(startTime).Seconds()
+	return time.Since(psess.startTime).Seconds()
 }
 
-var atExitFuncs []func()
-
-func AtExit(f func()) {
-	atExitFuncs = append(atExitFuncs, f)
+func (psess *PackageSession) AtExit(f func()) {
+	psess.
+		atExitFuncs = append(psess.atExitFuncs, f)
 }
 
 // Exit exits with code after executing all atExitFuncs.
-func Exit(code int) {
-	for i := len(atExitFuncs) - 1; i >= 0; i-- {
-		atExitFuncs[i]()
+func (psess *PackageSession) Exit(code int) {
+	for i := len(psess.atExitFuncs) - 1; i >= 0; i-- {
+		psess.
+			atExitFuncs[i]()
 	}
 	os.Exit(code)
 }
 
 // Exitf logs an error message then calls Exit(2).
-func Exitf(format string, a ...interface{}) {
+func (psess *PackageSession) Exitf(format string, a ...interface{}) {
 	fmt.Fprintf(os.Stderr, os.Args[0]+": "+format+"\n", a...)
-	nerrors++
-	Exit(2)
+	psess.
+		nerrors++
+	psess.
+		Exit(2)
 }
 
 // Errorf logs an error message.
@@ -49,18 +46,20 @@ func Exitf(format string, a ...interface{}) {
 //
 // Logging an error means that on exit cmd/link will delete any
 // output file and return a non-zero error code.
-func Errorf(s *sym.Symbol, format string, args ...interface{}) {
+func (psess *PackageSession) Errorf(s *sym.Symbol, format string, args ...interface{}) {
 	if s != nil {
 		format = s.Name + ": " + format
 	}
 	format += "\n"
 	fmt.Fprintf(os.Stderr, format, args...)
-	nerrors++
-	if *flagH {
+	psess.
+		nerrors++
+	if *psess.flagH {
 		panic("error")
 	}
-	if nerrors > 20 {
-		Exitf("too many errors")
+	if psess.nerrors > 20 {
+		psess.
+			Exitf("too many errors")
 	}
 }
 
@@ -84,8 +83,6 @@ func stringtouint32(x []uint32, s string) {
 	}
 }
 
-var start = time.Now()
-
-func elapsed() float64 {
-	return time.Since(start).Seconds()
+func (psess *PackageSession) elapsed() float64 {
+	return time.Since(psess.start).Seconds()
 }

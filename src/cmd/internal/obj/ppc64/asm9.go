@@ -1,39 +1,10 @@
-// cmd/9l/optab.c, cmd/9l/asmout.c from Vita Nuova.
-//
-//	Copyright © 1994-1999 Lucent Technologies Inc.  All rights reserved.
-//	Portions Copyright © 1995-1997 C H Forsyth (forsyth@terzarima.net)
-//	Portions Copyright © 1997-1999 Vita Nuova Limited
-//	Portions Copyright © 2000-2008 Vita Nuova Holdings Limited (www.vitanuova.com)
-//	Portions Copyright © 2004,2006 Bruce Ellis
-//	Portions Copyright © 2005-2007 C H Forsyth (forsyth@terzarima.net)
-//	Revisions Copyright © 2000-2008 Lucent Technologies Inc. and others
-//	Portions Copyright © 2009 The Go Authors. All rights reserved.
-//
-// Permission is hereby granted, free of charge, to any person obtaining a copy
-// of this software and associated documentation files (the "Software"), to deal
-// in the Software without restriction, including without limitation the rights
-// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-// copies of the Software, and to permit persons to whom the Software is
-// furnished to do so, subject to the following conditions:
-//
-// The above copyright notice and this permission notice shall be included in
-// all copies or substantial portions of the Software.
-//
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL THE
-// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-// THE SOFTWARE.
-
 package ppc64
 
 import (
-	"cmd/internal/obj"
-	"cmd/internal/objabi"
 	"encoding/binary"
 	"fmt"
+	"github.com/dave/golib/src/cmd/internal/obj"
+	"github.com/dave/golib/src/cmd/internal/objabi"
 	"log"
 	"sort"
 )
@@ -49,8 +20,6 @@ type ctxt9 struct {
 	instoffset int64
 	pc         int64
 }
-
-// Instruction layout.
 
 const (
 	funcAlign = 16
@@ -79,541 +48,14 @@ type Optab struct {
 //
 // The type field in the Optabl identifies the case in asmout where
 // the instruction word is assembled.
-var optab = []Optab{
-	{obj.ATEXT, C_LEXT, C_NONE, C_NONE, C_TEXTSIZE, 0, 0, 0},
-	{obj.ATEXT, C_LEXT, C_NONE, C_LCON, C_TEXTSIZE, 0, 0, 0},
-	{obj.ATEXT, C_ADDR, C_NONE, C_NONE, C_TEXTSIZE, 0, 0, 0},
-	{obj.ATEXT, C_ADDR, C_NONE, C_LCON, C_TEXTSIZE, 0, 0, 0},
-	/* move register */
-	{AMOVD, C_REG, C_NONE, C_NONE, C_REG, 1, 4, 0},
-	{AMOVB, C_REG, C_NONE, C_NONE, C_REG, 12, 4, 0},
-	{AMOVBZ, C_REG, C_NONE, C_NONE, C_REG, 13, 4, 0},
-	{AMOVW, C_REG, C_NONE, C_NONE, C_REG, 12, 4, 0},
-	{AMOVWZ, C_REG, C_NONE, C_NONE, C_REG, 13, 4, 0},
-	{AADD, C_REG, C_REG, C_NONE, C_REG, 2, 4, 0},
-	{AADD, C_REG, C_NONE, C_NONE, C_REG, 2, 4, 0},
-	{AADD, C_SCON, C_REG, C_NONE, C_REG, 4, 4, 0},
-	{AADD, C_SCON, C_NONE, C_NONE, C_REG, 4, 4, 0},
-	{AADD, C_ADDCON, C_REG, C_NONE, C_REG, 4, 4, 0},
-	{AADD, C_ADDCON, C_NONE, C_NONE, C_REG, 4, 4, 0},
-	{AADD, C_UCON, C_REG, C_NONE, C_REG, 20, 4, 0},
-	{AADD, C_UCON, C_NONE, C_NONE, C_REG, 20, 4, 0},
-	{AADD, C_ANDCON, C_REG, C_NONE, C_REG, 22, 8, 0},
-	{AADD, C_ANDCON, C_NONE, C_NONE, C_REG, 22, 8, 0},
-	{AADD, C_LCON, C_REG, C_NONE, C_REG, 22, 12, 0},
-	{AADD, C_LCON, C_NONE, C_NONE, C_REG, 22, 12, 0},
-	{AADDIS, C_ADDCON, C_REG, C_NONE, C_REG, 20, 4, 0},
-	{AADDIS, C_ADDCON, C_NONE, C_NONE, C_REG, 20, 4, 0},
-	{AADDC, C_REG, C_REG, C_NONE, C_REG, 2, 4, 0},
-	{AADDC, C_REG, C_NONE, C_NONE, C_REG, 2, 4, 0},
-	{AADDC, C_ADDCON, C_REG, C_NONE, C_REG, 4, 4, 0},
-	{AADDC, C_ADDCON, C_NONE, C_NONE, C_REG, 4, 4, 0},
-	{AADDC, C_LCON, C_REG, C_NONE, C_REG, 22, 12, 0},
-	{AADDC, C_LCON, C_NONE, C_NONE, C_REG, 22, 12, 0},
-	{AAND, C_REG, C_REG, C_NONE, C_REG, 6, 4, 0}, /* logical, no literal */
-	{AAND, C_REG, C_NONE, C_NONE, C_REG, 6, 4, 0},
-	{AANDCC, C_REG, C_REG, C_NONE, C_REG, 6, 4, 0},
-	{AANDCC, C_REG, C_NONE, C_NONE, C_REG, 6, 4, 0},
-	{AANDCC, C_ANDCON, C_NONE, C_NONE, C_REG, 58, 4, 0},
-	{AANDCC, C_ANDCON, C_REG, C_NONE, C_REG, 58, 4, 0},
-	{AANDCC, C_UCON, C_NONE, C_NONE, C_REG, 59, 4, 0},
-	{AANDCC, C_UCON, C_REG, C_NONE, C_REG, 59, 4, 0},
-	{AANDCC, C_ADDCON, C_NONE, C_NONE, C_REG, 23, 8, 0},
-	{AANDCC, C_ADDCON, C_REG, C_NONE, C_REG, 23, 8, 0},
-	{AANDCC, C_LCON, C_NONE, C_NONE, C_REG, 23, 12, 0},
-	{AANDCC, C_LCON, C_REG, C_NONE, C_REG, 23, 12, 0},
-	{AANDISCC, C_ANDCON, C_NONE, C_NONE, C_REG, 59, 4, 0},
-	{AANDISCC, C_ANDCON, C_REG, C_NONE, C_REG, 59, 4, 0},
-	{AMULLW, C_REG, C_REG, C_NONE, C_REG, 2, 4, 0},
-	{AMULLW, C_REG, C_NONE, C_NONE, C_REG, 2, 4, 0},
-	{AMULLW, C_ADDCON, C_REG, C_NONE, C_REG, 4, 4, 0},
-	{AMULLW, C_ADDCON, C_NONE, C_NONE, C_REG, 4, 4, 0},
-	{AMULLW, C_ANDCON, C_REG, C_NONE, C_REG, 4, 4, 0},
-	{AMULLW, C_ANDCON, C_NONE, C_NONE, C_REG, 4, 4, 0},
-	{AMULLW, C_LCON, C_REG, C_NONE, C_REG, 22, 12, 0},
-	{AMULLW, C_LCON, C_NONE, C_NONE, C_REG, 22, 12, 0},
-	{ASUBC, C_REG, C_REG, C_NONE, C_REG, 10, 4, 0},
-	{ASUBC, C_REG, C_NONE, C_NONE, C_REG, 10, 4, 0},
-	{ASUBC, C_REG, C_NONE, C_ADDCON, C_REG, 27, 4, 0},
-	{ASUBC, C_REG, C_NONE, C_LCON, C_REG, 28, 12, 0},
-	{AOR, C_REG, C_REG, C_NONE, C_REG, 6, 4, 0}, /* logical, literal not cc (or/xor) */
-	{AOR, C_REG, C_NONE, C_NONE, C_REG, 6, 4, 0},
-	{AOR, C_ANDCON, C_NONE, C_NONE, C_REG, 58, 4, 0},
-	{AOR, C_ANDCON, C_REG, C_NONE, C_REG, 58, 4, 0},
-	{AOR, C_UCON, C_NONE, C_NONE, C_REG, 59, 4, 0},
-	{AOR, C_UCON, C_REG, C_NONE, C_REG, 59, 4, 0},
-	{AOR, C_ADDCON, C_NONE, C_NONE, C_REG, 23, 8, 0},
-	{AOR, C_ADDCON, C_REG, C_NONE, C_REG, 23, 8, 0},
-	{AOR, C_LCON, C_NONE, C_NONE, C_REG, 23, 12, 0},
-	{AOR, C_LCON, C_REG, C_NONE, C_REG, 23, 12, 0},
-	{AORIS, C_ANDCON, C_NONE, C_NONE, C_REG, 59, 4, 0},
-	{AORIS, C_ANDCON, C_REG, C_NONE, C_REG, 59, 4, 0},
-	{ADIVW, C_REG, C_REG, C_NONE, C_REG, 2, 4, 0}, /* op r1[,r2],r3 */
-	{ADIVW, C_REG, C_NONE, C_NONE, C_REG, 2, 4, 0},
-	{ASUB, C_REG, C_REG, C_NONE, C_REG, 10, 4, 0}, /* op r2[,r1],r3 */
-	{ASUB, C_REG, C_NONE, C_NONE, C_REG, 10, 4, 0},
-	{ASLW, C_REG, C_NONE, C_NONE, C_REG, 6, 4, 0},
-	{ASLW, C_REG, C_REG, C_NONE, C_REG, 6, 4, 0},
-	{ASLD, C_REG, C_NONE, C_NONE, C_REG, 6, 4, 0},
-	{ASLD, C_REG, C_REG, C_NONE, C_REG, 6, 4, 0},
-	{ASLD, C_SCON, C_REG, C_NONE, C_REG, 25, 4, 0},
-	{ASLD, C_SCON, C_NONE, C_NONE, C_REG, 25, 4, 0},
-	{ASLW, C_SCON, C_REG, C_NONE, C_REG, 57, 4, 0},
-	{ASLW, C_SCON, C_NONE, C_NONE, C_REG, 57, 4, 0},
-	{ASRAW, C_REG, C_NONE, C_NONE, C_REG, 6, 4, 0},
-	{ASRAW, C_REG, C_REG, C_NONE, C_REG, 6, 4, 0},
-	{ASRAW, C_SCON, C_REG, C_NONE, C_REG, 56, 4, 0},
-	{ASRAW, C_SCON, C_NONE, C_NONE, C_REG, 56, 4, 0},
-	{ASRAD, C_REG, C_NONE, C_NONE, C_REG, 6, 4, 0},
-	{ASRAD, C_REG, C_REG, C_NONE, C_REG, 6, 4, 0},
-	{ASRAD, C_SCON, C_REG, C_NONE, C_REG, 56, 4, 0},
-	{ASRAD, C_SCON, C_NONE, C_NONE, C_REG, 56, 4, 0},
-	{ARLWMI, C_SCON, C_REG, C_LCON, C_REG, 62, 4, 0},
-	{ARLWMI, C_REG, C_REG, C_LCON, C_REG, 63, 4, 0},
-	{ARLDMI, C_SCON, C_REG, C_LCON, C_REG, 30, 4, 0},
-	{ARLDC, C_SCON, C_REG, C_LCON, C_REG, 29, 4, 0},
-	{ARLDCL, C_SCON, C_REG, C_LCON, C_REG, 29, 4, 0},
-	{ARLDCL, C_REG, C_REG, C_LCON, C_REG, 14, 4, 0},
-	{ARLDICL, C_REG, C_REG, C_LCON, C_REG, 14, 4, 0},
-	{ARLDICL, C_SCON, C_REG, C_LCON, C_REG, 14, 4, 0},
-	{ARLDCL, C_REG, C_NONE, C_LCON, C_REG, 14, 4, 0},
-	{AFADD, C_FREG, C_NONE, C_NONE, C_FREG, 2, 4, 0},
-	{AFADD, C_FREG, C_FREG, C_NONE, C_FREG, 2, 4, 0},
-	{AFABS, C_FREG, C_NONE, C_NONE, C_FREG, 33, 4, 0},
-	{AFABS, C_NONE, C_NONE, C_NONE, C_FREG, 33, 4, 0},
-	{AFMOVD, C_FREG, C_NONE, C_NONE, C_FREG, 33, 4, 0},
-	{AFMADD, C_FREG, C_FREG, C_FREG, C_FREG, 34, 4, 0},
-	{AFMUL, C_FREG, C_NONE, C_NONE, C_FREG, 32, 4, 0},
-	{AFMUL, C_FREG, C_FREG, C_NONE, C_FREG, 32, 4, 0},
 
-	/* store, short offset */
-	{AMOVD, C_REG, C_REG, C_NONE, C_ZOREG, 7, 4, REGZERO},
-	{AMOVW, C_REG, C_REG, C_NONE, C_ZOREG, 7, 4, REGZERO},
-	{AMOVWZ, C_REG, C_REG, C_NONE, C_ZOREG, 7, 4, REGZERO},
-	{AMOVBZ, C_REG, C_REG, C_NONE, C_ZOREG, 7, 4, REGZERO},
-	{AMOVBZU, C_REG, C_REG, C_NONE, C_ZOREG, 7, 4, REGZERO},
-	{AMOVB, C_REG, C_REG, C_NONE, C_ZOREG, 7, 4, REGZERO},
-	{AMOVBU, C_REG, C_REG, C_NONE, C_ZOREG, 7, 4, REGZERO},
-	{AMOVD, C_REG, C_NONE, C_NONE, C_SEXT, 7, 4, REGSB},
-	{AMOVW, C_REG, C_NONE, C_NONE, C_SEXT, 7, 4, REGSB},
-	{AMOVWZ, C_REG, C_NONE, C_NONE, C_SEXT, 7, 4, REGSB},
-	{AMOVBZ, C_REG, C_NONE, C_NONE, C_SEXT, 7, 4, REGSB},
-	{AMOVB, C_REG, C_NONE, C_NONE, C_SEXT, 7, 4, REGSB},
-	{AMOVD, C_REG, C_NONE, C_NONE, C_SAUTO, 7, 4, REGSP},
-	{AMOVW, C_REG, C_NONE, C_NONE, C_SAUTO, 7, 4, REGSP},
-	{AMOVWZ, C_REG, C_NONE, C_NONE, C_SAUTO, 7, 4, REGSP},
-	{AMOVBZ, C_REG, C_NONE, C_NONE, C_SAUTO, 7, 4, REGSP},
-	{AMOVB, C_REG, C_NONE, C_NONE, C_SAUTO, 7, 4, REGSP},
-	{AMOVD, C_REG, C_NONE, C_NONE, C_SOREG, 7, 4, REGZERO},
-	{AMOVW, C_REG, C_NONE, C_NONE, C_SOREG, 7, 4, REGZERO},
-	{AMOVWZ, C_REG, C_NONE, C_NONE, C_SOREG, 7, 4, REGZERO},
-	{AMOVBZ, C_REG, C_NONE, C_NONE, C_SOREG, 7, 4, REGZERO},
-	{AMOVBZU, C_REG, C_NONE, C_NONE, C_SOREG, 7, 4, REGZERO},
-	{AMOVB, C_REG, C_NONE, C_NONE, C_SOREG, 7, 4, REGZERO},
-	{AMOVBU, C_REG, C_NONE, C_NONE, C_SOREG, 7, 4, REGZERO},
-
-	/* load, short offset */
-	{AMOVD, C_ZOREG, C_REG, C_NONE, C_REG, 8, 4, REGZERO},
-	{AMOVW, C_ZOREG, C_REG, C_NONE, C_REG, 8, 4, REGZERO},
-	{AMOVWZ, C_ZOREG, C_REG, C_NONE, C_REG, 8, 4, REGZERO},
-	{AMOVBZ, C_ZOREG, C_REG, C_NONE, C_REG, 8, 4, REGZERO},
-	{AMOVBZU, C_ZOREG, C_REG, C_NONE, C_REG, 8, 4, REGZERO},
-	{AMOVB, C_ZOREG, C_REG, C_NONE, C_REG, 9, 8, REGZERO},
-	{AMOVBU, C_ZOREG, C_REG, C_NONE, C_REG, 9, 8, REGZERO},
-	{AMOVD, C_SEXT, C_NONE, C_NONE, C_REG, 8, 4, REGSB},
-	{AMOVW, C_SEXT, C_NONE, C_NONE, C_REG, 8, 4, REGSB},
-	{AMOVWZ, C_SEXT, C_NONE, C_NONE, C_REG, 8, 4, REGSB},
-	{AMOVBZ, C_SEXT, C_NONE, C_NONE, C_REG, 8, 4, REGSB},
-	{AMOVB, C_SEXT, C_NONE, C_NONE, C_REG, 9, 8, REGSB},
-	{AMOVD, C_SAUTO, C_NONE, C_NONE, C_REG, 8, 4, REGSP},
-	{AMOVW, C_SAUTO, C_NONE, C_NONE, C_REG, 8, 4, REGSP},
-	{AMOVWZ, C_SAUTO, C_NONE, C_NONE, C_REG, 8, 4, REGSP},
-	{AMOVBZ, C_SAUTO, C_NONE, C_NONE, C_REG, 8, 4, REGSP},
-	{AMOVB, C_SAUTO, C_NONE, C_NONE, C_REG, 9, 8, REGSP},
-	{AMOVD, C_SOREG, C_NONE, C_NONE, C_REG, 8, 4, REGZERO},
-	{AMOVW, C_SOREG, C_NONE, C_NONE, C_REG, 8, 4, REGZERO},
-	{AMOVWZ, C_SOREG, C_NONE, C_NONE, C_REG, 8, 4, REGZERO},
-	{AMOVBZ, C_SOREG, C_NONE, C_NONE, C_REG, 8, 4, REGZERO},
-	{AMOVBZU, C_SOREG, C_NONE, C_NONE, C_REG, 8, 4, REGZERO},
-	{AMOVB, C_SOREG, C_NONE, C_NONE, C_REG, 9, 8, REGZERO},
-	{AMOVBU, C_SOREG, C_NONE, C_NONE, C_REG, 9, 8, REGZERO},
-
-	/* store, long offset */
-	{AMOVD, C_REG, C_NONE, C_NONE, C_LEXT, 35, 8, REGSB},
-	{AMOVW, C_REG, C_NONE, C_NONE, C_LEXT, 35, 8, REGSB},
-	{AMOVWZ, C_REG, C_NONE, C_NONE, C_LEXT, 35, 8, REGSB},
-	{AMOVBZ, C_REG, C_NONE, C_NONE, C_LEXT, 35, 8, REGSB},
-	{AMOVB, C_REG, C_NONE, C_NONE, C_LEXT, 35, 8, REGSB},
-	{AMOVD, C_REG, C_NONE, C_NONE, C_LAUTO, 35, 8, REGSP},
-	{AMOVW, C_REG, C_NONE, C_NONE, C_LAUTO, 35, 8, REGSP},
-	{AMOVWZ, C_REG, C_NONE, C_NONE, C_LAUTO, 35, 8, REGSP},
-	{AMOVBZ, C_REG, C_NONE, C_NONE, C_LAUTO, 35, 8, REGSP},
-	{AMOVB, C_REG, C_NONE, C_NONE, C_LAUTO, 35, 8, REGSP},
-	{AMOVD, C_REG, C_NONE, C_NONE, C_LOREG, 35, 8, REGZERO},
-	{AMOVW, C_REG, C_NONE, C_NONE, C_LOREG, 35, 8, REGZERO},
-	{AMOVWZ, C_REG, C_NONE, C_NONE, C_LOREG, 35, 8, REGZERO},
-	{AMOVBZ, C_REG, C_NONE, C_NONE, C_LOREG, 35, 8, REGZERO},
-	{AMOVB, C_REG, C_NONE, C_NONE, C_LOREG, 35, 8, REGZERO},
-	{AMOVD, C_REG, C_NONE, C_NONE, C_ADDR, 74, 8, 0},
-	{AMOVW, C_REG, C_NONE, C_NONE, C_ADDR, 74, 8, 0},
-	{AMOVWZ, C_REG, C_NONE, C_NONE, C_ADDR, 74, 8, 0},
-	{AMOVBZ, C_REG, C_NONE, C_NONE, C_ADDR, 74, 8, 0},
-	{AMOVB, C_REG, C_NONE, C_NONE, C_ADDR, 74, 8, 0},
-
-	/* load, long offset */
-	{AMOVD, C_LEXT, C_NONE, C_NONE, C_REG, 36, 8, REGSB},
-	{AMOVW, C_LEXT, C_NONE, C_NONE, C_REG, 36, 8, REGSB},
-	{AMOVWZ, C_LEXT, C_NONE, C_NONE, C_REG, 36, 8, REGSB},
-	{AMOVBZ, C_LEXT, C_NONE, C_NONE, C_REG, 36, 8, REGSB},
-	{AMOVB, C_LEXT, C_NONE, C_NONE, C_REG, 37, 12, REGSB},
-	{AMOVD, C_LAUTO, C_NONE, C_NONE, C_REG, 36, 8, REGSP},
-	{AMOVW, C_LAUTO, C_NONE, C_NONE, C_REG, 36, 8, REGSP},
-	{AMOVWZ, C_LAUTO, C_NONE, C_NONE, C_REG, 36, 8, REGSP},
-	{AMOVBZ, C_LAUTO, C_NONE, C_NONE, C_REG, 36, 8, REGSP},
-	{AMOVB, C_LAUTO, C_NONE, C_NONE, C_REG, 37, 12, REGSP},
-	{AMOVD, C_LOREG, C_NONE, C_NONE, C_REG, 36, 8, REGZERO},
-	{AMOVW, C_LOREG, C_NONE, C_NONE, C_REG, 36, 8, REGZERO},
-	{AMOVWZ, C_LOREG, C_NONE, C_NONE, C_REG, 36, 8, REGZERO},
-	{AMOVBZ, C_LOREG, C_NONE, C_NONE, C_REG, 36, 8, REGZERO},
-	{AMOVB, C_LOREG, C_NONE, C_NONE, C_REG, 37, 12, REGZERO},
-	{AMOVD, C_ADDR, C_NONE, C_NONE, C_REG, 75, 8, 0},
-	{AMOVW, C_ADDR, C_NONE, C_NONE, C_REG, 75, 8, 0},
-	{AMOVWZ, C_ADDR, C_NONE, C_NONE, C_REG, 75, 8, 0},
-	{AMOVBZ, C_ADDR, C_NONE, C_NONE, C_REG, 75, 8, 0},
-	{AMOVB, C_ADDR, C_NONE, C_NONE, C_REG, 76, 12, 0},
-
-	{AMOVD, C_TLS_LE, C_NONE, C_NONE, C_REG, 79, 4, 0},
-	{AMOVD, C_TLS_IE, C_NONE, C_NONE, C_REG, 80, 8, 0},
-
-	{AMOVD, C_GOTADDR, C_NONE, C_NONE, C_REG, 81, 8, 0},
-
-	/* load constant */
-	{AMOVD, C_SECON, C_NONE, C_NONE, C_REG, 3, 4, REGSB},
-	{AMOVD, C_SACON, C_NONE, C_NONE, C_REG, 3, 4, REGSP},
-	{AMOVD, C_LECON, C_NONE, C_NONE, C_REG, 26, 8, REGSB},
-	{AMOVD, C_LACON, C_NONE, C_NONE, C_REG, 26, 8, REGSP},
-	{AMOVD, C_ADDCON, C_NONE, C_NONE, C_REG, 3, 4, REGZERO},
-	{AMOVD, C_ANDCON, C_NONE, C_NONE, C_REG, 3, 4, REGZERO},
-	{AMOVW, C_SECON, C_NONE, C_NONE, C_REG, 3, 4, REGSB}, /* TO DO: check */
-	{AMOVW, C_SACON, C_NONE, C_NONE, C_REG, 3, 4, REGSP},
-	{AMOVW, C_LECON, C_NONE, C_NONE, C_REG, 26, 8, REGSB},
-	{AMOVW, C_LACON, C_NONE, C_NONE, C_REG, 26, 8, REGSP},
-	{AMOVW, C_ADDCON, C_NONE, C_NONE, C_REG, 3, 4, REGZERO},
-	{AMOVW, C_ANDCON, C_NONE, C_NONE, C_REG, 3, 4, REGZERO},
-	{AMOVWZ, C_SECON, C_NONE, C_NONE, C_REG, 3, 4, REGSB}, /* TO DO: check */
-	{AMOVWZ, C_SACON, C_NONE, C_NONE, C_REG, 3, 4, REGSP},
-	{AMOVWZ, C_LECON, C_NONE, C_NONE, C_REG, 26, 8, REGSB},
-	{AMOVWZ, C_LACON, C_NONE, C_NONE, C_REG, 26, 8, REGSP},
-	{AMOVWZ, C_ADDCON, C_NONE, C_NONE, C_REG, 3, 4, REGZERO},
-	{AMOVWZ, C_ANDCON, C_NONE, C_NONE, C_REG, 3, 4, REGZERO},
-
-	/* load unsigned/long constants (TO DO: check) */
-	{AMOVD, C_UCON, C_NONE, C_NONE, C_REG, 3, 4, REGZERO},
-	{AMOVD, C_LCON, C_NONE, C_NONE, C_REG, 19, 8, 0},
-	{AMOVW, C_UCON, C_NONE, C_NONE, C_REG, 3, 4, REGZERO},
-	{AMOVW, C_LCON, C_NONE, C_NONE, C_REG, 19, 8, 0},
-	{AMOVWZ, C_UCON, C_NONE, C_NONE, C_REG, 3, 4, REGZERO},
-	{AMOVWZ, C_LCON, C_NONE, C_NONE, C_REG, 19, 8, 0},
-	{AMOVHBR, C_ZOREG, C_REG, C_NONE, C_REG, 45, 4, 0},
-	{AMOVHBR, C_ZOREG, C_NONE, C_NONE, C_REG, 45, 4, 0},
-	{AMOVHBR, C_REG, C_REG, C_NONE, C_ZOREG, 44, 4, 0},
-	{AMOVHBR, C_REG, C_NONE, C_NONE, C_ZOREG, 44, 4, 0},
-	{ASYSCALL, C_NONE, C_NONE, C_NONE, C_NONE, 5, 4, 0},
-	{ASYSCALL, C_REG, C_NONE, C_NONE, C_NONE, 77, 12, 0},
-	{ASYSCALL, C_SCON, C_NONE, C_NONE, C_NONE, 77, 12, 0},
-	{ABEQ, C_NONE, C_NONE, C_NONE, C_SBRA, 16, 4, 0},
-	{ABEQ, C_CREG, C_NONE, C_NONE, C_SBRA, 16, 4, 0},
-	{ABR, C_NONE, C_NONE, C_NONE, C_LBRA, 11, 4, 0},
-	{ABR, C_NONE, C_NONE, C_NONE, C_LBRAPIC, 11, 8, 0},
-	{ABC, C_SCON, C_REG, C_NONE, C_SBRA, 16, 4, 0},
-	{ABC, C_SCON, C_REG, C_NONE, C_LBRA, 17, 4, 0},
-	{ABR, C_NONE, C_NONE, C_NONE, C_LR, 18, 4, 0},
-	{ABR, C_NONE, C_NONE, C_NONE, C_CTR, 18, 4, 0},
-	{ABR, C_REG, C_NONE, C_NONE, C_CTR, 18, 4, 0},
-	{ABR, C_NONE, C_NONE, C_NONE, C_ZOREG, 15, 8, 0},
-	{ABC, C_NONE, C_REG, C_NONE, C_LR, 18, 4, 0},
-	{ABC, C_NONE, C_REG, C_NONE, C_CTR, 18, 4, 0},
-	{ABC, C_SCON, C_REG, C_NONE, C_LR, 18, 4, 0},
-	{ABC, C_SCON, C_REG, C_NONE, C_CTR, 18, 4, 0},
-	{ABC, C_NONE, C_NONE, C_NONE, C_ZOREG, 15, 8, 0},
-	{AFMOVD, C_SEXT, C_NONE, C_NONE, C_FREG, 8, 4, REGSB},
-	{AFMOVD, C_SAUTO, C_NONE, C_NONE, C_FREG, 8, 4, REGSP},
-	{AFMOVD, C_SOREG, C_NONE, C_NONE, C_FREG, 8, 4, REGZERO},
-	{AFMOVD, C_LEXT, C_NONE, C_NONE, C_FREG, 36, 8, REGSB},
-	{AFMOVD, C_LAUTO, C_NONE, C_NONE, C_FREG, 36, 8, REGSP},
-	{AFMOVD, C_LOREG, C_NONE, C_NONE, C_FREG, 36, 8, REGZERO},
-	{AFMOVD, C_ADDR, C_NONE, C_NONE, C_FREG, 75, 8, 0},
-	{AFMOVD, C_FREG, C_NONE, C_NONE, C_SEXT, 7, 4, REGSB},
-	{AFMOVD, C_FREG, C_NONE, C_NONE, C_SAUTO, 7, 4, REGSP},
-	{AFMOVD, C_FREG, C_NONE, C_NONE, C_SOREG, 7, 4, REGZERO},
-	{AFMOVD, C_FREG, C_NONE, C_NONE, C_LEXT, 35, 8, REGSB},
-	{AFMOVD, C_FREG, C_NONE, C_NONE, C_LAUTO, 35, 8, REGSP},
-	{AFMOVD, C_FREG, C_NONE, C_NONE, C_LOREG, 35, 8, REGZERO},
-	{AFMOVD, C_FREG, C_NONE, C_NONE, C_ADDR, 74, 8, 0},
-	{AFMOVSX, C_ZOREG, C_REG, C_NONE, C_FREG, 45, 4, 0},
-	{AFMOVSX, C_ZOREG, C_NONE, C_NONE, C_FREG, 45, 4, 0},
-	{AFMOVSX, C_FREG, C_REG, C_NONE, C_ZOREG, 44, 4, 0},
-	{AFMOVSX, C_FREG, C_NONE, C_NONE, C_ZOREG, 44, 4, 0},
-	{AFMOVSZ, C_ZOREG, C_REG, C_NONE, C_FREG, 45, 4, 0},
-	{AFMOVSZ, C_ZOREG, C_NONE, C_NONE, C_FREG, 45, 4, 0},
-	{ASYNC, C_NONE, C_NONE, C_NONE, C_NONE, 46, 4, 0},
-	{AWORD, C_LCON, C_NONE, C_NONE, C_NONE, 40, 4, 0},
-	{ADWORD, C_LCON, C_NONE, C_NONE, C_NONE, 31, 8, 0},
-	{ADWORD, C_DCON, C_NONE, C_NONE, C_NONE, 31, 8, 0},
-	{AADDME, C_REG, C_NONE, C_NONE, C_REG, 47, 4, 0},
-	{AEXTSB, C_REG, C_NONE, C_NONE, C_REG, 48, 4, 0},
-	{AEXTSB, C_NONE, C_NONE, C_NONE, C_REG, 48, 4, 0},
-	{AISEL, C_LCON, C_REG, C_REG, C_REG, 84, 4, 0},
-	{AISEL, C_ZCON, C_REG, C_REG, C_REG, 84, 4, 0},
-	{ANEG, C_REG, C_NONE, C_NONE, C_REG, 47, 4, 0},
-	{ANEG, C_NONE, C_NONE, C_NONE, C_REG, 47, 4, 0},
-	{AREM, C_REG, C_NONE, C_NONE, C_REG, 50, 12, 0},
-	{AREM, C_REG, C_REG, C_NONE, C_REG, 50, 12, 0},
-	{AREMU, C_REG, C_NONE, C_NONE, C_REG, 50, 16, 0},
-	{AREMU, C_REG, C_REG, C_NONE, C_REG, 50, 16, 0},
-	{AREMD, C_REG, C_NONE, C_NONE, C_REG, 51, 12, 0},
-	{AREMD, C_REG, C_REG, C_NONE, C_REG, 51, 12, 0},
-	{AREMDU, C_REG, C_NONE, C_NONE, C_REG, 51, 12, 0},
-	{AREMDU, C_REG, C_REG, C_NONE, C_REG, 51, 12, 0},
-	{AMTFSB0, C_SCON, C_NONE, C_NONE, C_NONE, 52, 4, 0},
-	{AMOVFL, C_FPSCR, C_NONE, C_NONE, C_FREG, 53, 4, 0},
-	{AMOVFL, C_FREG, C_NONE, C_NONE, C_FPSCR, 64, 4, 0},
-	{AMOVFL, C_FREG, C_NONE, C_LCON, C_FPSCR, 64, 4, 0},
-	{AMOVFL, C_LCON, C_NONE, C_NONE, C_FPSCR, 65, 4, 0},
-	{AMOVD, C_MSR, C_NONE, C_NONE, C_REG, 54, 4, 0},  /* mfmsr */
-	{AMOVD, C_REG, C_NONE, C_NONE, C_MSR, 54, 4, 0},  /* mtmsrd */
-	{AMOVWZ, C_REG, C_NONE, C_NONE, C_MSR, 54, 4, 0}, /* mtmsr */
-
-	/* Other ISA 2.05+ instructions */
-	{APOPCNTD, C_REG, C_NONE, C_NONE, C_REG, 93, 4, 0},  /* population count, x-form */
-	{ACMPB, C_REG, C_REG, C_NONE, C_REG, 92, 4, 0},      /* compare byte, x-form */
-	{ACMPEQB, C_REG, C_REG, C_NONE, C_CREG, 92, 4, 0},   /* compare equal byte, x-form */
-	{AFTDIV, C_FREG, C_FREG, C_NONE, C_SCON, 92, 4, 0},  /* floating test for sw divide, x-form */
-	{AFTSQRT, C_FREG, C_NONE, C_NONE, C_SCON, 93, 4, 0}, /* floating test for sw square root, x-form */
-	{ACOPY, C_REG, C_NONE, C_NONE, C_REG, 92, 4, 0},     /* copy/paste facility, x-form */
-	{ADARN, C_SCON, C_NONE, C_NONE, C_REG, 92, 4, 0},    /* deliver random number, x-form */
-	{ALDMX, C_SOREG, C_NONE, C_NONE, C_REG, 45, 4, 0},   /* load doubleword monitored, x-form */
-	{AMADDHD, C_REG, C_REG, C_REG, C_REG, 83, 4, 0},     /* multiply-add high/low doubleword, va-form */
-	{AADDEX, C_REG, C_REG, C_SCON, C_REG, 94, 4, 0},     /* add extended using alternate carry, z23-form */
-
-	/* Vector instructions */
-
-	/* Vector load */
-	{ALV, C_SOREG, C_NONE, C_NONE, C_VREG, 45, 4, 0}, /* vector load, x-form */
-
-	/* Vector store */
-	{ASTV, C_VREG, C_NONE, C_NONE, C_SOREG, 44, 4, 0}, /* vector store, x-form */
-
-	/* Vector logical */
-	{AVAND, C_VREG, C_VREG, C_NONE, C_VREG, 82, 4, 0}, /* vector and, vx-form */
-	{AVOR, C_VREG, C_VREG, C_NONE, C_VREG, 82, 4, 0},  /* vector or, vx-form */
-
-	/* Vector add */
-	{AVADDUM, C_VREG, C_VREG, C_NONE, C_VREG, 82, 4, 0}, /* vector add unsigned modulo, vx-form */
-	{AVADDCU, C_VREG, C_VREG, C_NONE, C_VREG, 82, 4, 0}, /* vector add & write carry unsigned, vx-form */
-	{AVADDUS, C_VREG, C_VREG, C_NONE, C_VREG, 82, 4, 0}, /* vector add unsigned saturate, vx-form */
-	{AVADDSS, C_VREG, C_VREG, C_NONE, C_VREG, 82, 4, 0}, /* vector add signed saturate, vx-form */
-	{AVADDE, C_VREG, C_VREG, C_VREG, C_VREG, 83, 4, 0},  /* vector add extended, va-form */
-
-	/* Vector subtract */
-	{AVSUBUM, C_VREG, C_VREG, C_NONE, C_VREG, 82, 4, 0}, /* vector subtract unsigned modulo, vx-form */
-	{AVSUBCU, C_VREG, C_VREG, C_NONE, C_VREG, 82, 4, 0}, /* vector subtract & write carry unsigned, vx-form */
-	{AVSUBUS, C_VREG, C_VREG, C_NONE, C_VREG, 82, 4, 0}, /* vector subtract unsigned saturate, vx-form */
-	{AVSUBSS, C_VREG, C_VREG, C_NONE, C_VREG, 82, 4, 0}, /* vector subtract signed saturate, vx-form */
-	{AVSUBE, C_VREG, C_VREG, C_VREG, C_VREG, 83, 4, 0},  /* vector subtract extended, va-form */
-
-	/* Vector multiply */
-	{AVMULESB, C_VREG, C_VREG, C_NONE, C_VREG, 82, 4, 9},  /* vector multiply, vx-form */
-	{AVPMSUM, C_VREG, C_VREG, C_NONE, C_VREG, 82, 4, 0},   /* vector polynomial multiply & sum, vx-form */
-	{AVMSUMUDM, C_VREG, C_VREG, C_VREG, C_VREG, 83, 4, 0}, /* vector multiply-sum, va-form */
-
-	/* Vector rotate */
-	{AVR, C_VREG, C_VREG, C_NONE, C_VREG, 82, 4, 0}, /* vector rotate, vx-form */
-
-	/* Vector shift */
-	{AVS, C_VREG, C_VREG, C_NONE, C_VREG, 82, 4, 0},     /* vector shift, vx-form */
-	{AVSA, C_VREG, C_VREG, C_NONE, C_VREG, 82, 4, 0},    /* vector shift algebraic, vx-form */
-	{AVSOI, C_ANDCON, C_VREG, C_VREG, C_VREG, 83, 4, 0}, /* vector shift by octet immediate, va-form */
-
-	/* Vector count */
-	{AVCLZ, C_VREG, C_NONE, C_NONE, C_VREG, 85, 4, 0},    /* vector count leading zeros, vx-form */
-	{AVPOPCNT, C_VREG, C_NONE, C_NONE, C_VREG, 85, 4, 0}, /* vector population count, vx-form */
-
-	/* Vector compare */
-	{AVCMPEQ, C_VREG, C_VREG, C_NONE, C_VREG, 82, 4, 0},   /* vector compare equal, vc-form */
-	{AVCMPGT, C_VREG, C_VREG, C_NONE, C_VREG, 82, 4, 0},   /* vector compare greater than, vc-form */
-	{AVCMPNEZB, C_VREG, C_VREG, C_NONE, C_VREG, 82, 4, 0}, /* vector compare not equal, vx-form */
-
-	/* Vector permute */
-	{AVPERM, C_VREG, C_VREG, C_VREG, C_VREG, 83, 4, 0}, /* vector permute, va-form */
-
-	/* Vector bit permute */
-	{AVBPERMQ, C_VREG, C_VREG, C_NONE, C_VREG, 82, 4, 0}, /* vector bit permute, vx-form */
-
-	/* Vector select */
-	{AVSEL, C_VREG, C_VREG, C_VREG, C_VREG, 83, 4, 0}, /* vector select, va-form */
-
-	/* Vector splat */
-	{AVSPLT, C_SCON, C_VREG, C_NONE, C_VREG, 82, 4, 0}, /* vector splat, vx-form */
-	{AVSPLT, C_ADDCON, C_VREG, C_NONE, C_VREG, 82, 4, 0},
-	{AVSPLTI, C_SCON, C_NONE, C_NONE, C_VREG, 82, 4, 0}, /* vector splat immediate, vx-form */
-	{AVSPLTI, C_ADDCON, C_NONE, C_NONE, C_VREG, 82, 4, 0},
-
-	/* Vector AES */
-	{AVCIPH, C_VREG, C_VREG, C_NONE, C_VREG, 82, 4, 0},  /* vector AES cipher, vx-form */
-	{AVNCIPH, C_VREG, C_VREG, C_NONE, C_VREG, 82, 4, 0}, /* vector AES inverse cipher, vx-form */
-	{AVSBOX, C_VREG, C_NONE, C_NONE, C_VREG, 82, 4, 0},  /* vector AES subbytes, vx-form */
-
-	/* Vector SHA */
-	{AVSHASIGMA, C_ANDCON, C_VREG, C_ANDCON, C_VREG, 82, 4, 0}, /* vector SHA sigma, vx-form */
-
-	/* VSX vector load */
-	{ALXV, C_SOREG, C_NONE, C_NONE, C_VSREG, 87, 4, 0}, /* vsx vector load, xx1-form */
-
-	/* VSX vector store */
-	{ASTXV, C_VSREG, C_NONE, C_NONE, C_SOREG, 86, 4, 0}, /* vsx vector store, xx1-form */
-
-	/* VSX scalar load */
-	{ALXS, C_SOREG, C_NONE, C_NONE, C_VSREG, 87, 4, 0}, /* vsx scalar load, xx1-form */
-
-	/* VSX scalar store */
-	{ASTXS, C_VSREG, C_NONE, C_NONE, C_SOREG, 86, 4, 0}, /* vsx scalar store, xx1-form */
-
-	/* VSX scalar as integer load */
-	{ALXSI, C_SOREG, C_NONE, C_NONE, C_VSREG, 87, 4, 0}, /* vsx scalar as integer load, xx1-form */
-
-	/* VSX scalar store as integer */
-	{ASTXSI, C_VSREG, C_NONE, C_NONE, C_SOREG, 86, 4, 0}, /* vsx scalar as integer store, xx1-form */
-
-	/* VSX move from VSR */
-	{AMFVSR, C_VSREG, C_NONE, C_NONE, C_REG, 88, 4, 0}, /* vsx move from vsr, xx1-form */
-	{AMFVSR, C_FREG, C_NONE, C_NONE, C_REG, 88, 4, 0},
-	{AMFVSR, C_VREG, C_NONE, C_NONE, C_REG, 88, 4, 0},
-
-	/* VSX move to VSR */
-	{AMTVSR, C_REG, C_NONE, C_NONE, C_VSREG, 88, 4, 0}, /* vsx move to vsr, xx1-form */
-	{AMTVSR, C_REG, C_REG, C_NONE, C_VSREG, 88, 4, 0},
-	{AMTVSR, C_REG, C_NONE, C_NONE, C_FREG, 88, 4, 0},
-	{AMTVSR, C_REG, C_NONE, C_NONE, C_VREG, 88, 4, 0},
-
-	/* VSX logical */
-	{AXXLAND, C_VSREG, C_VSREG, C_NONE, C_VSREG, 90, 4, 0}, /* vsx and, xx3-form */
-	{AXXLOR, C_VSREG, C_VSREG, C_NONE, C_VSREG, 90, 4, 0},  /* vsx or, xx3-form */
-
-	/* VSX select */
-	{AXXSEL, C_VSREG, C_VSREG, C_VSREG, C_VSREG, 91, 4, 0}, /* vsx select, xx4-form */
-
-	/* VSX merge */
-	{AXXMRG, C_VSREG, C_VSREG, C_NONE, C_VSREG, 90, 4, 0}, /* vsx merge, xx3-form */
-
-	/* VSX splat */
-	{AXXSPLT, C_VSREG, C_NONE, C_SCON, C_VSREG, 89, 4, 0}, /* vsx splat, xx2-form */
-
-	/* VSX permute */
-	{AXXPERM, C_VSREG, C_VSREG, C_SCON, C_VSREG, 90, 4, 0}, /* vsx permute, xx3-form */
-
-	/* VSX shift */
-	{AXXSI, C_VSREG, C_VSREG, C_SCON, C_VSREG, 90, 4, 0}, /* vsx shift immediate, xx3-form */
-
-	/* VSX scalar FP-FP conversion */
-	{AXSCV, C_VSREG, C_NONE, C_NONE, C_VSREG, 89, 4, 0}, /* vsx scalar fp-fp conversion, xx2-form */
-
-	/* VSX vector FP-FP conversion */
-	{AXVCV, C_VSREG, C_NONE, C_NONE, C_VSREG, 89, 4, 0}, /* vsx vector fp-fp conversion, xx2-form */
-
-	/* VSX scalar FP-integer conversion */
-	{AXSCVX, C_VSREG, C_NONE, C_NONE, C_VSREG, 89, 4, 0}, /* vsx scalar fp-integer conversion, xx2-form */
-
-	/* VSX scalar integer-FP conversion */
-	{AXSCVXP, C_VSREG, C_NONE, C_NONE, C_VSREG, 89, 4, 0}, /* vsx scalar integer-fp conversion, xx2-form */
-
-	/* VSX vector FP-integer conversion */
-	{AXVCVX, C_VSREG, C_NONE, C_NONE, C_VSREG, 89, 4, 0}, /* vsx vector fp-integer conversion, xx2-form */
-
-	/* VSX vector integer-FP conversion */
-	{AXVCVXP, C_VSREG, C_NONE, C_NONE, C_VSREG, 89, 4, 0}, /* vsx vector integer-fp conversion, xx2-form */
-
-	/* 64-bit special registers */
-	{AMOVD, C_REG, C_NONE, C_NONE, C_SPR, 66, 4, 0},
-	{AMOVD, C_REG, C_NONE, C_NONE, C_LR, 66, 4, 0},
-	{AMOVD, C_REG, C_NONE, C_NONE, C_CTR, 66, 4, 0},
-	{AMOVD, C_REG, C_NONE, C_NONE, C_XER, 66, 4, 0},
-	{AMOVD, C_SPR, C_NONE, C_NONE, C_REG, 66, 4, 0},
-	{AMOVD, C_LR, C_NONE, C_NONE, C_REG, 66, 4, 0},
-	{AMOVD, C_CTR, C_NONE, C_NONE, C_REG, 66, 4, 0},
-	{AMOVD, C_XER, C_NONE, C_NONE, C_REG, 66, 4, 0},
-
-	/* 32-bit special registers (gloss over sign-extension or not?) */
-	{AMOVW, C_REG, C_NONE, C_NONE, C_SPR, 66, 4, 0},
-	{AMOVW, C_REG, C_NONE, C_NONE, C_CTR, 66, 4, 0},
-	{AMOVW, C_REG, C_NONE, C_NONE, C_XER, 66, 4, 0},
-	{AMOVW, C_SPR, C_NONE, C_NONE, C_REG, 66, 4, 0},
-	{AMOVW, C_XER, C_NONE, C_NONE, C_REG, 66, 4, 0},
-	{AMOVWZ, C_REG, C_NONE, C_NONE, C_SPR, 66, 4, 0},
-	{AMOVWZ, C_REG, C_NONE, C_NONE, C_CTR, 66, 4, 0},
-	{AMOVWZ, C_REG, C_NONE, C_NONE, C_XER, 66, 4, 0},
-	{AMOVWZ, C_SPR, C_NONE, C_NONE, C_REG, 66, 4, 0},
-	{AMOVWZ, C_XER, C_NONE, C_NONE, C_REG, 66, 4, 0},
-	{AMOVFL, C_FPSCR, C_NONE, C_NONE, C_CREG, 73, 4, 0},
-	{AMOVFL, C_CREG, C_NONE, C_NONE, C_CREG, 67, 4, 0},
-	{AMOVW, C_CREG, C_NONE, C_NONE, C_REG, 68, 4, 0},
-	{AMOVWZ, C_CREG, C_NONE, C_NONE, C_REG, 68, 4, 0},
-	{AMOVFL, C_REG, C_NONE, C_NONE, C_LCON, 69, 4, 0},
-	{AMOVFL, C_REG, C_NONE, C_NONE, C_CREG, 69, 4, 0},
-	{AMOVW, C_REG, C_NONE, C_NONE, C_CREG, 69, 4, 0},
-	{AMOVWZ, C_REG, C_NONE, C_NONE, C_CREG, 69, 4, 0},
-	{ACMP, C_REG, C_NONE, C_NONE, C_REG, 70, 4, 0},
-	{ACMP, C_REG, C_REG, C_NONE, C_REG, 70, 4, 0},
-	{ACMP, C_REG, C_NONE, C_NONE, C_ADDCON, 71, 4, 0},
-	{ACMP, C_REG, C_REG, C_NONE, C_ADDCON, 71, 4, 0},
-	{ACMPU, C_REG, C_NONE, C_NONE, C_REG, 70, 4, 0},
-	{ACMPU, C_REG, C_REG, C_NONE, C_REG, 70, 4, 0},
-	{ACMPU, C_REG, C_NONE, C_NONE, C_ANDCON, 71, 4, 0},
-	{ACMPU, C_REG, C_REG, C_NONE, C_ANDCON, 71, 4, 0},
-	{AFCMPO, C_FREG, C_NONE, C_NONE, C_FREG, 70, 4, 0},
-	{AFCMPO, C_FREG, C_REG, C_NONE, C_FREG, 70, 4, 0},
-	{ATW, C_LCON, C_REG, C_NONE, C_REG, 60, 4, 0},
-	{ATW, C_LCON, C_REG, C_NONE, C_ADDCON, 61, 4, 0},
-	{ADCBF, C_ZOREG, C_NONE, C_NONE, C_NONE, 43, 4, 0},
-	{ADCBF, C_SOREG, C_NONE, C_NONE, C_NONE, 43, 4, 0},
-	{ADCBF, C_ZOREG, C_REG, C_NONE, C_SCON, 43, 4, 0},
-	{ADCBF, C_SOREG, C_NONE, C_NONE, C_SCON, 43, 4, 0},
-	{AECOWX, C_REG, C_REG, C_NONE, C_ZOREG, 44, 4, 0},
-	{AECIWX, C_ZOREG, C_REG, C_NONE, C_REG, 45, 4, 0},
-	{AECOWX, C_REG, C_NONE, C_NONE, C_ZOREG, 44, 4, 0},
-	{AECIWX, C_ZOREG, C_NONE, C_NONE, C_REG, 45, 4, 0},
-	{ALDAR, C_ZOREG, C_NONE, C_NONE, C_REG, 45, 4, 0},
-	{ALDAR, C_ZOREG, C_NONE, C_ANDCON, C_REG, 45, 4, 0},
-	{AEIEIO, C_NONE, C_NONE, C_NONE, C_NONE, 46, 4, 0},
-	{ATLBIE, C_REG, C_NONE, C_NONE, C_NONE, 49, 4, 0},
-	{ATLBIE, C_SCON, C_NONE, C_NONE, C_REG, 49, 4, 0},
-	{ASLBMFEE, C_REG, C_NONE, C_NONE, C_REG, 55, 4, 0},
-	{ASLBMTE, C_REG, C_NONE, C_NONE, C_REG, 55, 4, 0},
-	{ASTSW, C_REG, C_NONE, C_NONE, C_ZOREG, 44, 4, 0},
-	{ASTSW, C_REG, C_NONE, C_LCON, C_ZOREG, 41, 4, 0},
-	{ALSW, C_ZOREG, C_NONE, C_NONE, C_REG, 45, 4, 0},
-	{ALSW, C_ZOREG, C_NONE, C_LCON, C_REG, 42, 4, 0},
-	{obj.AUNDEF, C_NONE, C_NONE, C_NONE, C_NONE, 78, 4, 0},
-	{obj.APCDATA, C_LCON, C_NONE, C_NONE, C_LCON, 0, 0, 0},
-	{obj.AFUNCDATA, C_SCON, C_NONE, C_NONE, C_ADDR, 0, 0, 0},
-	{obj.ANOP, C_NONE, C_NONE, C_NONE, C_NONE, 0, 0, 0},
-	{obj.ADUFFZERO, C_NONE, C_NONE, C_NONE, C_LBRA, 11, 4, 0}, // same as ABR/ABL
-	{obj.ADUFFCOPY, C_NONE, C_NONE, C_NONE, C_LBRA, 11, 4, 0}, // same as ABR/ABL
-
-	{obj.AXXX, C_NONE, C_NONE, C_NONE, C_NONE, 0, 4, 0},
-}
-
-var oprange [ALAST & obj.AMask][]Optab
-
-var xcmp [C_NCLASS][C_NCLASS]bool
-
-func span9(ctxt *obj.Link, cursym *obj.LSym, newprog obj.ProgAlloc) {
+func (psess *PackageSession) span9(ctxt *obj.Link, cursym *obj.LSym, newprog obj.ProgAlloc) {
 	p := cursym.Func.Text
-	if p == nil || p.Link == nil { // handle external functions and ELF section symbols
+	if p == nil || p.Link == nil {
 		return
 	}
 
-	if oprange[AANDN&obj.AMask] == nil {
+	if psess.oprange[AANDN&obj.AMask] == nil {
 		ctxt.Diag("ppc64 ops not initialized, call ppc64.buildop first")
 	}
 
@@ -626,7 +68,7 @@ func span9(ctxt *obj.Link, cursym *obj.LSym, newprog obj.ProgAlloc) {
 	var o *Optab
 	for p = p.Link; p != nil; p = p.Link {
 		p.Pc = pc
-		o = c.oplook(p)
+		o = c.oplook(psess, p)
 		m = int(o.size)
 		if m == 0 {
 			if p.As != obj.ANOP && p.As != obj.AFUNCDATA && p.As != obj.APCDATA {
@@ -640,12 +82,6 @@ func span9(ctxt *obj.Link, cursym *obj.LSym, newprog obj.ProgAlloc) {
 
 	c.cursym.Size = pc
 
-	/*
-	 * if any procedure is large enough to
-	 * generate a large SBRA branch, then
-	 * generate extra passes putting branches
-	 * around jmps to fix. this is rare.
-	 */
 	bflag := 1
 
 	var otxt int64
@@ -655,9 +91,8 @@ func span9(ctxt *obj.Link, cursym *obj.LSym, newprog obj.ProgAlloc) {
 		pc = 0
 		for p = c.cursym.Func.Text.Link; p != nil; p = p.Link {
 			p.Pc = pc
-			o = c.oplook(p)
+			o = c.oplook(psess, p)
 
-			// very large conditional branches
 			if (o.type_ == 16 || o.type_ == 17) && p.Pcond != nil {
 				otxt = p.Pcond.Pc - pc
 				if otxt < -(1<<15)+10 || otxt >= (1<<15)-10 {
@@ -675,8 +110,6 @@ func span9(ctxt *obj.Link, cursym *obj.LSym, newprog obj.ProgAlloc) {
 					q.To.Type = obj.TYPE_BRANCH
 					q.Pcond = q.Link.Link
 
-					//addnop(p->link);
-					//addnop(p);
 					bflag = 1
 				}
 			}
@@ -698,10 +131,6 @@ func span9(ctxt *obj.Link, cursym *obj.LSym, newprog obj.ProgAlloc) {
 	pc += -pc & (funcAlign - 1)
 	c.cursym.Size = pc
 
-	/*
-	 * lay out the code, emitting code and data relocations.
-	 */
-
 	c.cursym.Grow(c.cursym.Size)
 
 	bp := c.cursym.P
@@ -709,7 +138,7 @@ func span9(ctxt *obj.Link, cursym *obj.LSym, newprog obj.ProgAlloc) {
 	var out [6]uint32
 	for p := c.cursym.Func.Text.Link; p != nil; p = p.Link {
 		c.pc = p.Pc
-		o = c.oplook(p)
+		o = c.oplook(psess, p)
 		if int(o.size) > 4*len(out) {
 			log.Fatalf("out array in span9 is too small, need at least %d for %v", o.size/4, p)
 		}
@@ -784,7 +213,7 @@ func (c *ctxt9) aclass(a *obj.Addr) int {
 				break
 			}
 			c.instoffset = a.Offset
-			if a.Sym != nil { // use relocation
+			if a.Sym != nil {
 				if a.Sym.Type == objabi.STLSBSS {
 					if c.ctxt.Flag_shared {
 						return C_TLS_IE
@@ -853,7 +282,6 @@ func (c *ctxt9) aclass(a *obj.Addr) int {
 
 			c.instoffset = a.Offset
 
-			/* not sure why this barfs */
 			return C_LCON
 
 		case obj.NAME_AUTO:
@@ -884,7 +312,7 @@ func (c *ctxt9) aclass(a *obj.Addr) int {
 			if c.instoffset <= 0xffff {
 				return C_ANDCON
 			}
-			if c.instoffset&0xffff == 0 && isuint32(uint64(c.instoffset)) { /* && (instoffset & (1<<31)) == 0) */
+			if c.instoffset&0xffff == 0 && isuint32(uint64(c.instoffset)) {
 				return C_UCON
 			}
 			if isint32(c.instoffset) || isuint32(uint64(c.instoffset)) {
@@ -918,10 +346,10 @@ func prasm(p *obj.Prog) {
 	fmt.Printf("%v\n", p)
 }
 
-func (c *ctxt9) oplook(p *obj.Prog) *Optab {
+func (c *ctxt9) oplook(psess *PackageSession, p *obj.Prog) *Optab {
 	a1 := int(p.Optab)
 	if a1 != 0 {
-		return &optab[a1-1]
+		return &psess.optab[a1-1]
 	}
 	a1 = int(p.From.Class)
 	if a1 == 0 {
@@ -960,23 +388,22 @@ func (c *ctxt9) oplook(p *obj.Prog) *Optab {
 		}
 	}
 
-	//print("oplook %v %d %d %d %d\n", p, a1, a2, a3, a4);
-	ops := oprange[p.As&obj.AMask]
-	c1 := &xcmp[a1]
-	c3 := &xcmp[a3]
-	c4 := &xcmp[a4]
+	ops := psess.oprange[p.As&obj.AMask]
+	c1 := &psess.xcmp[a1]
+	c3 := &psess.xcmp[a3]
+	c4 := &psess.xcmp[a4]
 	for i := range ops {
 		op := &ops[i]
 		if int(op.a2) == a2 && c1[op.a1] && c3[op.a3] && c4[op.a4] {
-			p.Optab = uint16(cap(optab) - cap(ops) + i + 1)
+			p.Optab = uint16(cap(psess.optab) - cap(ops) + i + 1)
 			return op
 		}
 	}
 
-	c.ctxt.Diag("illegal combination %v %v %v %v %v", p.As, DRconv(a1), DRconv(a2), DRconv(a3), DRconv(a4))
+	c.ctxt.Diag("illegal combination %v %v %v %v %v", p.As, psess.DRconv(a1), psess.DRconv(a2), psess.DRconv(a3), psess.DRconv(a4))
 	prasm(p)
 	if ops == nil {
-		ops = optab
+		ops = psess.optab
 	}
 	return &ops[0]
 }
@@ -1038,7 +465,7 @@ func cmp(a int, b int) bool {
 
 	case C_REG:
 		if b == C_ZCON {
-			return r0iszero != 0 /*TypeKind(100016)*/
+			return r0iszero != 0
 		}
 
 	case C_LOREG:
@@ -1075,18 +502,16 @@ func (x ocmp) Less(i, j int) bool {
 	p1 := &x[i]
 	p2 := &x[j]
 	n := int(p1.as) - int(p2.as)
-	// same opcode
+
 	if n != 0 {
 		return n < 0
 	}
-	// Consider those that generate fewer
-	// instructions first.
+
 	n = int(p1.size) - int(p2.size)
 	if n != 0 {
 		return n < 0
 	}
-	// operand order should match
-	// better choices first
+
 	n = int(p1.a1) - int(p2.a1)
 	if n != 0 {
 		return n < 0
@@ -1109,16 +534,15 @@ func (x ocmp) Less(i, j int) bool {
 // Add an entry to the opcode table for
 // a new opcode b0 with the same operand combinations
 // as opcode a.
-func opset(a, b0 obj.As) {
-	oprange[a&obj.AMask] = oprange[b0]
+func (psess *PackageSession) opset(a, b0 obj.As) {
+	psess.
+		oprange[a&obj.AMask] = psess.oprange[b0]
 }
 
 // Build the opcode table
-func buildop(ctxt *obj.Link) {
-	if oprange[AANDN&obj.AMask] != nil {
-		// Already initialized; stop now.
-		// This happens in the cmd/asm tests,
-		// each of which re-initializes the arch.
+func (psess *PackageSession) buildop(ctxt *obj.Link) {
+	if psess.oprange[AANDN&obj.AMask] != nil {
+
 		return
 	}
 
@@ -1127,21 +551,23 @@ func buildop(ctxt *obj.Link) {
 	for i := 0; i < C_NCLASS; i++ {
 		for n = 0; n < C_NCLASS; n++ {
 			if cmp(n, i) {
-				xcmp[i][n] = true
+				psess.
+					xcmp[i][n] = true
 			}
 		}
 	}
-	for n = 0; optab[n].as != obj.AXXX; n++ {
+	for n = 0; psess.optab[n].as != obj.AXXX; n++ {
 	}
-	sort.Sort(ocmp(optab[:n]))
+	sort.Sort(ocmp(psess.optab[:n]))
 	for i := 0; i < n; i++ {
-		r := optab[i].as
+		r := psess.optab[i].as
 		r0 := r & obj.AMask
 		start := i
-		for optab[i].as == r {
+		for psess.optab[i].as == r {
 			i++
 		}
-		oprange[r0] = optab[start:i]
+		psess.
+			oprange[r0] = psess.optab[start:i]
 		i--
 
 		switch r {
@@ -1149,725 +575,1190 @@ func buildop(ctxt *obj.Link) {
 			ctxt.Diag("unknown op in build: %v", r)
 			log.Fatalf("instruction missing from switch in asm9.go:buildop: %v", r)
 
-		case ADCBF: /* unary indexed: op (b+a); op (b) */
-			opset(ADCBI, r0)
+		case ADCBF:
+			psess.
+				opset(ADCBI, r0)
+			psess.
+				opset(ADCBST, r0)
+			psess.
+				opset(ADCBT, r0)
+			psess.
+				opset(ADCBTST, r0)
+			psess.
+				opset(ADCBZ, r0)
+			psess.
+				opset(AICBI, r0)
 
-			opset(ADCBST, r0)
-			opset(ADCBT, r0)
-			opset(ADCBTST, r0)
-			opset(ADCBZ, r0)
-			opset(AICBI, r0)
+		case AECOWX:
+			psess.
+				opset(ASTWCCC, r0)
+			psess.
+				opset(ASTBCCC, r0)
+			psess.
+				opset(ASTDCCC, r0)
 
-		case AECOWX: /* indexed store: op s,(b+a); op s,(b) */
-			opset(ASTWCCC, r0)
-			opset(ASTBCCC, r0)
-
-			opset(ASTDCCC, r0)
-
-		case AREM: /* macro */
-			opset(AREMCC, r0)
-
-			opset(AREMV, r0)
-			opset(AREMVCC, r0)
+		case AREM:
+			psess.
+				opset(AREMCC, r0)
+			psess.
+				opset(AREMV, r0)
+			psess.
+				opset(AREMVCC, r0)
 
 		case AREMU:
-			opset(AREMU, r0)
-			opset(AREMUCC, r0)
-			opset(AREMUV, r0)
-			opset(AREMUVCC, r0)
+			psess.
+				opset(AREMU, r0)
+			psess.
+				opset(AREMUCC, r0)
+			psess.
+				opset(AREMUV, r0)
+			psess.
+				opset(AREMUVCC, r0)
 
 		case AREMD:
-			opset(AREMDCC, r0)
-			opset(AREMDV, r0)
-			opset(AREMDVCC, r0)
+			psess.
+				opset(AREMDCC, r0)
+			psess.
+				opset(AREMDV, r0)
+			psess.
+				opset(AREMDVCC, r0)
 
 		case AREMDU:
-			opset(AREMDU, r0)
-			opset(AREMDUCC, r0)
-			opset(AREMDUV, r0)
-			opset(AREMDUVCC, r0)
+			psess.
+				opset(AREMDU, r0)
+			psess.
+				opset(AREMDUCC, r0)
+			psess.
+				opset(AREMDUV, r0)
+			psess.
+				opset(AREMDUVCC, r0)
 
-		case ADIVW: /* op Rb[,Ra],Rd */
-			opset(AMULHW, r0)
-
-			opset(AMULHWCC, r0)
-			opset(AMULHWU, r0)
-			opset(AMULHWUCC, r0)
-			opset(AMULLWCC, r0)
-			opset(AMULLWVCC, r0)
-			opset(AMULLWV, r0)
-			opset(ADIVWCC, r0)
-			opset(ADIVWV, r0)
-			opset(ADIVWVCC, r0)
-			opset(ADIVWU, r0)
-			opset(ADIVWUCC, r0)
-			opset(ADIVWUV, r0)
-			opset(ADIVWUVCC, r0)
-			opset(AADDCC, r0)
-			opset(AADDCV, r0)
-			opset(AADDCVCC, r0)
-			opset(AADDV, r0)
-			opset(AADDVCC, r0)
-			opset(AADDE, r0)
-			opset(AADDECC, r0)
-			opset(AADDEV, r0)
-			opset(AADDEVCC, r0)
-			opset(ACRAND, r0)
-			opset(ACRANDN, r0)
-			opset(ACREQV, r0)
-			opset(ACRNAND, r0)
-			opset(ACRNOR, r0)
-			opset(ACROR, r0)
-			opset(ACRORN, r0)
-			opset(ACRXOR, r0)
-			opset(AMULHD, r0)
-			opset(AMULHDCC, r0)
-			opset(AMULHDU, r0)
-			opset(AMULHDUCC, r0)
-			opset(AMULLD, r0)
-			opset(AMULLDCC, r0)
-			opset(AMULLDVCC, r0)
-			opset(AMULLDV, r0)
-			opset(ADIVD, r0)
-			opset(ADIVDCC, r0)
-			opset(ADIVDE, r0)
-			opset(ADIVDEU, r0)
-			opset(ADIVDECC, r0)
-			opset(ADIVDEUCC, r0)
-			opset(ADIVDVCC, r0)
-			opset(ADIVDV, r0)
-			opset(ADIVDU, r0)
-			opset(ADIVDUCC, r0)
-			opset(ADIVDUVCC, r0)
-			opset(ADIVDUCC, r0)
+		case ADIVW:
+			psess.
+				opset(AMULHW, r0)
+			psess.
+				opset(AMULHWCC, r0)
+			psess.
+				opset(AMULHWU, r0)
+			psess.
+				opset(AMULHWUCC, r0)
+			psess.
+				opset(AMULLWCC, r0)
+			psess.
+				opset(AMULLWVCC, r0)
+			psess.
+				opset(AMULLWV, r0)
+			psess.
+				opset(ADIVWCC, r0)
+			psess.
+				opset(ADIVWV, r0)
+			psess.
+				opset(ADIVWVCC, r0)
+			psess.
+				opset(ADIVWU, r0)
+			psess.
+				opset(ADIVWUCC, r0)
+			psess.
+				opset(ADIVWUV, r0)
+			psess.
+				opset(ADIVWUVCC, r0)
+			psess.
+				opset(AADDCC, r0)
+			psess.
+				opset(AADDCV, r0)
+			psess.
+				opset(AADDCVCC, r0)
+			psess.
+				opset(AADDV, r0)
+			psess.
+				opset(AADDVCC, r0)
+			psess.
+				opset(AADDE, r0)
+			psess.
+				opset(AADDECC, r0)
+			psess.
+				opset(AADDEV, r0)
+			psess.
+				opset(AADDEVCC, r0)
+			psess.
+				opset(ACRAND, r0)
+			psess.
+				opset(ACRANDN, r0)
+			psess.
+				opset(ACREQV, r0)
+			psess.
+				opset(ACRNAND, r0)
+			psess.
+				opset(ACRNOR, r0)
+			psess.
+				opset(ACROR, r0)
+			psess.
+				opset(ACRORN, r0)
+			psess.
+				opset(ACRXOR, r0)
+			psess.
+				opset(AMULHD, r0)
+			psess.
+				opset(AMULHDCC, r0)
+			psess.
+				opset(AMULHDU, r0)
+			psess.
+				opset(AMULHDUCC, r0)
+			psess.
+				opset(AMULLD, r0)
+			psess.
+				opset(AMULLDCC, r0)
+			psess.
+				opset(AMULLDVCC, r0)
+			psess.
+				opset(AMULLDV, r0)
+			psess.
+				opset(ADIVD, r0)
+			psess.
+				opset(ADIVDCC, r0)
+			psess.
+				opset(ADIVDE, r0)
+			psess.
+				opset(ADIVDEU, r0)
+			psess.
+				opset(ADIVDECC, r0)
+			psess.
+				opset(ADIVDEUCC, r0)
+			psess.
+				opset(ADIVDVCC, r0)
+			psess.
+				opset(ADIVDV, r0)
+			psess.
+				opset(ADIVDU, r0)
+			psess.
+				opset(ADIVDUCC, r0)
+			psess.
+				opset(ADIVDUVCC, r0)
+			psess.
+				opset(ADIVDUCC, r0)
 
 		case APOPCNTD:
-			opset(APOPCNTW, r0)
-			opset(APOPCNTB, r0)
+			psess.
+				opset(APOPCNTW, r0)
+			psess.
+				opset(APOPCNTB, r0)
 
-		case ACOPY: /* copy, paste. */
-			opset(APASTECC, r0)
+		case ACOPY:
+			psess.
+				opset(APASTECC, r0)
 
-		case AMADDHD: /* maddhd, maddhdu, maddld */
-			opset(AMADDHDU, r0)
-			opset(AMADDLD, r0)
+		case AMADDHD:
+			psess.
+				opset(AMADDHDU, r0)
+			psess.
+				opset(AMADDLD, r0)
 
-		case AMOVBZ: /* lbz, stz, rlwm(r/r), lhz, lha, stz, and x variants */
-			opset(AMOVH, r0)
-			opset(AMOVHZ, r0)
+		case AMOVBZ:
+			psess.
+				opset(AMOVH, r0)
+			psess.
+				opset(AMOVHZ, r0)
 
-		case AMOVBZU: /* lbz[x]u, stb[x]u, lhz[x]u, lha[x]u, sth[u]x, ld[x]u, std[u]x */
-			opset(AMOVHU, r0)
+		case AMOVBZU:
+			psess.
+				opset(AMOVHU, r0)
+			psess.
+				opset(AMOVHZU, r0)
+			psess.
+				opset(AMOVWU, r0)
+			psess.
+				opset(AMOVWZU, r0)
+			psess.
+				opset(AMOVDU, r0)
+			psess.
+				opset(AMOVMW, r0)
 
-			opset(AMOVHZU, r0)
-			opset(AMOVWU, r0)
-			opset(AMOVWZU, r0)
-			opset(AMOVDU, r0)
-			opset(AMOVMW, r0)
+		case ALV:
+			psess.
+				opset(ALVEBX, r0)
+			psess.
+				opset(ALVEHX, r0)
+			psess.
+				opset(ALVEWX, r0)
+			psess.
+				opset(ALVX, r0)
+			psess.
+				opset(ALVXL, r0)
+			psess.
+				opset(ALVSL, r0)
+			psess.
+				opset(ALVSR, r0)
 
-		case ALV: /* lvebx, lvehx, lvewx, lvx, lvxl, lvsl, lvsr */
-			opset(ALVEBX, r0)
-			opset(ALVEHX, r0)
-			opset(ALVEWX, r0)
-			opset(ALVX, r0)
-			opset(ALVXL, r0)
-			opset(ALVSL, r0)
-			opset(ALVSR, r0)
+		case ASTV:
+			psess.
+				opset(ASTVEBX, r0)
+			psess.
+				opset(ASTVEHX, r0)
+			psess.
+				opset(ASTVEWX, r0)
+			psess.
+				opset(ASTVX, r0)
+			psess.
+				opset(ASTVXL, r0)
 
-		case ASTV: /* stvebx, stvehx, stvewx, stvx, stvxl */
-			opset(ASTVEBX, r0)
-			opset(ASTVEHX, r0)
-			opset(ASTVEWX, r0)
-			opset(ASTVX, r0)
-			opset(ASTVXL, r0)
+		case AVAND:
+			psess.
+				opset(AVAND, r0)
+			psess.
+				opset(AVANDC, r0)
+			psess.
+				opset(AVNAND, r0)
 
-		case AVAND: /* vand, vandc, vnand */
-			opset(AVAND, r0)
-			opset(AVANDC, r0)
-			opset(AVNAND, r0)
+		case AVOR:
+			psess.
+				opset(AVOR, r0)
+			psess.
+				opset(AVORC, r0)
+			psess.
+				opset(AVXOR, r0)
+			psess.
+				opset(AVNOR, r0)
+			psess.
+				opset(AVEQV, r0)
 
-		case AVOR: /* vor, vorc, vxor, vnor, veqv */
-			opset(AVOR, r0)
-			opset(AVORC, r0)
-			opset(AVXOR, r0)
-			opset(AVNOR, r0)
-			opset(AVEQV, r0)
+		case AVADDUM:
+			psess.
+				opset(AVADDUBM, r0)
+			psess.
+				opset(AVADDUHM, r0)
+			psess.
+				opset(AVADDUWM, r0)
+			psess.
+				opset(AVADDUDM, r0)
+			psess.
+				opset(AVADDUQM, r0)
 
-		case AVADDUM: /* vaddubm, vadduhm, vadduwm, vaddudm, vadduqm */
-			opset(AVADDUBM, r0)
-			opset(AVADDUHM, r0)
-			opset(AVADDUWM, r0)
-			opset(AVADDUDM, r0)
-			opset(AVADDUQM, r0)
+		case AVADDCU:
+			psess.
+				opset(AVADDCUQ, r0)
+			psess.
+				opset(AVADDCUW, r0)
 
-		case AVADDCU: /* vaddcuq, vaddcuw */
-			opset(AVADDCUQ, r0)
-			opset(AVADDCUW, r0)
+		case AVADDUS:
+			psess.
+				opset(AVADDUBS, r0)
+			psess.
+				opset(AVADDUHS, r0)
+			psess.
+				opset(AVADDUWS, r0)
 
-		case AVADDUS: /* vaddubs, vadduhs, vadduws */
-			opset(AVADDUBS, r0)
-			opset(AVADDUHS, r0)
-			opset(AVADDUWS, r0)
+		case AVADDSS:
+			psess.
+				opset(AVADDSBS, r0)
+			psess.
+				opset(AVADDSHS, r0)
+			psess.
+				opset(AVADDSWS, r0)
 
-		case AVADDSS: /* vaddsbs, vaddshs, vaddsws */
-			opset(AVADDSBS, r0)
-			opset(AVADDSHS, r0)
-			opset(AVADDSWS, r0)
+		case AVADDE:
+			psess.
+				opset(AVADDEUQM, r0)
+			psess.
+				opset(AVADDECUQ, r0)
 
-		case AVADDE: /* vaddeuqm, vaddecuq */
-			opset(AVADDEUQM, r0)
-			opset(AVADDECUQ, r0)
+		case AVSUBUM:
+			psess.
+				opset(AVSUBUBM, r0)
+			psess.
+				opset(AVSUBUHM, r0)
+			psess.
+				opset(AVSUBUWM, r0)
+			psess.
+				opset(AVSUBUDM, r0)
+			psess.
+				opset(AVSUBUQM, r0)
 
-		case AVSUBUM: /* vsububm, vsubuhm, vsubuwm, vsubudm, vsubuqm */
-			opset(AVSUBUBM, r0)
-			opset(AVSUBUHM, r0)
-			opset(AVSUBUWM, r0)
-			opset(AVSUBUDM, r0)
-			opset(AVSUBUQM, r0)
+		case AVSUBCU:
+			psess.
+				opset(AVSUBCUQ, r0)
+			psess.
+				opset(AVSUBCUW, r0)
 
-		case AVSUBCU: /* vsubcuq, vsubcuw */
-			opset(AVSUBCUQ, r0)
-			opset(AVSUBCUW, r0)
+		case AVSUBUS:
+			psess.
+				opset(AVSUBUBS, r0)
+			psess.
+				opset(AVSUBUHS, r0)
+			psess.
+				opset(AVSUBUWS, r0)
 
-		case AVSUBUS: /* vsububs, vsubuhs, vsubuws */
-			opset(AVSUBUBS, r0)
-			opset(AVSUBUHS, r0)
-			opset(AVSUBUWS, r0)
+		case AVSUBSS:
+			psess.
+				opset(AVSUBSBS, r0)
+			psess.
+				opset(AVSUBSHS, r0)
+			psess.
+				opset(AVSUBSWS, r0)
 
-		case AVSUBSS: /* vsubsbs, vsubshs, vsubsws */
-			opset(AVSUBSBS, r0)
-			opset(AVSUBSHS, r0)
-			opset(AVSUBSWS, r0)
+		case AVSUBE:
+			psess.
+				opset(AVSUBEUQM, r0)
+			psess.
+				opset(AVSUBECUQ, r0)
 
-		case AVSUBE: /* vsubeuqm, vsubecuq */
-			opset(AVSUBEUQM, r0)
-			opset(AVSUBECUQ, r0)
+		case AVMULESB:
+			psess.
+				opset(AVMULOSB, r0)
+			psess.
+				opset(AVMULEUB, r0)
+			psess.
+				opset(AVMULOUB, r0)
+			psess.
+				opset(AVMULESH, r0)
+			psess.
+				opset(AVMULOSH, r0)
+			psess.
+				opset(AVMULEUH, r0)
+			psess.
+				opset(AVMULOUH, r0)
+			psess.
+				opset(AVMULESW, r0)
+			psess.
+				opset(AVMULOSW, r0)
+			psess.
+				opset(AVMULEUW, r0)
+			psess.
+				opset(AVMULOUW, r0)
+			psess.
+				opset(AVMULUWM, r0)
+		case AVPMSUM:
+			psess.
+				opset(AVPMSUMB, r0)
+			psess.
+				opset(AVPMSUMH, r0)
+			psess.
+				opset(AVPMSUMW, r0)
+			psess.
+				opset(AVPMSUMD, r0)
 
-		case AVMULESB: /* vmulesb, vmulosb, vmuleub, vmuloub, vmulosh, vmulouh, vmulesw, vmulosw, vmuleuw, vmulouw, vmuluwm */
-			opset(AVMULOSB, r0)
-			opset(AVMULEUB, r0)
-			opset(AVMULOUB, r0)
-			opset(AVMULESH, r0)
-			opset(AVMULOSH, r0)
-			opset(AVMULEUH, r0)
-			opset(AVMULOUH, r0)
-			opset(AVMULESW, r0)
-			opset(AVMULOSW, r0)
-			opset(AVMULEUW, r0)
-			opset(AVMULOUW, r0)
-			opset(AVMULUWM, r0)
-		case AVPMSUM: /* vpmsumb, vpmsumh, vpmsumw, vpmsumd */
-			opset(AVPMSUMB, r0)
-			opset(AVPMSUMH, r0)
-			opset(AVPMSUMW, r0)
-			opset(AVPMSUMD, r0)
+		case AVR:
+			psess.
+				opset(AVRLB, r0)
+			psess.
+				opset(AVRLH, r0)
+			psess.
+				opset(AVRLW, r0)
+			psess.
+				opset(AVRLD, r0)
 
-		case AVR: /* vrlb, vrlh, vrlw, vrld */
-			opset(AVRLB, r0)
-			opset(AVRLH, r0)
-			opset(AVRLW, r0)
-			opset(AVRLD, r0)
+		case AVS:
+			psess.
+				opset(AVSLB, r0)
+			psess.
+				opset(AVSLH, r0)
+			psess.
+				opset(AVSLW, r0)
+			psess.
+				opset(AVSL, r0)
+			psess.
+				opset(AVSLO, r0)
+			psess.
+				opset(AVSRB, r0)
+			psess.
+				opset(AVSRH, r0)
+			psess.
+				opset(AVSRW, r0)
+			psess.
+				opset(AVSR, r0)
+			psess.
+				opset(AVSRO, r0)
+			psess.
+				opset(AVSLD, r0)
+			psess.
+				opset(AVSRD, r0)
 
-		case AVS: /* vs[l,r], vs[l,r]o, vs[l,r]b, vs[l,r]h, vs[l,r]w, vs[l,r]d */
-			opset(AVSLB, r0)
-			opset(AVSLH, r0)
-			opset(AVSLW, r0)
-			opset(AVSL, r0)
-			opset(AVSLO, r0)
-			opset(AVSRB, r0)
-			opset(AVSRH, r0)
-			opset(AVSRW, r0)
-			opset(AVSR, r0)
-			opset(AVSRO, r0)
-			opset(AVSLD, r0)
-			opset(AVSRD, r0)
+		case AVSA:
+			psess.
+				opset(AVSRAB, r0)
+			psess.
+				opset(AVSRAH, r0)
+			psess.
+				opset(AVSRAW, r0)
+			psess.
+				opset(AVSRAD, r0)
 
-		case AVSA: /* vsrab, vsrah, vsraw, vsrad */
-			opset(AVSRAB, r0)
-			opset(AVSRAH, r0)
-			opset(AVSRAW, r0)
-			opset(AVSRAD, r0)
+		case AVSOI:
+			psess.
+				opset(AVSLDOI, r0)
 
-		case AVSOI: /* vsldoi */
-			opset(AVSLDOI, r0)
+		case AVCLZ:
+			psess.
+				opset(AVCLZB, r0)
+			psess.
+				opset(AVCLZH, r0)
+			psess.
+				opset(AVCLZW, r0)
+			psess.
+				opset(AVCLZD, r0)
 
-		case AVCLZ: /* vclzb, vclzh, vclzw, vclzd */
-			opset(AVCLZB, r0)
-			opset(AVCLZH, r0)
-			opset(AVCLZW, r0)
-			opset(AVCLZD, r0)
+		case AVPOPCNT:
+			psess.
+				opset(AVPOPCNTB, r0)
+			psess.
+				opset(AVPOPCNTH, r0)
+			psess.
+				opset(AVPOPCNTW, r0)
+			psess.
+				opset(AVPOPCNTD, r0)
 
-		case AVPOPCNT: /* vpopcntb, vpopcnth, vpopcntw, vpopcntd */
-			opset(AVPOPCNTB, r0)
-			opset(AVPOPCNTH, r0)
-			opset(AVPOPCNTW, r0)
-			opset(AVPOPCNTD, r0)
+		case AVCMPEQ:
+			psess.
+				opset(AVCMPEQUB, r0)
+			psess.
+				opset(AVCMPEQUBCC, r0)
+			psess.
+				opset(AVCMPEQUH, r0)
+			psess.
+				opset(AVCMPEQUHCC, r0)
+			psess.
+				opset(AVCMPEQUW, r0)
+			psess.
+				opset(AVCMPEQUWCC, r0)
+			psess.
+				opset(AVCMPEQUD, r0)
+			psess.
+				opset(AVCMPEQUDCC, r0)
 
-		case AVCMPEQ: /* vcmpequb[.], vcmpequh[.], vcmpequw[.], vcmpequd[.] */
-			opset(AVCMPEQUB, r0)
-			opset(AVCMPEQUBCC, r0)
-			opset(AVCMPEQUH, r0)
-			opset(AVCMPEQUHCC, r0)
-			opset(AVCMPEQUW, r0)
-			opset(AVCMPEQUWCC, r0)
-			opset(AVCMPEQUD, r0)
-			opset(AVCMPEQUDCC, r0)
+		case AVCMPGT:
+			psess.
+				opset(AVCMPGTUB, r0)
+			psess.
+				opset(AVCMPGTUBCC, r0)
+			psess.
+				opset(AVCMPGTUH, r0)
+			psess.
+				opset(AVCMPGTUHCC, r0)
+			psess.
+				opset(AVCMPGTUW, r0)
+			psess.
+				opset(AVCMPGTUWCC, r0)
+			psess.
+				opset(AVCMPGTUD, r0)
+			psess.
+				opset(AVCMPGTUDCC, r0)
+			psess.
+				opset(AVCMPGTSB, r0)
+			psess.
+				opset(AVCMPGTSBCC, r0)
+			psess.
+				opset(AVCMPGTSH, r0)
+			psess.
+				opset(AVCMPGTSHCC, r0)
+			psess.
+				opset(AVCMPGTSW, r0)
+			psess.
+				opset(AVCMPGTSWCC, r0)
+			psess.
+				opset(AVCMPGTSD, r0)
+			psess.
+				opset(AVCMPGTSDCC, r0)
 
-		case AVCMPGT: /* vcmpgt[u,s]b[.], vcmpgt[u,s]h[.], vcmpgt[u,s]w[.], vcmpgt[u,s]d[.] */
-			opset(AVCMPGTUB, r0)
-			opset(AVCMPGTUBCC, r0)
-			opset(AVCMPGTUH, r0)
-			opset(AVCMPGTUHCC, r0)
-			opset(AVCMPGTUW, r0)
-			opset(AVCMPGTUWCC, r0)
-			opset(AVCMPGTUD, r0)
-			opset(AVCMPGTUDCC, r0)
-			opset(AVCMPGTSB, r0)
-			opset(AVCMPGTSBCC, r0)
-			opset(AVCMPGTSH, r0)
-			opset(AVCMPGTSHCC, r0)
-			opset(AVCMPGTSW, r0)
-			opset(AVCMPGTSWCC, r0)
-			opset(AVCMPGTSD, r0)
-			opset(AVCMPGTSDCC, r0)
+		case AVCMPNEZB:
+			psess.
+				opset(AVCMPNEZBCC, r0)
 
-		case AVCMPNEZB: /* vcmpnezb[.] */
-			opset(AVCMPNEZBCC, r0)
+		case AVPERM:
+			psess.
+				opset(AVPERM, r0)
 
-		case AVPERM: /* vperm */
-			opset(AVPERM, r0)
+		case AVBPERMQ:
+			psess.
+				opset(AVBPERMD, r0)
 
-		case AVBPERMQ: /* vbpermq, vbpermd */
-			opset(AVBPERMD, r0)
+		case AVSEL:
+			psess.
+				opset(AVSEL, r0)
 
-		case AVSEL: /* vsel */
-			opset(AVSEL, r0)
+		case AVSPLT:
+			psess.
+				opset(AVSPLTB, r0)
+			psess.
+				opset(AVSPLTH, r0)
+			psess.
+				opset(AVSPLTW, r0)
 
-		case AVSPLT: /* vspltb, vsplth, vspltw */
-			opset(AVSPLTB, r0)
-			opset(AVSPLTH, r0)
-			opset(AVSPLTW, r0)
+		case AVSPLTI:
+			psess.
+				opset(AVSPLTISB, r0)
+			psess.
+				opset(AVSPLTISH, r0)
+			psess.
+				opset(AVSPLTISW, r0)
 
-		case AVSPLTI: /* vspltisb, vspltish, vspltisw */
-			opset(AVSPLTISB, r0)
-			opset(AVSPLTISH, r0)
-			opset(AVSPLTISW, r0)
+		case AVCIPH:
+			psess.
+				opset(AVCIPHER, r0)
+			psess.
+				opset(AVCIPHERLAST, r0)
 
-		case AVCIPH: /* vcipher, vcipherlast */
-			opset(AVCIPHER, r0)
-			opset(AVCIPHERLAST, r0)
+		case AVNCIPH:
+			psess.
+				opset(AVNCIPHER, r0)
+			psess.
+				opset(AVNCIPHERLAST, r0)
 
-		case AVNCIPH: /* vncipher, vncipherlast */
-			opset(AVNCIPHER, r0)
-			opset(AVNCIPHERLAST, r0)
+		case AVSBOX:
+			psess.
+				opset(AVSBOX, r0)
 
-		case AVSBOX: /* vsbox */
-			opset(AVSBOX, r0)
+		case AVSHASIGMA:
+			psess.
+				opset(AVSHASIGMAW, r0)
+			psess.
+				opset(AVSHASIGMAD, r0)
 
-		case AVSHASIGMA: /* vshasigmaw, vshasigmad */
-			opset(AVSHASIGMAW, r0)
-			opset(AVSHASIGMAD, r0)
+		case ALXV:
+			psess.
+				opset(ALXVD2X, r0)
+			psess.
+				opset(ALXVDSX, r0)
+			psess.
+				opset(ALXVW4X, r0)
 
-		case ALXV: /* lxvd2x, lxvdsx, lxvw4x */
-			opset(ALXVD2X, r0)
-			opset(ALXVDSX, r0)
-			opset(ALXVW4X, r0)
+		case ASTXV:
+			psess.
+				opset(ASTXVD2X, r0)
+			psess.
+				opset(ASTXVW4X, r0)
 
-		case ASTXV: /* stxvd2x, stxvdsx, stxvw4x */
-			opset(ASTXVD2X, r0)
-			opset(ASTXVW4X, r0)
+		case ALXS:
+			psess.
+				opset(ALXSDX, r0)
 
-		case ALXS: /* lxsdx  */
-			opset(ALXSDX, r0)
+		case ASTXS:
+			psess.
+				opset(ASTXSDX, r0)
 
-		case ASTXS: /* stxsdx */
-			opset(ASTXSDX, r0)
+		case ALXSI:
+			psess.
+				opset(ALXSIWAX, r0)
+			psess.
+				opset(ALXSIWZX, r0)
 
-		case ALXSI: /* lxsiwax, lxsiwzx  */
-			opset(ALXSIWAX, r0)
-			opset(ALXSIWZX, r0)
+		case ASTXSI:
+			psess.
+				opset(ASTXSIWX, r0)
 
-		case ASTXSI: /* stxsiwx */
-			opset(ASTXSIWX, r0)
+		case AMFVSR:
+			psess.
+				opset(AMFVSRD, r0)
+			psess.
+				opset(AMFFPRD, r0)
+			psess.
+				opset(AMFVRD, r0)
+			psess.
+				opset(AMFVSRWZ, r0)
+			psess.
+				opset(AMFVSRLD, r0)
 
-		case AMFVSR: /* mfvsrd, mfvsrwz (and extended mnemonics), mfvsrld */
-			opset(AMFVSRD, r0)
-			opset(AMFFPRD, r0)
-			opset(AMFVRD, r0)
-			opset(AMFVSRWZ, r0)
-			opset(AMFVSRLD, r0)
+		case AMTVSR:
+			psess.
+				opset(AMTVSRD, r0)
+			psess.
+				opset(AMTFPRD, r0)
+			psess.
+				opset(AMTVRD, r0)
+			psess.
+				opset(AMTVSRWA, r0)
+			psess.
+				opset(AMTVSRWZ, r0)
+			psess.
+				opset(AMTVSRDD, r0)
+			psess.
+				opset(AMTVSRWS, r0)
 
-		case AMTVSR: /* mtvsrd, mtvsrwa, mtvsrwz (and extended mnemonics), mtvsrdd, mtvsrws */
-			opset(AMTVSRD, r0)
-			opset(AMTFPRD, r0)
-			opset(AMTVRD, r0)
-			opset(AMTVSRWA, r0)
-			opset(AMTVSRWZ, r0)
-			opset(AMTVSRDD, r0)
-			opset(AMTVSRWS, r0)
+		case AXXLAND:
+			psess.
+				opset(AXXLANDQ, r0)
+			psess.
+				opset(AXXLANDC, r0)
+			psess.
+				opset(AXXLEQV, r0)
+			psess.
+				opset(AXXLNAND, r0)
 
-		case AXXLAND: /* xxland, xxlandc, xxleqv, xxlnand */
-			opset(AXXLANDQ, r0)
-			opset(AXXLANDC, r0)
-			opset(AXXLEQV, r0)
-			opset(AXXLNAND, r0)
+		case AXXLOR:
+			psess.
+				opset(AXXLORC, r0)
+			psess.
+				opset(AXXLNOR, r0)
+			psess.
+				opset(AXXLORQ, r0)
+			psess.
+				opset(AXXLXOR, r0)
 
-		case AXXLOR: /* xxlorc, xxlnor, xxlor, xxlxor */
-			opset(AXXLORC, r0)
-			opset(AXXLNOR, r0)
-			opset(AXXLORQ, r0)
-			opset(AXXLXOR, r0)
+		case AXXSEL:
+			psess.
+				opset(AXXSEL, r0)
 
-		case AXXSEL: /* xxsel */
-			opset(AXXSEL, r0)
+		case AXXMRG:
+			psess.
+				opset(AXXMRGHW, r0)
+			psess.
+				opset(AXXMRGLW, r0)
 
-		case AXXMRG: /* xxmrghw, xxmrglw */
-			opset(AXXMRGHW, r0)
-			opset(AXXMRGLW, r0)
+		case AXXSPLT:
+			psess.
+				opset(AXXSPLTW, r0)
 
-		case AXXSPLT: /* xxspltw */
-			opset(AXXSPLTW, r0)
+		case AXXPERM:
+			psess.
+				opset(AXXPERMDI, r0)
 
-		case AXXPERM: /* xxpermdi */
-			opset(AXXPERMDI, r0)
+		case AXXSI:
+			psess.
+				opset(AXXSLDWI, r0)
 
-		case AXXSI: /* xxsldwi */
-			opset(AXXSLDWI, r0)
+		case AXSCV:
+			psess.
+				opset(AXSCVDPSP, r0)
+			psess.
+				opset(AXSCVSPDP, r0)
+			psess.
+				opset(AXSCVDPSPN, r0)
+			psess.
+				opset(AXSCVSPDPN, r0)
 
-		case AXSCV: /* xscvdpsp, xscvspdp, xscvdpspn, xscvspdpn */
-			opset(AXSCVDPSP, r0)
-			opset(AXSCVSPDP, r0)
-			opset(AXSCVDPSPN, r0)
-			opset(AXSCVSPDPN, r0)
+		case AXVCV:
+			psess.
+				opset(AXVCVDPSP, r0)
+			psess.
+				opset(AXVCVSPDP, r0)
 
-		case AXVCV: /* xvcvdpsp, xvcvspdp */
-			opset(AXVCVDPSP, r0)
-			opset(AXVCVSPDP, r0)
+		case AXSCVX:
+			psess.
+				opset(AXSCVDPSXDS, r0)
+			psess.
+				opset(AXSCVDPSXWS, r0)
+			psess.
+				opset(AXSCVDPUXDS, r0)
+			psess.
+				opset(AXSCVDPUXWS, r0)
 
-		case AXSCVX: /* xscvdpsxds, xscvdpsxws, xscvdpuxds, xscvdpuxws */
-			opset(AXSCVDPSXDS, r0)
-			opset(AXSCVDPSXWS, r0)
-			opset(AXSCVDPUXDS, r0)
-			opset(AXSCVDPUXWS, r0)
+		case AXSCVXP:
+			psess.
+				opset(AXSCVSXDDP, r0)
+			psess.
+				opset(AXSCVUXDDP, r0)
+			psess.
+				opset(AXSCVSXDSP, r0)
+			psess.
+				opset(AXSCVUXDSP, r0)
 
-		case AXSCVXP: /* xscvsxddp, xscvuxddp, xscvsxdsp, xscvuxdsp */
-			opset(AXSCVSXDDP, r0)
-			opset(AXSCVUXDDP, r0)
-			opset(AXSCVSXDSP, r0)
-			opset(AXSCVUXDSP, r0)
+		case AXVCVX:
+			psess.
+				opset(AXVCVDPSXDS, r0)
+			psess.
+				opset(AXVCVDPSXWS, r0)
+			psess.
+				opset(AXVCVDPUXDS, r0)
+			psess.
+				opset(AXVCVDPUXWS, r0)
+			psess.
+				opset(AXVCVSPSXDS, r0)
+			psess.
+				opset(AXVCVSPSXWS, r0)
+			psess.
+				opset(AXVCVSPUXDS, r0)
+			psess.
+				opset(AXVCVSPUXWS, r0)
 
-		case AXVCVX: /* xvcvdpsxds, xvcvdpsxws, xvcvdpuxds, xvcvdpuxws, xvcvspsxds, xvcvspsxws, xvcvspuxds, xvcvspuxws */
-			opset(AXVCVDPSXDS, r0)
-			opset(AXVCVDPSXWS, r0)
-			opset(AXVCVDPUXDS, r0)
-			opset(AXVCVDPUXWS, r0)
-			opset(AXVCVSPSXDS, r0)
-			opset(AXVCVSPSXWS, r0)
-			opset(AXVCVSPUXDS, r0)
-			opset(AXVCVSPUXWS, r0)
+		case AXVCVXP:
+			psess.
+				opset(AXVCVSXDDP, r0)
+			psess.
+				opset(AXVCVSXWDP, r0)
+			psess.
+				opset(AXVCVUXDDP, r0)
+			psess.
+				opset(AXVCVUXWDP, r0)
+			psess.
+				opset(AXVCVSXDSP, r0)
+			psess.
+				opset(AXVCVSXWSP, r0)
+			psess.
+				opset(AXVCVUXDSP, r0)
+			psess.
+				opset(AXVCVUXWSP, r0)
 
-		case AXVCVXP: /* xvcvsxddp, xvcvsxwdp, xvcvuxddp, xvcvuxwdp, xvcvsxdsp, xvcvsxwsp, xvcvuxdsp, xvcvuxwsp */
-			opset(AXVCVSXDDP, r0)
-			opset(AXVCVSXWDP, r0)
-			opset(AXVCVUXDDP, r0)
-			opset(AXVCVUXWDP, r0)
-			opset(AXVCVSXDSP, r0)
-			opset(AXVCVSXWSP, r0)
-			opset(AXVCVUXDSP, r0)
-			opset(AXVCVUXWSP, r0)
+		case AAND:
+			psess.
+				opset(AANDN, r0)
+			psess.
+				opset(AANDNCC, r0)
+			psess.
+				opset(AEQV, r0)
+			psess.
+				opset(AEQVCC, r0)
+			psess.
+				opset(ANAND, r0)
+			psess.
+				opset(ANANDCC, r0)
+			psess.
+				opset(ANOR, r0)
+			psess.
+				opset(ANORCC, r0)
+			psess.
+				opset(AORCC, r0)
+			psess.
+				opset(AORN, r0)
+			psess.
+				opset(AORNCC, r0)
+			psess.
+				opset(AXORCC, r0)
 
-		case AAND: /* logical op Rb,Rs,Ra; no literal */
-			opset(AANDN, r0)
-			opset(AANDNCC, r0)
-			opset(AEQV, r0)
-			opset(AEQVCC, r0)
-			opset(ANAND, r0)
-			opset(ANANDCC, r0)
-			opset(ANOR, r0)
-			opset(ANORCC, r0)
-			opset(AORCC, r0)
-			opset(AORN, r0)
-			opset(AORNCC, r0)
-			opset(AXORCC, r0)
-
-		case AADDME: /* op Ra, Rd */
-			opset(AADDMECC, r0)
-
-			opset(AADDMEV, r0)
-			opset(AADDMEVCC, r0)
-			opset(AADDZE, r0)
-			opset(AADDZECC, r0)
-			opset(AADDZEV, r0)
-			opset(AADDZEVCC, r0)
-			opset(ASUBME, r0)
-			opset(ASUBMECC, r0)
-			opset(ASUBMEV, r0)
-			opset(ASUBMEVCC, r0)
-			opset(ASUBZE, r0)
-			opset(ASUBZECC, r0)
-			opset(ASUBZEV, r0)
-			opset(ASUBZEVCC, r0)
+		case AADDME:
+			psess.
+				opset(AADDMECC, r0)
+			psess.
+				opset(AADDMEV, r0)
+			psess.
+				opset(AADDMEVCC, r0)
+			psess.
+				opset(AADDZE, r0)
+			psess.
+				opset(AADDZECC, r0)
+			psess.
+				opset(AADDZEV, r0)
+			psess.
+				opset(AADDZEVCC, r0)
+			psess.
+				opset(ASUBME, r0)
+			psess.
+				opset(ASUBMECC, r0)
+			psess.
+				opset(ASUBMEV, r0)
+			psess.
+				opset(ASUBMEVCC, r0)
+			psess.
+				opset(ASUBZE, r0)
+			psess.
+				opset(ASUBZECC, r0)
+			psess.
+				opset(ASUBZEV, r0)
+			psess.
+				opset(ASUBZEVCC, r0)
 
 		case AADDC:
-			opset(AADDCCC, r0)
+			psess.
+				opset(AADDCCC, r0)
 
 		case ABEQ:
-			opset(ABGE, r0)
-			opset(ABGT, r0)
-			opset(ABLE, r0)
-			opset(ABLT, r0)
-			opset(ABNE, r0)
-			opset(ABVC, r0)
-			opset(ABVS, r0)
+			psess.
+				opset(ABGE, r0)
+			psess.
+				opset(ABGT, r0)
+			psess.
+				opset(ABLE, r0)
+			psess.
+				opset(ABLT, r0)
+			psess.
+				opset(ABNE, r0)
+			psess.
+				opset(ABVC, r0)
+			psess.
+				opset(ABVS, r0)
 
 		case ABR:
-			opset(ABL, r0)
+			psess.
+				opset(ABL, r0)
 
 		case ABC:
-			opset(ABCL, r0)
+			psess.
+				opset(ABCL, r0)
 
-		case AEXTSB: /* op Rs, Ra */
-			opset(AEXTSBCC, r0)
+		case AEXTSB:
+			psess.
+				opset(AEXTSBCC, r0)
+			psess.
+				opset(AEXTSH, r0)
+			psess.
+				opset(AEXTSHCC, r0)
+			psess.
+				opset(ACNTLZW, r0)
+			psess.
+				opset(ACNTLZWCC, r0)
+			psess.
+				opset(ACNTLZD, r0)
+			psess.
+				opset(AEXTSW, r0)
+			psess.
+				opset(AEXTSWCC, r0)
+			psess.
+				opset(ACNTLZDCC, r0)
 
-			opset(AEXTSH, r0)
-			opset(AEXTSHCC, r0)
-			opset(ACNTLZW, r0)
-			opset(ACNTLZWCC, r0)
-			opset(ACNTLZD, r0)
-			opset(AEXTSW, r0)
-			opset(AEXTSWCC, r0)
-			opset(ACNTLZDCC, r0)
-
-		case AFABS: /* fop [s,]d */
-			opset(AFABSCC, r0)
-
-			opset(AFNABS, r0)
-			opset(AFNABSCC, r0)
-			opset(AFNEG, r0)
-			opset(AFNEGCC, r0)
-			opset(AFRSP, r0)
-			opset(AFRSPCC, r0)
-			opset(AFCTIW, r0)
-			opset(AFCTIWCC, r0)
-			opset(AFCTIWZ, r0)
-			opset(AFCTIWZCC, r0)
-			opset(AFCTID, r0)
-			opset(AFCTIDCC, r0)
-			opset(AFCTIDZ, r0)
-			opset(AFCTIDZCC, r0)
-			opset(AFCFID, r0)
-			opset(AFCFIDCC, r0)
-			opset(AFCFIDU, r0)
-			opset(AFCFIDUCC, r0)
-			opset(AFCFIDS, r0)
-			opset(AFCFIDSCC, r0)
-			opset(AFRES, r0)
-			opset(AFRESCC, r0)
-			opset(AFRIM, r0)
-			opset(AFRIMCC, r0)
-			opset(AFRIP, r0)
-			opset(AFRIPCC, r0)
-			opset(AFRIZ, r0)
-			opset(AFRIZCC, r0)
-			opset(AFRIN, r0)
-			opset(AFRINCC, r0)
-			opset(AFRSQRTE, r0)
-			opset(AFRSQRTECC, r0)
-			opset(AFSQRT, r0)
-			opset(AFSQRTCC, r0)
-			opset(AFSQRTS, r0)
-			opset(AFSQRTSCC, r0)
+		case AFABS:
+			psess.
+				opset(AFABSCC, r0)
+			psess.
+				opset(AFNABS, r0)
+			psess.
+				opset(AFNABSCC, r0)
+			psess.
+				opset(AFNEG, r0)
+			psess.
+				opset(AFNEGCC, r0)
+			psess.
+				opset(AFRSP, r0)
+			psess.
+				opset(AFRSPCC, r0)
+			psess.
+				opset(AFCTIW, r0)
+			psess.
+				opset(AFCTIWCC, r0)
+			psess.
+				opset(AFCTIWZ, r0)
+			psess.
+				opset(AFCTIWZCC, r0)
+			psess.
+				opset(AFCTID, r0)
+			psess.
+				opset(AFCTIDCC, r0)
+			psess.
+				opset(AFCTIDZ, r0)
+			psess.
+				opset(AFCTIDZCC, r0)
+			psess.
+				opset(AFCFID, r0)
+			psess.
+				opset(AFCFIDCC, r0)
+			psess.
+				opset(AFCFIDU, r0)
+			psess.
+				opset(AFCFIDUCC, r0)
+			psess.
+				opset(AFCFIDS, r0)
+			psess.
+				opset(AFCFIDSCC, r0)
+			psess.
+				opset(AFRES, r0)
+			psess.
+				opset(AFRESCC, r0)
+			psess.
+				opset(AFRIM, r0)
+			psess.
+				opset(AFRIMCC, r0)
+			psess.
+				opset(AFRIP, r0)
+			psess.
+				opset(AFRIPCC, r0)
+			psess.
+				opset(AFRIZ, r0)
+			psess.
+				opset(AFRIZCC, r0)
+			psess.
+				opset(AFRIN, r0)
+			psess.
+				opset(AFRINCC, r0)
+			psess.
+				opset(AFRSQRTE, r0)
+			psess.
+				opset(AFRSQRTECC, r0)
+			psess.
+				opset(AFSQRT, r0)
+			psess.
+				opset(AFSQRTCC, r0)
+			psess.
+				opset(AFSQRTS, r0)
+			psess.
+				opset(AFSQRTSCC, r0)
 
 		case AFADD:
-			opset(AFADDS, r0)
-			opset(AFADDCC, r0)
-			opset(AFADDSCC, r0)
-			opset(AFCPSGN, r0)
-			opset(AFCPSGNCC, r0)
-			opset(AFDIV, r0)
-			opset(AFDIVS, r0)
-			opset(AFDIVCC, r0)
-			opset(AFDIVSCC, r0)
-			opset(AFSUB, r0)
-			opset(AFSUBS, r0)
-			opset(AFSUBCC, r0)
-			opset(AFSUBSCC, r0)
+			psess.
+				opset(AFADDS, r0)
+			psess.
+				opset(AFADDCC, r0)
+			psess.
+				opset(AFADDSCC, r0)
+			psess.
+				opset(AFCPSGN, r0)
+			psess.
+				opset(AFCPSGNCC, r0)
+			psess.
+				opset(AFDIV, r0)
+			psess.
+				opset(AFDIVS, r0)
+			psess.
+				opset(AFDIVCC, r0)
+			psess.
+				opset(AFDIVSCC, r0)
+			psess.
+				opset(AFSUB, r0)
+			psess.
+				opset(AFSUBS, r0)
+			psess.
+				opset(AFSUBCC, r0)
+			psess.
+				opset(AFSUBSCC, r0)
 
 		case AFMADD:
-			opset(AFMADDCC, r0)
-			opset(AFMADDS, r0)
-			opset(AFMADDSCC, r0)
-			opset(AFMSUB, r0)
-			opset(AFMSUBCC, r0)
-			opset(AFMSUBS, r0)
-			opset(AFMSUBSCC, r0)
-			opset(AFNMADD, r0)
-			opset(AFNMADDCC, r0)
-			opset(AFNMADDS, r0)
-			opset(AFNMADDSCC, r0)
-			opset(AFNMSUB, r0)
-			opset(AFNMSUBCC, r0)
-			opset(AFNMSUBS, r0)
-			opset(AFNMSUBSCC, r0)
-			opset(AFSEL, r0)
-			opset(AFSELCC, r0)
+			psess.
+				opset(AFMADDCC, r0)
+			psess.
+				opset(AFMADDS, r0)
+			psess.
+				opset(AFMADDSCC, r0)
+			psess.
+				opset(AFMSUB, r0)
+			psess.
+				opset(AFMSUBCC, r0)
+			psess.
+				opset(AFMSUBS, r0)
+			psess.
+				opset(AFMSUBSCC, r0)
+			psess.
+				opset(AFNMADD, r0)
+			psess.
+				opset(AFNMADDCC, r0)
+			psess.
+				opset(AFNMADDS, r0)
+			psess.
+				opset(AFNMADDSCC, r0)
+			psess.
+				opset(AFNMSUB, r0)
+			psess.
+				opset(AFNMSUBCC, r0)
+			psess.
+				opset(AFNMSUBS, r0)
+			psess.
+				opset(AFNMSUBSCC, r0)
+			psess.
+				opset(AFSEL, r0)
+			psess.
+				opset(AFSELCC, r0)
 
 		case AFMUL:
-			opset(AFMULS, r0)
-			opset(AFMULCC, r0)
-			opset(AFMULSCC, r0)
+			psess.
+				opset(AFMULS, r0)
+			psess.
+				opset(AFMULCC, r0)
+			psess.
+				opset(AFMULSCC, r0)
 
 		case AFCMPO:
-			opset(AFCMPU, r0)
+			psess.
+				opset(AFCMPU, r0)
 
 		case AISEL:
-			opset(AISEL, r0)
+			psess.
+				opset(AISEL, r0)
 
 		case AMTFSB0:
-			opset(AMTFSB0CC, r0)
-			opset(AMTFSB1, r0)
-			opset(AMTFSB1CC, r0)
+			psess.
+				opset(AMTFSB0CC, r0)
+			psess.
+				opset(AMTFSB1, r0)
+			psess.
+				opset(AMTFSB1CC, r0)
 
-		case ANEG: /* op [Ra,] Rd */
-			opset(ANEGCC, r0)
+		case ANEG:
+			psess.
+				opset(ANEGCC, r0)
+			psess.
+				opset(ANEGV, r0)
+			psess.
+				opset(ANEGVCC, r0)
 
-			opset(ANEGV, r0)
-			opset(ANEGVCC, r0)
+		case AOR:
+			psess.
+				opset(AXOR, r0)
 
-		case AOR: /* or/xor Rb,Rs,Ra; ori/xori $uimm,Rs,R */
-			opset(AXOR, r0)
-
-		case AORIS: /* oris/xoris $uimm,Rs,Ra */
-			opset(AXORIS, r0)
+		case AORIS:
+			psess.
+				opset(AXORIS, r0)
 
 		case ASLW:
-			opset(ASLWCC, r0)
-			opset(ASRW, r0)
-			opset(ASRWCC, r0)
-			opset(AROTLW, r0)
+			psess.
+				opset(ASLWCC, r0)
+			psess.
+				opset(ASRW, r0)
+			psess.
+				opset(ASRWCC, r0)
+			psess.
+				opset(AROTLW, r0)
 
 		case ASLD:
-			opset(ASLDCC, r0)
-			opset(ASRD, r0)
-			opset(ASRDCC, r0)
-			opset(AROTL, r0)
+			psess.
+				opset(ASLDCC, r0)
+			psess.
+				opset(ASRD, r0)
+			psess.
+				opset(ASRDCC, r0)
+			psess.
+				opset(AROTL, r0)
 
-		case ASRAW: /* sraw Rb,Rs,Ra; srawi sh,Rs,Ra */
-			opset(ASRAWCC, r0)
+		case ASRAW:
+			psess.
+				opset(ASRAWCC, r0)
 
-		case ASRAD: /* sraw Rb,Rs,Ra; srawi sh,Rs,Ra */
-			opset(ASRADCC, r0)
+		case ASRAD:
+			psess.
+				opset(ASRADCC, r0)
 
-		case ASUB: /* SUB Ra,Rb,Rd => subf Rd,ra,rb */
-			opset(ASUB, r0)
-
-			opset(ASUBCC, r0)
-			opset(ASUBV, r0)
-			opset(ASUBVCC, r0)
-			opset(ASUBCCC, r0)
-			opset(ASUBCV, r0)
-			opset(ASUBCVCC, r0)
-			opset(ASUBE, r0)
-			opset(ASUBECC, r0)
-			opset(ASUBEV, r0)
-			opset(ASUBEVCC, r0)
+		case ASUB:
+			psess.
+				opset(ASUB, r0)
+			psess.
+				opset(ASUBCC, r0)
+			psess.
+				opset(ASUBV, r0)
+			psess.
+				opset(ASUBVCC, r0)
+			psess.
+				opset(ASUBCCC, r0)
+			psess.
+				opset(ASUBCV, r0)
+			psess.
+				opset(ASUBCVCC, r0)
+			psess.
+				opset(ASUBE, r0)
+			psess.
+				opset(ASUBECC, r0)
+			psess.
+				opset(ASUBEV, r0)
+			psess.
+				opset(ASUBEVCC, r0)
 
 		case ASYNC:
-			opset(AISYNC, r0)
-			opset(ALWSYNC, r0)
-			opset(APTESYNC, r0)
-			opset(ATLBSYNC, r0)
+			psess.
+				opset(AISYNC, r0)
+			psess.
+				opset(ALWSYNC, r0)
+			psess.
+				opset(APTESYNC, r0)
+			psess.
+				opset(ATLBSYNC, r0)
 
 		case ARLWMI:
-			opset(ARLWMICC, r0)
-			opset(ARLWNM, r0)
-			opset(ARLWNMCC, r0)
+			psess.
+				opset(ARLWMICC, r0)
+			psess.
+				opset(ARLWNM, r0)
+			psess.
+				opset(ARLWNMCC, r0)
 
 		case ARLDMI:
-			opset(ARLDMICC, r0)
-			opset(ARLDIMI, r0)
-			opset(ARLDIMICC, r0)
+			psess.
+				opset(ARLDMICC, r0)
+			psess.
+				opset(ARLDIMI, r0)
+			psess.
+				opset(ARLDIMICC, r0)
 
 		case ARLDC:
-			opset(ARLDCCC, r0)
+			psess.
+				opset(ARLDCCC, r0)
 
 		case ARLDCL:
-			opset(ARLDCR, r0)
-			opset(ARLDCLCC, r0)
-			opset(ARLDCRCC, r0)
+			psess.
+				opset(ARLDCR, r0)
+			psess.
+				opset(ARLDCLCC, r0)
+			psess.
+				opset(ARLDCRCC, r0)
 
 		case ARLDICL:
-			opset(ARLDICLCC, r0)
-			opset(ARLDICR, r0)
-			opset(ARLDICRCC, r0)
+			psess.
+				opset(ARLDICLCC, r0)
+			psess.
+				opset(ARLDICR, r0)
+			psess.
+				opset(ARLDICRCC, r0)
 
 		case AFMOVD:
-			opset(AFMOVDCC, r0)
-			opset(AFMOVDU, r0)
-			opset(AFMOVS, r0)
-			opset(AFMOVSU, r0)
+			psess.
+				opset(AFMOVDCC, r0)
+			psess.
+				opset(AFMOVDU, r0)
+			psess.
+				opset(AFMOVS, r0)
+			psess.
+				opset(AFMOVSU, r0)
 
 		case ALDAR:
-			opset(ALBAR, r0)
-			opset(ALHAR, r0)
-			opset(ALWAR, r0)
+			psess.
+				opset(ALBAR, r0)
+			psess.
+				opset(ALHAR, r0)
+			psess.
+				opset(ALWAR, r0)
 
-		case ASYSCALL: /* just the op; flow of control */
-			opset(ARFI, r0)
-
-			opset(ARFCI, r0)
-			opset(ARFID, r0)
-			opset(AHRFID, r0)
+		case ASYSCALL:
+			psess.
+				opset(ARFI, r0)
+			psess.
+				opset(ARFCI, r0)
+			psess.
+				opset(ARFID, r0)
+			psess.
+				opset(AHRFID, r0)
 
 		case AMOVHBR:
-			opset(AMOVWBR, r0)
-			opset(AMOVDBR, r0)
+			psess.
+				opset(AMOVWBR, r0)
+			psess.
+				opset(AMOVDBR, r0)
 
 		case ASLBMFEE:
-			opset(ASLBMFEV, r0)
+			psess.
+				opset(ASLBMFEV, r0)
 
 		case ATW:
-			opset(ATD, r0)
+			psess.
+				opset(ATD, r0)
 
 		case ATLBIE:
-			opset(ASLBIE, r0)
-			opset(ATLBIEL, r0)
+			psess.
+				opset(ASLBIE, r0)
+			psess.
+				opset(ATLBIEL, r0)
 
 		case AEIEIO:
-			opset(ASLBIA, r0)
+			psess.
+				opset(ASLBIA, r0)
 
 		case ACMP:
-			opset(ACMPW, r0)
+			psess.
+				opset(ACMPW, r0)
 
 		case ACMPU:
-			opset(ACMPWU, r0)
+			psess.
+				opset(ACMPWU, r0)
 
 		case ACMPB:
-			opset(ACMPB, r0)
+			psess.
+				opset(ACMPB, r0)
 
 		case AFTDIV:
-			opset(AFTDIV, r0)
+			psess.
+				opset(AFTDIV, r0)
 
 		case AFTSQRT:
-			opset(AFTSQRT, r0)
+			psess.
+				opset(AFTSQRT, r0)
 
 		case AADD,
 			AADDIS,
-			AANDCC, /* and. Rb,Rs,Ra; andi. $uimm,Rs,Ra */
+			AANDCC,
 			AANDISCC,
 			AFMOVSX,
 			AFMOVSZ,
 			ALSW,
 			AMOVW,
-			/* load/store/move word with sign extension; special 32-bit move; move 32-bit literals */
-			AMOVWZ, /* load/store/move word with zero extension; move 32-bit literals  */
-			AMOVD,  /* load/store/move 64-bit values, including 32-bit literals with/without sign-extension */
-			AMOVB,  /* macro: move byte with sign extension */
-			AMOVBU, /* macro: move byte with sign extension & update */
+
+			AMOVWZ,
+			AMOVD,
+			AMOVB,
+			AMOVBU,
 			AMOVFL,
 			AMULLW,
-			/* op $s[,r2],r3; op r1[,r2],r3; no cc/v */
-			ASUBC, /* op r1,$s,r3; op r1[,r2],r3 */
+
+			ASUBC,
 			ASTSW,
 			ASLBMTE,
 			AWORD,
@@ -1967,8 +1858,7 @@ func AOP_IR(op uint32, d uint32, simm uint32) uint32 {
 
 /* XX1-form 3-register operands, 1 VSR operand */
 func AOP_XX1(op uint32, d uint32, a uint32, b uint32) uint32 {
-	/* For the XX-form encodings, we need the VSX register number to be exactly */
-	/* between 0-63, so we can properly set the rightmost bits. */
+
 	r := d - REG_VS0
 	return op | (r&31)<<21 | (a&31)<<16 | (b&31)<<11 | (r&32)>>5
 }
@@ -2108,37 +1998,37 @@ func (c *ctxt9) opform(insn uint32) int {
 	switch insn {
 	default:
 		c.ctxt.Diag("bad insn in loadform: %x", insn)
-	case OPVCC(58, 0, 0, 0), // ld
-		OPVCC(58, 0, 0, 1),        // ldu
-		OPVCC(58, 0, 0, 0) | 1<<1, // lwa
-		OPVCC(62, 0, 0, 0),        // std
-		OPVCC(62, 0, 0, 1):        //stdu
+	case OPVCC(58, 0, 0, 0),
+		OPVCC(58, 0, 0, 1),
+		OPVCC(58, 0, 0, 0) | 1<<1,
+		OPVCC(62, 0, 0, 0),
+		OPVCC(62, 0, 0, 1):
 		return DS_FORM
-	case OP_ADDI, // add
-		OPVCC(32, 0, 0, 0), // lwz
-		OPVCC(33, 0, 0, 0), // lwzu
-		OPVCC(34, 0, 0, 0), // lbz
-		OPVCC(35, 0, 0, 0), // lbzu
-		OPVCC(40, 0, 0, 0), // lhz
-		OPVCC(41, 0, 0, 0), // lhzu
-		OPVCC(42, 0, 0, 0), // lha
-		OPVCC(43, 0, 0, 0), // lhau
-		OPVCC(46, 0, 0, 0), // lmw
-		OPVCC(48, 0, 0, 0), // lfs
-		OPVCC(49, 0, 0, 0), // lfsu
-		OPVCC(50, 0, 0, 0), // lfd
-		OPVCC(51, 0, 0, 0), // lfdu
-		OPVCC(36, 0, 0, 0), // stw
-		OPVCC(37, 0, 0, 0), // stwu
-		OPVCC(38, 0, 0, 0), // stb
-		OPVCC(39, 0, 0, 0), // stbu
-		OPVCC(44, 0, 0, 0), // sth
-		OPVCC(45, 0, 0, 0), // sthu
-		OPVCC(47, 0, 0, 0), // stmw
-		OPVCC(52, 0, 0, 0), // stfs
-		OPVCC(53, 0, 0, 0), // stfsu
-		OPVCC(54, 0, 0, 0), // stfd
-		OPVCC(55, 0, 0, 0): // stfdu
+	case OP_ADDI,
+		OPVCC(32, 0, 0, 0),
+		OPVCC(33, 0, 0, 0),
+		OPVCC(34, 0, 0, 0),
+		OPVCC(35, 0, 0, 0),
+		OPVCC(40, 0, 0, 0),
+		OPVCC(41, 0, 0, 0),
+		OPVCC(42, 0, 0, 0),
+		OPVCC(43, 0, 0, 0),
+		OPVCC(46, 0, 0, 0),
+		OPVCC(48, 0, 0, 0),
+		OPVCC(49, 0, 0, 0),
+		OPVCC(50, 0, 0, 0),
+		OPVCC(51, 0, 0, 0),
+		OPVCC(36, 0, 0, 0),
+		OPVCC(37, 0, 0, 0),
+		OPVCC(38, 0, 0, 0),
+		OPVCC(39, 0, 0, 0),
+		OPVCC(44, 0, 0, 0),
+		OPVCC(45, 0, 0, 0),
+		OPVCC(47, 0, 0, 0),
+		OPVCC(52, 0, 0, 0),
+		OPVCC(53, 0, 0, 0),
+		OPVCC(54, 0, 0, 0),
+		OPVCC(55, 0, 0, 0):
 		return D_FORM
 	}
 	return 0
@@ -2186,7 +2076,7 @@ func (c *ctxt9) symbolAccess(s *obj.LSym, d int64, reg int16, op uint32) (o1, o2
 func getmask(m []byte, v uint32) bool {
 	m[1] = 0
 	m[0] = m[1]
-	if v != ^uint32(0) && v&(1<<31) != 0 && v&1 != 0 { /* MB > ME */
+	if v != ^uint32(0) && v&(1<<31) != 0 && v&1 != 0 {
 		if getmask(m, ^v) {
 			i := int(m[0])
 			m[0] = m[1] + 1
@@ -2283,20 +2173,19 @@ func (c *ctxt9) asmout(p *obj.Prog, o *Optab, out []uint32) {
 	o4 := uint32(0)
 	o5 := uint32(0)
 
-	//print("%v => case %d\n", p, o->type);
 	switch o.type_ {
 	default:
 		c.ctxt.Diag("unknown type %d", o.type_)
 		prasm(p)
 
-	case 0: /* pseudo ops */
+	case 0:
 		break
 
-	case 1: /* mov r1,r2 ==> OR Rs,Rs,Ra */
+	case 1:
 		if p.To.Reg == REGZERO && p.From.Type == obj.TYPE_CONST {
 			v := c.regoff(&p.From)
-			if r0iszero != 0 /*TypeKind(100016)*/ && v != 0 {
-				//nerrors--;
+			if r0iszero != 0 && v != 0 {
+
 				c.ctxt.Diag("literal operation on R0\n%v", p)
 			}
 
@@ -2306,7 +2195,7 @@ func (c *ctxt9) asmout(p *obj.Prog, o *Optab, out []uint32) {
 
 		o1 = LOP_RRR(OP_OR, uint32(p.To.Reg), uint32(p.From.Reg), uint32(p.From.Reg))
 
-	case 2: /* int/cr/fp op Rb,[Ra],Rd */
+	case 2:
 		r := int(p.Reg)
 
 		if r == 0 {
@@ -2314,7 +2203,7 @@ func (c *ctxt9) asmout(p *obj.Prog, o *Optab, out []uint32) {
 		}
 		o1 = AOP_RRR(c.oprrr(p.As), uint32(p.To.Reg), uint32(r), uint32(p.From.Reg))
 
-	case 3: /* mov $soreg/addcon/andcon/ucon, r ==> addis/oris/addi/ori $i,reg',r */
+	case 3:
 		d := c.vregoff(&p.From)
 
 		v := int32(d)
@@ -2322,7 +2211,7 @@ func (c *ctxt9) asmout(p *obj.Prog, o *Optab, out []uint32) {
 		if r == 0 {
 			r = int(o.param)
 		}
-		if r0iszero != 0 /*TypeKind(100016)*/ && p.To.Reg == 0 && (r != 0 || v != 0) {
+		if r0iszero != 0 && p.To.Reg == 0 && (r != 0 || v != 0) {
 			c.ctxt.Diag("literal operation on R0\n%v", p)
 		}
 		a := OP_ADDI
@@ -2330,8 +2219,7 @@ func (c *ctxt9) asmout(p *obj.Prog, o *Optab, out []uint32) {
 			if d&0xffff != 0 {
 				log.Fatalf("invalid handling of %v", p)
 			}
-			// For UCON operands the value is right shifted 16, using ADDIS if the
-			// value should be signed, ORIS if unsigned.
+
 			v >>= 16
 			if r == REGZERO && isuint32(uint64(d)) {
 				o1 = LOP_IRR(OP_ORIS, uint32(p.To.Reg), REGZERO, uint32(v))
@@ -2340,14 +2228,14 @@ func (c *ctxt9) asmout(p *obj.Prog, o *Optab, out []uint32) {
 
 			a = OP_ADDIS
 		} else if int64(int16(d)) != d {
-			// Operand is 16 bit value with sign bit set
+
 			if o.a1 == C_ANDCON {
-				// Needs unsigned 16 bit so use ORI
+
 				if r == 0 || r == REGZERO {
 					o1 = LOP_IRR(uint32(OP_ORI), uint32(p.To.Reg), uint32(0), uint32(v))
 					break
 				}
-				// With ADDCON, needs signed 16 bit value, fall through to use ADDI
+
 			} else if o.a1 != C_ADDCON {
 				log.Fatalf("invalid handling of %v", p)
 			}
@@ -2355,14 +2243,14 @@ func (c *ctxt9) asmout(p *obj.Prog, o *Optab, out []uint32) {
 
 		o1 = AOP_IRR(uint32(a), uint32(p.To.Reg), uint32(r), uint32(v))
 
-	case 4: /* add/mul $scon,[r1],r2 */
+	case 4:
 		v := c.regoff(&p.From)
 
 		r := int(p.Reg)
 		if r == 0 {
 			r = int(p.To.Reg)
 		}
-		if r0iszero != 0 /*TypeKind(100016)*/ && p.To.Reg == 0 {
+		if r0iszero != 0 && p.To.Reg == 0 {
 			c.ctxt.Diag("literal operation on R0\n%v", p)
 		}
 		if int32(int16(v)) != v {
@@ -2370,16 +2258,16 @@ func (c *ctxt9) asmout(p *obj.Prog, o *Optab, out []uint32) {
 		}
 		o1 = AOP_IRR(c.opirr(p.As), uint32(p.To.Reg), uint32(r), uint32(v))
 
-	case 5: /* syscall */
+	case 5:
 		o1 = c.oprrr(p.As)
 
-	case 6: /* logical op Rb,[Rs,]Ra; no literal */
+	case 6:
 		r := int(p.Reg)
 
 		if r == 0 {
 			r = int(p.To.Reg)
 		}
-		// AROTL and AROTLW are extended mnemonics, which map to RLDCL and RLWNM.
+
 		switch p.As {
 		case AROTL:
 			o1 = AOP_RLDIC(OP_RLDCL, uint32(p.To.Reg), uint32(r), uint32(p.From.Reg), uint32(0))
@@ -2389,7 +2277,7 @@ func (c *ctxt9) asmout(p *obj.Prog, o *Optab, out []uint32) {
 			o1 = LOP_RRR(c.oprrr(p.As), uint32(p.To.Reg), uint32(r), uint32(p.From.Reg))
 		}
 
-	case 7: /* mov r, soreg ==> stw o(r) */
+	case 7:
 		r := int(p.To.Reg)
 
 		if r == 0 {
@@ -2404,11 +2292,7 @@ func (c *ctxt9) asmout(p *obj.Prog, o *Optab, out []uint32) {
 				rel := obj.Addrel(c.cursym)
 				rel.Off = int32(c.pc)
 				rel.Siz = 4
-				// This (and the matching part in the load case
-				// below) are the only places in the ppc64 toolchain
-				// that knows the name of the tls variable. Possibly
-				// we could add some assembly syntax so that the name
-				// of the variable does not have to be assumed.
+
 				rel.Sym = c.ctxt.Lookup("runtime.tls_g")
 				rel.Type = objabi.R_POWER_TLS
 			}
@@ -2417,7 +2301,7 @@ func (c *ctxt9) asmout(p *obj.Prog, o *Optab, out []uint32) {
 			if int32(int16(v)) != v {
 				log.Fatalf("mishandled instruction %v", p)
 			}
-			// Offsets in DS form stores must be a multiple of 4
+
 			inst := c.opstore(p.As)
 			if c.opform(inst) == DS_FORM && v&0x3 != 0 {
 				log.Fatalf("invalid offset for DS form load/store %v", p)
@@ -2425,7 +2309,7 @@ func (c *ctxt9) asmout(p *obj.Prog, o *Optab, out []uint32) {
 			o1 = AOP_IRR(inst, uint32(p.From.Reg), uint32(r), uint32(v))
 		}
 
-	case 8: /* mov soreg, r ==> lbz/lhz/lwz o(r) */
+	case 8:
 		r := int(p.From.Reg)
 
 		if r == 0 {
@@ -2448,7 +2332,7 @@ func (c *ctxt9) asmout(p *obj.Prog, o *Optab, out []uint32) {
 			if int32(int16(v)) != v {
 				log.Fatalf("mishandled instruction %v", p)
 			}
-			// Offsets in DS form loads must be a multiple of 4
+
 			inst := c.opload(p.As)
 			if c.opform(inst) == DS_FORM && v&0x3 != 0 {
 				log.Fatalf("invalid offset for DS form load/store %v", p)
@@ -2456,7 +2340,7 @@ func (c *ctxt9) asmout(p *obj.Prog, o *Optab, out []uint32) {
 			o1 = AOP_IRR(inst, uint32(p.To.Reg), uint32(r), uint32(v))
 		}
 
-	case 9: /* movb soreg, r ==> lbz o(r),r2; extsb r2,r2 */
+	case 9:
 		r := int(p.From.Reg)
 
 		if r == 0 {
@@ -2473,7 +2357,7 @@ func (c *ctxt9) asmout(p *obj.Prog, o *Optab, out []uint32) {
 		}
 		o2 = LOP_RRR(OP_EXTSB, uint32(p.To.Reg), uint32(p.To.Reg), 0)
 
-	case 10: /* sub Ra,[Rb],Rd => subf Rd,Ra,Rb */
+	case 10:
 		r := int(p.Reg)
 
 		if r == 0 {
@@ -2481,7 +2365,7 @@ func (c *ctxt9) asmout(p *obj.Prog, o *Optab, out []uint32) {
 		}
 		o1 = AOP_RRR(c.oprrr(p.As), uint32(p.To.Reg), uint32(p.From.Reg), uint32(r))
 
-	case 11: /* br/bl lbra */
+	case 11:
 		v := int32(0)
 
 		if p.Pcond != nil {
@@ -2511,12 +2395,12 @@ func (c *ctxt9) asmout(p *obj.Prog, o *Optab, out []uint32) {
 			rel.Add = int64(v)
 			rel.Type = objabi.R_CALLPOWER
 		}
-		o2 = 0x60000000 // nop, sometimes overwritten by ld r2, 24(r1) when dynamic linking
+		o2 = 0x60000000
 
-	case 12: /* movb r,r (extsb); movw r,r (extsw) */
+	case 12:
 		if p.To.Reg == REGZERO && p.From.Type == obj.TYPE_CONST {
 			v := c.regoff(&p.From)
-			if r0iszero != 0 /*TypeKind(100016)*/ && v != 0 {
+			if r0iszero != 0 && v != 0 {
 				c.ctxt.Diag("literal operation on R0\n%v", p)
 			}
 
@@ -2530,7 +2414,7 @@ func (c *ctxt9) asmout(p *obj.Prog, o *Optab, out []uint32) {
 			o1 = LOP_RRR(OP_EXTSB, uint32(p.To.Reg), uint32(p.From.Reg), 0)
 		}
 
-	case 13: /* mov[bhw]z r,r; uses rlwinm not andi. to avoid changing CC */
+	case 13:
 		if p.As == AMOVBZ {
 			o1 = OP_RLW(OP_RLWINM, uint32(p.To.Reg), uint32(p.From.Reg), 0, 24, 31)
 		} else if p.As == AMOVH {
@@ -2538,12 +2422,12 @@ func (c *ctxt9) asmout(p *obj.Prog, o *Optab, out []uint32) {
 		} else if p.As == AMOVHZ {
 			o1 = OP_RLW(OP_RLWINM, uint32(p.To.Reg), uint32(p.From.Reg), 0, 16, 31)
 		} else if p.As == AMOVWZ {
-			o1 = OP_RLW(OP_RLDIC, uint32(p.To.Reg), uint32(p.From.Reg), 0, 0, 0) | 1<<5 /* MB=32 */
+			o1 = OP_RLW(OP_RLDIC, uint32(p.To.Reg), uint32(p.From.Reg), 0, 0, 0) | 1<<5
 		} else {
 			c.ctxt.Diag("internal: bad mov[bhw]z\n%v", p)
 		}
 
-	case 14: /* rldc[lr] Rb,Rs,$mask,Ra -- left, right give different masks */
+	case 14:
 		r := int(p.Reg)
 
 		if r == 0 {
@@ -2553,38 +2437,34 @@ func (c *ctxt9) asmout(p *obj.Prog, o *Optab, out []uint32) {
 		var a int
 		switch p.As {
 
-		// These opcodes expect a mask operand that has to be converted into the
-		// appropriate operand.  The way these were defined, not all valid masks are possible.
-		// Left here for compatibility in case they were used or generated.
 		case ARLDCL, ARLDCLCC:
 			var mask [2]uint8
 			c.maskgen64(p, mask[:], uint64(d))
 
-			a = int(mask[0]) /* MB */
+			a = int(mask[0])
 			if mask[1] != 63 {
 				c.ctxt.Diag("invalid mask for rotate: %x (end != bit 63)\n%v", uint64(d), p)
 			}
 			o1 = LOP_RRR(c.oprrr(p.As), uint32(p.To.Reg), uint32(r), uint32(p.From.Reg))
 			o1 |= (uint32(a) & 31) << 6
 			if a&0x20 != 0 {
-				o1 |= 1 << 5 /* mb[5] is top bit */
+				o1 |= 1 << 5
 			}
 
 		case ARLDCR, ARLDCRCC:
 			var mask [2]uint8
 			c.maskgen64(p, mask[:], uint64(d))
 
-			a = int(mask[1]) /* ME */
+			a = int(mask[1])
 			if mask[0] != 0 {
 				c.ctxt.Diag("invalid mask for rotate: %x (start != 0)\n%v", uint64(d), p)
 			}
 			o1 = LOP_RRR(c.oprrr(p.As), uint32(p.To.Reg), uint32(r), uint32(p.From.Reg))
 			o1 |= (uint32(a) & 31) << 6
 			if a&0x20 != 0 {
-				o1 |= 1 << 5 /* mb[5] is top bit */
+				o1 |= 1 << 5
 			}
 
-		// These opcodes use a shift count like the ppc64 asm, no mask conversion done
 		case ARLDICR, ARLDICRCC:
 			me := int(d)
 			sh := c.regoff(&p.From)
@@ -2600,8 +2480,8 @@ func (c *ctxt9) asmout(p *obj.Prog, o *Optab, out []uint32) {
 			a = 0
 		}
 
-	case 17, /* bc bo,bi,lbra (same for now) */
-		16: /* bc bo,bi,sbra */
+	case 17,
+		16:
 		a := 0
 
 		r := int(p.Reg)
@@ -2612,7 +2492,7 @@ func (c *ctxt9) asmout(p *obj.Prog, o *Optab, out []uint32) {
 			if r != 0 {
 				c.ctxt.Diag("unexpected register setting for branch with CR: %d\n", r)
 			}
-			// BI values for the CR
+
 			switch p.From.Reg {
 			case REG_CR0:
 				r = BI_CR0
@@ -2648,12 +2528,12 @@ func (c *ctxt9) asmout(p *obj.Prog, o *Optab, out []uint32) {
 		}
 		o1 = OP_BC(c.opirr(p.As), uint32(a), uint32(r), uint32(v), 0)
 
-	case 15: /* br/bl (r) => mov r,lr; br/bl (lr) */
+	case 15:
 		var v int32
 		if p.As == ABC || p.As == ABCL {
 			v = c.regoff(&p.To) & 31
 		} else {
-			v = 20 /* unconditional */
+			v = 20
 		}
 		o1 = AOP_RRR(OP_MTSPR, uint32(p.To.Reg), 0, 0) | (REG_LR&0x1f)<<16 | ((REG_LR>>5)&0x1f)<<11
 		o2 = OPVCC(19, 16, 0, 0)
@@ -2662,12 +2542,12 @@ func (c *ctxt9) asmout(p *obj.Prog, o *Optab, out []uint32) {
 		}
 		o2 = OP_BCR(o2, uint32(v), uint32(p.To.Index))
 
-	case 18: /* br/bl (lr/ctr); bc/bcl bo,bi,(lr/ctr) */
+	case 18:
 		var v int32
 		if p.As == ABC || p.As == ABCL {
 			v = c.regoff(&p.From) & 31
 		} else {
-			v = 20 /* unconditional */
+			v = 20
 		}
 		r := int(p.Reg)
 		if r == 0 {
@@ -2690,7 +2570,7 @@ func (c *ctxt9) asmout(p *obj.Prog, o *Optab, out []uint32) {
 		}
 		o1 = OP_BCR(o1, uint32(v), uint32(r))
 
-	case 19: /* mov $lcon,r ==> cau+or */
+	case 19:
 		d := c.vregoff(&p.From)
 
 		if p.From.Sym == nil {
@@ -2700,14 +2580,14 @@ func (c *ctxt9) asmout(p *obj.Prog, o *Optab, out []uint32) {
 			o1, o2 = c.symbolAccess(p.From.Sym, d, p.To.Reg, OP_ADDI)
 		}
 
-	case 20: /* add $ucon,,r | addis $addcon,r,r */
+	case 20:
 		v := c.regoff(&p.From)
 
 		r := int(p.Reg)
 		if r == 0 {
 			r = int(p.To.Reg)
 		}
-		if p.As == AADD && (r0iszero == 0 /*TypeKind(100016)*/ && p.Reg == 0 || r0iszero != 0 /*TypeKind(100016)*/ && p.To.Reg == 0) {
+		if p.As == AADD && (r0iszero == 0 && p.Reg == 0 || r0iszero != 0 && p.To.Reg == 0) {
 			c.ctxt.Diag("literal operation on R0\n%v", p)
 		}
 		if p.As == AADDIS {
@@ -2716,7 +2596,7 @@ func (c *ctxt9) asmout(p *obj.Prog, o *Optab, out []uint32) {
 			o1 = AOP_IRR(c.opirr(AADDIS), uint32(p.To.Reg), uint32(r), uint32(v)>>16)
 		}
 
-	case 22: /* add $lcon/$andcon,r1,r2 ==> oris+ori+add/ori+add */
+	case 22:
 		if p.To.Reg == REGTMP || p.Reg == REGTMP {
 			c.ctxt.Diag("can't synthesize large constant\n%v", p)
 		}
@@ -2728,8 +2608,7 @@ func (c *ctxt9) asmout(p *obj.Prog, o *Optab, out []uint32) {
 		if p.From.Sym != nil {
 			c.ctxt.Diag("%v is not supported", p)
 		}
-		// If operand is ANDCON, generate 2 instructions using
-		// ORI for unsigned value; with LCON 3 instructions.
+
 		if o.size == 8 {
 			o1 = LOP_IRR(OP_ORI, REGTMP, REGZERO, uint32(int32(d)))
 			o2 = AOP_RRR(c.oprrr(p.As), uint32(p.To.Reg), REGTMP, uint32(r))
@@ -2739,7 +2618,7 @@ func (c *ctxt9) asmout(p *obj.Prog, o *Optab, out []uint32) {
 			o3 = AOP_RRR(c.oprrr(p.As), uint32(p.To.Reg), REGTMP, uint32(r))
 		}
 
-	case 23: /* and $lcon/$addcon,r1,r2 ==> oris+ori+and/addi+and */
+	case 23:
 		if p.To.Reg == REGTMP || p.Reg == REGTMP {
 			c.ctxt.Diag("can't synthesize large constant\n%v", p)
 		}
@@ -2749,8 +2628,6 @@ func (c *ctxt9) asmout(p *obj.Prog, o *Optab, out []uint32) {
 			r = int(p.To.Reg)
 		}
 
-		// With ADDCON operand, generate 2 instructions using ADDI for signed value,
-		// with LCON operand generate 3 instructions.
 		if o.size == 8 {
 			o1 = LOP_IRR(OP_ADDI, REGZERO, REGTMP, uint32(int32(d)))
 			o2 = LOP_RRR(c.oprrr(p.As), uint32(p.To.Reg), REGTMP, uint32(r))
@@ -2764,7 +2641,7 @@ func (c *ctxt9) asmout(p *obj.Prog, o *Optab, out []uint32) {
 		}
 
 	case 25:
-		/* sld[.] $sh,rS,rA -> rldicr[.] $sh,rS,mask(0,63-sh),rA; srd[.] -> rldicl */
+
 		v := c.regoff(&p.From)
 
 		if v < 0 {
@@ -2798,10 +2675,10 @@ func (c *ctxt9) asmout(p *obj.Prog, o *Optab, out []uint32) {
 
 		o1 = AOP_RLDIC(op, uint32(p.To.Reg), uint32(r), uint32(v), uint32(a))
 		if p.As == ASLDCC || p.As == ASRDCC {
-			o1 |= 1 // Set the condition code bit
+			o1 |= 1
 		}
 
-	case 26: /* mov $lsext/auto/oreg,,r2 ==> addis+addi */
+	case 26:
 		if p.To.Reg == REGTMP {
 			c.ctxt.Diag("can't synthesize large constant\n%v", p)
 		}
@@ -2813,13 +2690,13 @@ func (c *ctxt9) asmout(p *obj.Prog, o *Optab, out []uint32) {
 		o1 = AOP_IRR(OP_ADDIS, REGTMP, uint32(r), uint32(high16adjusted(v)))
 		o2 = AOP_IRR(OP_ADDI, uint32(p.To.Reg), REGTMP, uint32(v))
 
-	case 27: /* subc ra,$simm,rd => subfic rd,ra,$simm */
+	case 27:
 		v := c.regoff(p.GetFrom3())
 
 		r := int(p.From.Reg)
 		o1 = AOP_IRR(c.opirr(p.As), uint32(p.To.Reg), uint32(r), uint32(v))
 
-	case 28: /* subc r1,$lcon,r2 ==> cau+or+subfc */
+	case 28:
 		if p.To.Reg == REGTMP || p.From.Reg == REGTMP {
 			c.ctxt.Diag("can't synthesize large constant\n%v", p)
 		}
@@ -2831,9 +2708,7 @@ func (c *ctxt9) asmout(p *obj.Prog, o *Optab, out []uint32) {
 			c.ctxt.Diag("%v is not supported", p)
 		}
 
-	//if(dlm) reloc(&p->from3, p->pc, 0);
-
-	case 29: /* rldic[lr]? $sh,s,$mask,a -- left, right, plain give different masks */
+	case 29:
 		v := c.regoff(&p.From)
 
 		d := c.vregoff(p.GetFrom3())
@@ -2842,19 +2717,19 @@ func (c *ctxt9) asmout(p *obj.Prog, o *Optab, out []uint32) {
 		var a int
 		switch p.As {
 		case ARLDC, ARLDCCC:
-			a = int(mask[0]) /* MB */
+			a = int(mask[0])
 			if int32(mask[1]) != (63 - v) {
 				c.ctxt.Diag("invalid mask for shift: %x (shift %d)\n%v", uint64(d), v, p)
 			}
 
 		case ARLDCL, ARLDCLCC:
-			a = int(mask[0]) /* MB */
+			a = int(mask[0])
 			if mask[1] != 63 {
 				c.ctxt.Diag("invalid mask for shift: %x (shift %d)\n%v", uint64(d), v, p)
 			}
 
 		case ARLDCR, ARLDCRCC:
-			a = int(mask[1]) /* ME */
+			a = int(mask[1])
 			if mask[0] != 0 {
 				c.ctxt.Diag("invalid mask for shift: %x (shift %d)\n%v", uint64(d), v, p)
 			}
@@ -2870,16 +2745,14 @@ func (c *ctxt9) asmout(p *obj.Prog, o *Optab, out []uint32) {
 			o1 |= 1 << 1
 		}
 		if a&0x20 != 0 {
-			o1 |= 1 << 5 /* mb[5] is top bit */
+			o1 |= 1 << 5
 		}
 
-	case 30: /* rldimi $sh,s,$mask,a */
+	case 30:
 		v := c.regoff(&p.From)
 
 		d := c.vregoff(p.GetFrom3())
 
-		// Original opcodes had mask operands which had to be converted to a shift count as expected by
-		// the ppc64 asm.
 		switch p.As {
 		case ARLDMI, ARLDMICC:
 			var mask [2]uint8
@@ -2893,10 +2766,9 @@ func (c *ctxt9) asmout(p *obj.Prog, o *Optab, out []uint32) {
 				o1 |= 1 << 1
 			}
 			if mask[0]&0x20 != 0 {
-				o1 |= 1 << 5 /* mb[5] is top bit */
+				o1 |= 1 << 5
 			}
 
-		// Opcodes with shift count operands.
 		case ARLDIMI, ARLDIMICC:
 			o1 = AOP_RRR(c.opirr(p.As), uint32(p.Reg), uint32(p.To.Reg), (uint32(v) & 0x1F))
 			o1 |= (uint32(d) & 31) << 6
@@ -2908,7 +2780,7 @@ func (c *ctxt9) asmout(p *obj.Prog, o *Optab, out []uint32) {
 			}
 		}
 
-	case 31: /* dword */
+	case 31:
 		d := c.vregoff(&p.From)
 
 		if c.ctxt.Arch.ByteOrder == binary.BigEndian {
@@ -2930,7 +2802,7 @@ func (c *ctxt9) asmout(p *obj.Prog, o *Optab, out []uint32) {
 			o1 = o2
 		}
 
-	case 32: /* fmul frc,fra,frd */
+	case 32:
 		r := int(p.Reg)
 
 		if r == 0 {
@@ -2938,7 +2810,7 @@ func (c *ctxt9) asmout(p *obj.Prog, o *Optab, out []uint32) {
 		}
 		o1 = AOP_RRR(c.oprrr(p.As), uint32(p.To.Reg), uint32(r), 0) | (uint32(p.From.Reg)&31)<<6
 
-	case 33: /* fabs [frb,]frd; fmr. frb,frd */
+	case 33:
 		r := int(p.From.Reg)
 
 		if oclass(&p.From) == C_NONE {
@@ -2946,17 +2818,17 @@ func (c *ctxt9) asmout(p *obj.Prog, o *Optab, out []uint32) {
 		}
 		o1 = AOP_RRR(c.oprrr(p.As), uint32(p.To.Reg), 0, uint32(r))
 
-	case 34: /* FMADDx fra,frb,frc,frt (t=a*c±b) */
+	case 34:
 		o1 = AOP_RRR(c.oprrr(p.As), uint32(p.To.Reg), uint32(p.From.Reg), uint32(p.Reg)) | (uint32(p.GetFrom3().Reg)&31)<<6
 
-	case 35: /* mov r,lext/lauto/loreg ==> cau $(v>>16),sb,r'; store o(r') */
+	case 35:
 		v := c.regoff(&p.To)
 
 		r := int(p.To.Reg)
 		if r == 0 {
 			r = int(o.param)
 		}
-		// Offsets in DS form stores must be a multiple of 4
+
 		inst := c.opstore(p.As)
 		if c.opform(inst) == DS_FORM && v&0x3 != 0 {
 			log.Fatalf("invalid offset for DS form load/store %v", p)
@@ -2964,7 +2836,7 @@ func (c *ctxt9) asmout(p *obj.Prog, o *Optab, out []uint32) {
 		o1 = AOP_IRR(OP_ADDIS, REGTMP, uint32(r), uint32(high16adjusted(v)))
 		o2 = AOP_IRR(inst, uint32(p.From.Reg), REGTMP, uint32(v))
 
-	case 36: /* mov bz/h/hz lext/lauto/lreg,r ==> lbz/lha/lhz etc */
+	case 36:
 		v := c.regoff(&p.From)
 
 		r := int(p.From.Reg)
@@ -2974,7 +2846,7 @@ func (c *ctxt9) asmout(p *obj.Prog, o *Optab, out []uint32) {
 		o1 = AOP_IRR(OP_ADDIS, REGTMP, uint32(r), uint32(high16adjusted(v)))
 		o2 = AOP_IRR(c.opload(p.As), uint32(p.To.Reg), REGTMP, uint32(v))
 
-	case 37: /* movb lext/lauto/lreg,r ==> lbz o(reg),r; extsb r */
+	case 37:
 		v := c.regoff(&p.From)
 
 		r := int(p.From.Reg)
@@ -2985,26 +2857,17 @@ func (c *ctxt9) asmout(p *obj.Prog, o *Optab, out []uint32) {
 		o2 = AOP_IRR(c.opload(p.As), uint32(p.To.Reg), REGTMP, uint32(v))
 		o3 = LOP_RRR(OP_EXTSB, uint32(p.To.Reg), uint32(p.To.Reg), 0)
 
-	case 40: /* word */
+	case 40:
 		o1 = uint32(c.regoff(&p.From))
 
-	case 41: /* stswi */
+	case 41:
 		o1 = AOP_RRR(c.opirr(p.As), uint32(p.From.Reg), uint32(p.To.Reg), 0) | (uint32(c.regoff(p.GetFrom3()))&0x7F)<<11
 
-	case 42: /* lswi */
+	case 42:
 		o1 = AOP_RRR(c.opirr(p.As), uint32(p.To.Reg), uint32(p.From.Reg), 0) | (uint32(c.regoff(p.GetFrom3()))&0x7F)<<11
 
-	case 43: /* data cache instructions: op (Ra+[Rb]), [th|l] */
-		/* TH field for dcbt/dcbtst: */
-		/* 0 = Block access - program will soon access EA. */
-		/* 8-15 = Stream access - sequence of access (data stream). See section 4.3.2 of the ISA for details. */
-		/* 16 = Block access - program will soon make a transient access to EA. */
-		/* 17 = Block access - program will not access EA for a long time. */
+	case 43:
 
-		/* L field for dcbf: */
-		/* 0 = invalidates the block containing EA in all processors. */
-		/* 1 = same as 0, but with limited scope (i.e. block in the current processor will not be reused soon). */
-		/* 3 = same as 1, but with even more limited scope (i.e. block in the current processor primary cache will not be reused soon). */
 		if p.To.Type == obj.TYPE_NONE {
 			o1 = AOP_RRR(c.oprrr(p.As), 0, uint32(p.From.Index), uint32(p.From.Reg))
 		} else {
@@ -3012,15 +2875,12 @@ func (c *ctxt9) asmout(p *obj.Prog, o *Optab, out []uint32) {
 			o1 = AOP_RRR(c.oprrr(p.As), uint32(th), uint32(p.From.Index), uint32(p.From.Reg))
 		}
 
-	case 44: /* indexed store */
+	case 44:
 		o1 = AOP_RRR(c.opstorex(p.As), uint32(p.From.Reg), uint32(p.To.Index), uint32(p.To.Reg))
 
-	case 45: /* indexed load */
+	case 45:
 		switch p.As {
-		/* The assembler accepts a 4-operand l*arx instruction. The fourth operand is an Exclusive Access Hint (EH) */
-		/* The EH field can be used as a lock acquire/release hint as follows: */
-		/* 0 = Atomic Update (fetch-and-operate or similar algorithm) */
-		/* 1 = Exclusive Access (lock acquire and release) */
+
 		case ALBAR, ALHAR, ALWAR, ALDAR:
 			if p.From3Type() != obj.TYPE_NONE {
 				eh := int(c.regoff(p.GetFrom3()))
@@ -3034,10 +2894,10 @@ func (c *ctxt9) asmout(p *obj.Prog, o *Optab, out []uint32) {
 		default:
 			o1 = AOP_RRR(c.oploadx(p.As), uint32(p.To.Reg), uint32(p.From.Index), uint32(p.From.Reg))
 		}
-	case 46: /* plain op */
+	case 46:
 		o1 = c.oprrr(p.As)
 
-	case 47: /* op Ra, Rd; also op [Ra,] Rd */
+	case 47:
 		r := int(p.From.Reg)
 
 		if r == 0 {
@@ -3045,7 +2905,7 @@ func (c *ctxt9) asmout(p *obj.Prog, o *Optab, out []uint32) {
 		}
 		o1 = AOP_RRR(c.oprrr(p.As), uint32(p.To.Reg), uint32(r), 0)
 
-	case 48: /* op Rs, Ra */
+	case 48:
 		r := int(p.From.Reg)
 
 		if r == 0 {
@@ -3053,53 +2913,52 @@ func (c *ctxt9) asmout(p *obj.Prog, o *Optab, out []uint32) {
 		}
 		o1 = LOP_RRR(c.oprrr(p.As), uint32(p.To.Reg), uint32(r), 0)
 
-	case 49: /* op Rb; op $n, Rb */
-		if p.From.Type != obj.TYPE_REG { /* tlbie $L, rB */
+	case 49:
+		if p.From.Type != obj.TYPE_REG {
 			v := c.regoff(&p.From) & 1
 			o1 = AOP_RRR(c.oprrr(p.As), 0, 0, uint32(p.To.Reg)) | uint32(v)<<21
 		} else {
 			o1 = AOP_RRR(c.oprrr(p.As), 0, 0, uint32(p.From.Reg))
 		}
 
-	case 50: /* rem[u] r1[,r2],r3 */
+	case 50:
 		r := int(p.Reg)
 
 		if r == 0 {
 			r = int(p.To.Reg)
 		}
 		v := c.oprrr(p.As)
-		t := v & (1<<10 | 1) /* OE|Rc */
+		t := v & (1<<10 | 1)
 		o1 = AOP_RRR(v&^t, REGTMP, uint32(r), uint32(p.From.Reg))
 		o2 = AOP_RRR(OP_MULLW, REGTMP, REGTMP, uint32(p.From.Reg))
 		o3 = AOP_RRR(OP_SUBF|t, uint32(p.To.Reg), REGTMP, uint32(r))
 		if p.As == AREMU {
 			o4 = o3
 
-			/* Clear top 32 bits */
 			o3 = OP_RLW(OP_RLDIC, REGTMP, REGTMP, 0, 0, 0) | 1<<5
 		}
 
-	case 51: /* remd[u] r1[,r2],r3 */
+	case 51:
 		r := int(p.Reg)
 
 		if r == 0 {
 			r = int(p.To.Reg)
 		}
 		v := c.oprrr(p.As)
-		t := v & (1<<10 | 1) /* OE|Rc */
+		t := v & (1<<10 | 1)
 		o1 = AOP_RRR(v&^t, REGTMP, uint32(r), uint32(p.From.Reg))
 		o2 = AOP_RRR(OP_MULLD, REGTMP, REGTMP, uint32(p.From.Reg))
 		o3 = AOP_RRR(OP_SUBF|t, uint32(p.To.Reg), REGTMP, uint32(r))
 
-	case 52: /* mtfsbNx cr(n) */
+	case 52:
 		v := c.regoff(&p.From) & 31
 
 		o1 = AOP_RRR(c.oprrr(p.As), uint32(v), 0, 0)
 
-	case 53: /* mffsX ,fr1 */
+	case 53:
 		o1 = AOP_RRR(OP_MFFS, uint32(p.To.Reg), 0, 0)
 
-	case 54: /* mov msr,r1; mov r1, msr*/
+	case 54:
 		if oclass(&p.From) == C_REG {
 			if p.As == AMOVD {
 				o1 = AOP_RRR(OP_MTMSRD, uint32(p.From.Reg), 0, 0)
@@ -3110,10 +2969,10 @@ func (c *ctxt9) asmout(p *obj.Prog, o *Optab, out []uint32) {
 			o1 = AOP_RRR(OP_MFMSR, uint32(p.To.Reg), 0, 0)
 		}
 
-	case 55: /* op Rb, Rd */
+	case 55:
 		o1 = AOP_RRR(c.oprrr(p.As), uint32(p.To.Reg), 0, uint32(p.From.Reg))
 
-	case 56: /* sra $sh,[s,]a; srd $sh,[s,]a */
+	case 56:
 		v := c.regoff(&p.From)
 
 		r := int(p.Reg)
@@ -3122,10 +2981,10 @@ func (c *ctxt9) asmout(p *obj.Prog, o *Optab, out []uint32) {
 		}
 		o1 = AOP_RRR(c.opirr(p.As), uint32(r), uint32(p.To.Reg), uint32(v)&31)
 		if (p.As == ASRAD || p.As == ASRADCC) && (v&0x20 != 0) {
-			o1 |= 1 << 1 /* mb[5] */
+			o1 |= 1 << 1
 		}
 
-	case 57: /* slw $sh,[s,]a -> rlwinm ... */
+	case 57:
 		v := c.regoff(&p.From)
 
 		r := int(p.Reg)
@@ -3133,13 +2992,6 @@ func (c *ctxt9) asmout(p *obj.Prog, o *Optab, out []uint32) {
 			r = int(p.To.Reg)
 		}
 
-		/*
-			 * Let user (gs) shoot himself in the foot.
-			 * qc has already complained.
-			 *
-			if(v < 0 || v > 31)
-				ctxt->diag("illegal shift %ld\n%v", v, p);
-		*/
 		if v < 0 {
 			v = 0
 		} else if v > 32 {
@@ -3157,10 +3009,10 @@ func (c *ctxt9) asmout(p *obj.Prog, o *Optab, out []uint32) {
 		}
 		o1 = OP_RLW(OP_RLWINM, uint32(p.To.Reg), uint32(r), uint32(v), uint32(mask[0]), uint32(mask[1]))
 		if p.As == ASLWCC || p.As == ASRWCC {
-			o1 |= 1 // set the condition code
+			o1 |= 1
 		}
 
-	case 58: /* logical $andcon,[s],a */
+	case 58:
 		v := c.regoff(&p.From)
 
 		r := int(p.Reg)
@@ -3169,7 +3021,7 @@ func (c *ctxt9) asmout(p *obj.Prog, o *Optab, out []uint32) {
 		}
 		o1 = LOP_IRR(c.opirr(p.As), uint32(p.To.Reg), uint32(r), uint32(v))
 
-	case 59: /* or/xor/and $ucon,,r | oris/xoris/andis $addcon,r,r */
+	case 59:
 		v := c.regoff(&p.From)
 
 		r := int(p.Reg)
@@ -3178,7 +3030,7 @@ func (c *ctxt9) asmout(p *obj.Prog, o *Optab, out []uint32) {
 		}
 		switch p.As {
 		case AOR:
-			o1 = LOP_IRR(c.opirr(AORIS), uint32(p.To.Reg), uint32(r), uint32(v)>>16) /* oris, xoris, andis. */
+			o1 = LOP_IRR(c.opirr(AORIS), uint32(p.To.Reg), uint32(r), uint32(v)>>16)
 		case AXOR:
 			o1 = LOP_IRR(c.opirr(AXORIS), uint32(p.To.Reg), uint32(r), uint32(v)>>16)
 		case AANDCC:
@@ -3187,18 +3039,18 @@ func (c *ctxt9) asmout(p *obj.Prog, o *Optab, out []uint32) {
 			o1 = LOP_IRR(c.opirr(p.As), uint32(p.To.Reg), uint32(r), uint32(v))
 		}
 
-	case 60: /* tw to,a,b */
+	case 60:
 		r := int(c.regoff(&p.From) & 31)
 
 		o1 = AOP_RRR(c.oprrr(p.As), uint32(r), uint32(p.Reg), uint32(p.To.Reg))
 
-	case 61: /* tw to,a,$simm */
+	case 61:
 		r := int(c.regoff(&p.From) & 31)
 
 		v := c.regoff(&p.To)
 		o1 = AOP_IRR(c.opirr(p.As), uint32(r), uint32(p.Reg), uint32(v))
 
-	case 62: /* rlwmi $sh,s,$mask,a */
+	case 62:
 		v := c.regoff(&p.From)
 
 		var mask [2]uint8
@@ -3206,14 +3058,14 @@ func (c *ctxt9) asmout(p *obj.Prog, o *Optab, out []uint32) {
 		o1 = AOP_RRR(c.opirr(p.As), uint32(p.Reg), uint32(p.To.Reg), uint32(v))
 		o1 |= (uint32(mask[0])&31)<<6 | (uint32(mask[1])&31)<<1
 
-	case 63: /* rlwmi b,s,$mask,a */
+	case 63:
 		var mask [2]uint8
 		c.maskgen(p, mask[:], uint32(c.regoff(p.GetFrom3())))
 
 		o1 = AOP_RRR(c.opirr(p.As), uint32(p.Reg), uint32(p.To.Reg), uint32(p.From.Reg))
 		o1 |= (uint32(mask[0])&31)<<6 | (uint32(mask[1])&31)<<1
 
-	case 64: /* mtfsf fr[, $m] {,fpcsr} */
+	case 64:
 		var v int32
 		if p.From3Type() != obj.TYPE_NONE {
 			v = c.regoff(p.GetFrom3()) & 255
@@ -3222,50 +3074,50 @@ func (c *ctxt9) asmout(p *obj.Prog, o *Optab, out []uint32) {
 		}
 		o1 = OP_MTFSF | uint32(v)<<17 | uint32(p.From.Reg)<<11
 
-	case 65: /* MOVFL $imm,FPSCR(n) => mtfsfi crfd,imm */
+	case 65:
 		if p.To.Reg == 0 {
 			c.ctxt.Diag("must specify FPSCR(n)\n%v", p)
 		}
 		o1 = OP_MTFSFI | (uint32(p.To.Reg)&15)<<23 | (uint32(c.regoff(&p.From))&31)<<12
 
-	case 66: /* mov spr,r1; mov r1,spr, also dcr */
+	case 66:
 		var r int
 		var v int32
 		if REG_R0 <= p.From.Reg && p.From.Reg <= REG_R31 {
 			r = int(p.From.Reg)
 			v = int32(p.To.Reg)
 			if REG_DCR0 <= v && v <= REG_DCR0+1023 {
-				o1 = OPVCC(31, 451, 0, 0) /* mtdcr */
+				o1 = OPVCC(31, 451, 0, 0)
 			} else {
-				o1 = OPVCC(31, 467, 0, 0) /* mtspr */
+				o1 = OPVCC(31, 467, 0, 0)
 			}
 		} else {
 			r = int(p.To.Reg)
 			v = int32(p.From.Reg)
 			if REG_DCR0 <= v && v <= REG_DCR0+1023 {
-				o1 = OPVCC(31, 323, 0, 0) /* mfdcr */
+				o1 = OPVCC(31, 323, 0, 0)
 			} else {
-				o1 = OPVCC(31, 339, 0, 0) /* mfspr */
+				o1 = OPVCC(31, 339, 0, 0)
 			}
 		}
 
 		o1 = AOP_RRR(o1, uint32(r), 0, 0) | (uint32(v)&0x1f)<<16 | ((uint32(v)>>5)&0x1f)<<11
 
-	case 67: /* mcrf crfD,crfS */
+	case 67:
 		if p.From.Type != obj.TYPE_REG || p.From.Reg < REG_CR0 || REG_CR7 < p.From.Reg || p.To.Type != obj.TYPE_REG || p.To.Reg < REG_CR0 || REG_CR7 < p.To.Reg {
 			c.ctxt.Diag("illegal CR field number\n%v", p)
 		}
 		o1 = AOP_RRR(OP_MCRF, ((uint32(p.To.Reg) & 7) << 2), ((uint32(p.From.Reg) & 7) << 2), 0)
 
-	case 68: /* mfcr rD; mfocrf CRM,rD */
+	case 68:
 		if p.From.Type == obj.TYPE_REG && REG_CR0 <= p.From.Reg && p.From.Reg <= REG_CR7 {
-			v := int32(1 << uint(7-(p.To.Reg&7)))                                 /* CR(n) */
-			o1 = AOP_RRR(OP_MFCR, uint32(p.To.Reg), 0, 0) | 1<<20 | uint32(v)<<12 /* new form, mfocrf */
+			v := int32(1 << uint(7-(p.To.Reg&7)))
+			o1 = AOP_RRR(OP_MFCR, uint32(p.To.Reg), 0, 0) | 1<<20 | uint32(v)<<12
 		} else {
-			o1 = AOP_RRR(OP_MFCR, uint32(p.To.Reg), 0, 0) /* old form, whole register */
+			o1 = AOP_RRR(OP_MFCR, uint32(p.To.Reg), 0, 0)
 		}
 
-	case 69: /* mtcrf CRM,rS */
+	case 69:
 		var v int32
 		if p.From3Type() != obj.TYPE_NONE {
 			if p.To.Reg != 0 {
@@ -3274,15 +3126,15 @@ func (c *ctxt9) asmout(p *obj.Prog, o *Optab, out []uint32) {
 			v = c.regoff(p.GetFrom3()) & 0xff
 		} else {
 			if p.To.Reg == 0 {
-				v = 0xff /* CR */
+				v = 0xff
 			} else {
-				v = 1 << uint(7-(p.To.Reg&7)) /* CR(n) */
+				v = 1 << uint(7-(p.To.Reg&7))
 			}
 		}
 
 		o1 = AOP_RRR(OP_MTCRF, uint32(p.From.Reg), 0, 0) | uint32(v)<<12
 
-	case 70: /* [f]cmp r,r,cr*/
+	case 70:
 		var r int
 		if p.Reg == 0 {
 			r = 0
@@ -3291,7 +3143,7 @@ func (c *ctxt9) asmout(p *obj.Prog, o *Optab, out []uint32) {
 		}
 		o1 = AOP_RRR(c.oprrr(p.As), uint32(r), uint32(p.From.Reg), uint32(p.To.Reg))
 
-	case 71: /* cmp[l] r,i,cr*/
+	case 71:
 		var r int
 		if p.Reg == 0 {
 			r = 0
@@ -3300,16 +3152,16 @@ func (c *ctxt9) asmout(p *obj.Prog, o *Optab, out []uint32) {
 		}
 		o1 = AOP_RRR(c.opirr(p.As), uint32(r), uint32(p.From.Reg), 0) | uint32(c.regoff(&p.To))&0xffff
 
-	case 72: /* slbmte (Rb+Rs -> slb[Rb]) -> Rs, Rb */
+	case 72:
 		o1 = AOP_RRR(c.oprrr(p.As), uint32(p.From.Reg), 0, uint32(p.To.Reg))
 
-	case 73: /* mcrfs crfD,crfS */
+	case 73:
 		if p.From.Type != obj.TYPE_REG || p.From.Reg != REG_FPSCR || p.To.Type != obj.TYPE_REG || p.To.Reg < REG_CR0 || REG_CR7 < p.To.Reg {
 			c.ctxt.Diag("illegal FPSCR/CR field number\n%v", p)
 		}
 		o1 = AOP_RRR(OP_MCRFS, ((uint32(p.To.Reg) & 7) << 2), ((0 & 7) << 2), 0)
 
-	case 77: /* syscall $scon, syscall Rx */
+	case 77:
 		if p.From.Type == obj.TYPE_CONST {
 			if p.From.Offset > BIG || p.From.Offset < -BIG {
 				c.ctxt.Diag("illegal syscall, sysnum too large: %v", p)
@@ -3319,50 +3171,42 @@ func (c *ctxt9) asmout(p *obj.Prog, o *Optab, out []uint32) {
 			o1 = LOP_RRR(OP_OR, REGZERO, uint32(p.From.Reg), uint32(p.From.Reg))
 		} else {
 			c.ctxt.Diag("illegal syscall: %v", p)
-			o1 = 0x7fe00008 // trap always
+			o1 = 0x7fe00008
 		}
 
 		o2 = c.oprrr(p.As)
-		o3 = AOP_RRR(c.oprrr(AXOR), REGZERO, REGZERO, REGZERO) // XOR R0, R0
+		o3 = AOP_RRR(c.oprrr(AXOR), REGZERO, REGZERO, REGZERO)
 
-	case 78: /* undef */
-		o1 = 0 /* "An instruction consisting entirely of binary 0s is guaranteed
-		   always to be an illegal instruction."  */
+	case 78:
+		o1 = 0
 
-	/* relocation operations */
 	case 74:
 		v := c.vregoff(&p.To)
-		// Offsets in DS form stores must be a multiple of 4
+
 		inst := c.opstore(p.As)
 		if c.opform(inst) == DS_FORM && v&0x3 != 0 {
 			log.Fatalf("invalid offset for DS form load/store %v", p)
 		}
 		o1, o2 = c.symbolAccess(p.To.Sym, v, p.From.Reg, inst)
 
-	//if(dlm) reloc(&p->to, p->pc, 1);
-
 	case 75:
 		v := c.vregoff(&p.From)
-		// Offsets in DS form loads must be a multiple of 4
+
 		inst := c.opload(p.As)
 		if c.opform(inst) == DS_FORM && v&0x3 != 0 {
 			log.Fatalf("invalid offset for DS form load/store %v", p)
 		}
 		o1, o2 = c.symbolAccess(p.From.Sym, v, p.To.Reg, inst)
 
-	//if(dlm) reloc(&p->from, p->pc, 1);
-
 	case 76:
 		v := c.vregoff(&p.From)
-		// Offsets in DS form loads must be a multiple of 4
+
 		inst := c.opload(p.As)
 		if c.opform(inst) == DS_FORM && v&0x3 != 0 {
 			log.Fatalf("invalid offset for DS form load/store %v", p)
 		}
 		o1, o2 = c.symbolAccess(p.From.Sym, v, p.To.Reg, inst)
 		o3 = LOP_RRR(OP_EXTSB, uint32(p.To.Reg), uint32(p.To.Reg), 0)
-
-		//if(dlm) reloc(&p->from, p->pc, 1);
 
 	case 79:
 		if p.From.Offset != 0 {
@@ -3400,82 +3244,69 @@ func (c *ctxt9) asmout(p *obj.Prog, o *Optab, out []uint32) {
 		rel.Siz = 8
 		rel.Sym = p.From.Sym
 		rel.Type = objabi.R_ADDRPOWER_GOT
-	case 82: /* vector instructions, VX-form and VC-form */
+	case 82:
 		if p.From.Type == obj.TYPE_REG {
-			/* reg reg none OR reg reg reg */
-			/* 3-register operand order: VRA, VRB, VRT */
-			/* 2-register operand order: VRA, VRT */
+
 			o1 = AOP_RRR(c.oprrr(p.As), uint32(p.To.Reg), uint32(p.From.Reg), uint32(p.Reg))
 		} else if p.From3Type() == obj.TYPE_CONST {
-			/* imm imm reg reg */
-			/* operand order: SIX, VRA, ST, VRT */
+
 			six := int(c.regoff(&p.From))
 			st := int(c.regoff(p.GetFrom3()))
 			o1 = AOP_IIRR(c.opiirr(p.As), uint32(p.To.Reg), uint32(p.Reg), uint32(st), uint32(six))
 		} else if p.From3Type() == obj.TYPE_NONE && p.Reg != 0 {
-			/* imm reg reg */
-			/* operand order: UIM, VRB, VRT */
+
 			uim := int(c.regoff(&p.From))
 			o1 = AOP_VIRR(c.opirr(p.As), uint32(p.To.Reg), uint32(p.Reg), uint32(uim))
 		} else {
-			/* imm reg */
-			/* operand order: SIM, VRT */
+
 			sim := int(c.regoff(&p.From))
 			o1 = AOP_IR(c.opirr(p.As), uint32(p.To.Reg), uint32(sim))
 		}
 
-	case 83: /* vector instructions, VA-form */
+	case 83:
 		if p.From.Type == obj.TYPE_REG {
-			/* reg reg reg reg */
-			/* 4-register operand order: VRA, VRB, VRC, VRT */
+
 			o1 = AOP_RRRR(c.oprrr(p.As), uint32(p.To.Reg), uint32(p.From.Reg), uint32(p.Reg), uint32(p.GetFrom3().Reg))
 		} else if p.From.Type == obj.TYPE_CONST {
-			/* imm reg reg reg */
-			/* operand order: SHB, VRA, VRB, VRT */
+
 			shb := int(c.regoff(&p.From))
 			o1 = AOP_IRRR(c.opirrr(p.As), uint32(p.To.Reg), uint32(p.Reg), uint32(p.GetFrom3().Reg), uint32(shb))
 		}
 
-	case 84: // ISEL BC,RA,RB,RT -> isel rt,ra,rb,bc
+	case 84:
 		bc := c.vregoff(&p.From)
 
-		// rt = To.Reg, ra = p.Reg, rb = p.From3.Reg
 		o1 = AOP_ISEL(OP_ISEL, uint32(p.To.Reg), uint32(p.Reg), uint32(p.GetFrom3().Reg), uint32(bc))
 
-	case 85: /* vector instructions, VX-form */
-		/* reg none reg */
-		/* 2-register operand order: VRB, VRT */
+	case 85:
+
 		o1 = AOP_RR(c.oprrr(p.As), uint32(p.To.Reg), uint32(p.From.Reg))
 
-	case 86: /* VSX indexed store, XX1-form */
-		/* reg reg reg */
-		/* 3-register operand order: XT, (RB)(RA*1) */
+	case 86:
+
 		o1 = AOP_XX1(c.opstorex(p.As), uint32(p.From.Reg), uint32(p.To.Index), uint32(p.To.Reg))
 
-	case 87: /* VSX indexed load, XX1-form */
-		/* reg reg reg */
-		/* 3-register operand order: (RB)(RA*1), XT */
+	case 87:
+
 		o1 = AOP_XX1(c.oploadx(p.As), uint32(p.To.Reg), uint32(p.From.Index), uint32(p.From.Reg))
 
-	case 88: /* VSX instructions, XX1-form */
-		/* reg reg none OR reg reg reg */
-		/* 3-register operand order: RA, RB, XT */
-		/* 2-register operand order: XS, RA or RA, XT */
+	case 88:
+
 		xt := int32(p.To.Reg)
 		xs := int32(p.From.Reg)
-		/* We need to treat the special case of extended mnemonics that may have a FREG/VREG as an argument */
+
 		if REG_V0 <= xt && xt <= REG_V31 {
-			/* Convert V0-V31 to VS32-VS63 */
+
 			xt = xt + 64
 			o1 = AOP_XX1(c.oprrr(p.As), uint32(p.To.Reg), uint32(p.From.Reg), uint32(p.Reg))
 		} else if REG_F0 <= xt && xt <= REG_F31 {
-			/* Convert F0-F31 to VS0-VS31 */
+
 			xt = xt + 64
 			o1 = AOP_XX1(c.oprrr(p.As), uint32(p.To.Reg), uint32(p.From.Reg), uint32(p.Reg))
 		} else if REG_VS0 <= xt && xt <= REG_VS63 {
 			o1 = AOP_XX1(c.oprrr(p.As), uint32(p.To.Reg), uint32(p.From.Reg), uint32(p.Reg))
 		} else if REG_V0 <= xs && xs <= REG_V31 {
-			/* Likewise for XS */
+
 			xs = xs + 64
 			o1 = AOP_XX1(c.oprrr(p.As), uint32(p.From.Reg), uint32(p.To.Reg), uint32(p.Reg))
 		} else if REG_F0 <= xs && xs <= REG_F31 {
@@ -3485,57 +3316,50 @@ func (c *ctxt9) asmout(p *obj.Prog, o *Optab, out []uint32) {
 			o1 = AOP_XX1(c.oprrr(p.As), uint32(p.From.Reg), uint32(p.To.Reg), uint32(p.Reg))
 		}
 
-	case 89: /* VSX instructions, XX2-form */
-		/* reg none reg OR reg imm reg */
-		/* 2-register operand order: XB, XT or XB, UIM, XT*/
+	case 89:
+
 		uim := int(c.regoff(p.GetFrom3()))
 		o1 = AOP_XX2(c.oprrr(p.As), uint32(p.To.Reg), uint32(uim), uint32(p.From.Reg))
 
-	case 90: /* VSX instructions, XX3-form */
+	case 90:
 		if p.From3Type() == obj.TYPE_NONE {
-			/* reg reg reg */
-			/* 3-register operand order: XA, XB, XT */
+
 			o1 = AOP_XX3(c.oprrr(p.As), uint32(p.To.Reg), uint32(p.From.Reg), uint32(p.Reg))
 		} else if p.From3Type() == obj.TYPE_CONST {
-			/* reg reg reg imm */
-			/* operand order: XA, XB, DM, XT */
+
 			dm := int(c.regoff(p.GetFrom3()))
 			o1 = AOP_XX3I(c.oprrr(p.As), uint32(p.To.Reg), uint32(p.From.Reg), uint32(p.Reg), uint32(dm))
 		}
 
-	case 91: /* VSX instructions, XX4-form */
-		/* reg reg reg reg */
-		/* 3-register operand order: XA, XB, XC, XT */
+	case 91:
+
 		o1 = AOP_XX4(c.oprrr(p.As), uint32(p.To.Reg), uint32(p.From.Reg), uint32(p.Reg), uint32(p.GetFrom3().Reg))
 
-	case 92: /* X-form instructions, 3-operands */
+	case 92:
 		if p.To.Type == obj.TYPE_CONST {
-			/* imm reg reg */
+
 			xf := int32(p.From.Reg)
 			if REG_F0 <= xf && xf <= REG_F31 {
-				/* operand order: FRA, FRB, BF */
+
 				bf := int(c.regoff(&p.To)) << 2
 				o1 = AOP_RRR(c.opirr(p.As), uint32(bf), uint32(p.From.Reg), uint32(p.Reg))
 			} else {
-				/* operand order: RA, RB, L */
+
 				l := int(c.regoff(&p.To))
 				o1 = AOP_RRR(c.opirr(p.As), uint32(l), uint32(p.From.Reg), uint32(p.Reg))
 			}
 		} else if p.From3Type() == obj.TYPE_CONST {
-			/* reg reg imm */
-			/* operand order: RB, L, RA */
+
 			l := int(c.regoff(p.GetFrom3()))
 			o1 = AOP_RRR(c.opirr(p.As), uint32(l), uint32(p.To.Reg), uint32(p.From.Reg))
 		} else if p.To.Type == obj.TYPE_REG {
 			cr := int32(p.To.Reg)
 			if REG_CR0 <= cr && cr <= REG_CR7 {
-				/* cr reg reg */
-				/* operand order: RA, RB, BF */
+
 				bf := (int(p.To.Reg) & 7) << 2
 				o1 = AOP_RRR(c.opirr(p.As), uint32(bf), uint32(p.From.Reg), uint32(p.Reg))
 			} else if p.From.Type == obj.TYPE_CONST {
-				/* reg imm */
-				/* operand order: L, RT */
+
 				l := int(c.regoff(&p.From))
 				o1 = AOP_RRR(c.opirr(p.As), uint32(p.To.Reg), uint32(l), uint32(p.Reg))
 			} else {
@@ -3543,28 +3367,24 @@ func (c *ctxt9) asmout(p *obj.Prog, o *Optab, out []uint32) {
 				case ACOPY, APASTECC:
 					o1 = AOP_RRR(c.opirr(p.As), uint32(1), uint32(p.From.Reg), uint32(p.To.Reg))
 				default:
-					/* reg reg reg */
-					/* operand order: RS, RB, RA */
+
 					o1 = AOP_RRR(c.oprrr(p.As), uint32(p.From.Reg), uint32(p.To.Reg), uint32(p.Reg))
 				}
 			}
 		}
 
-	case 93: /* X-form instructions, 2-operands */
+	case 93:
 		if p.To.Type == obj.TYPE_CONST {
-			/* imm reg */
-			/* operand order: FRB, BF */
+
 			bf := int(c.regoff(&p.To)) << 2
 			o1 = AOP_RR(c.opirr(p.As), uint32(bf), uint32(p.From.Reg))
 		} else if p.Reg == 0 {
-			/* popcnt* r,r, X-form */
-			/* operand order: RS, RA */
+
 			o1 = AOP_RRR(c.oprrr(p.As), uint32(p.From.Reg), uint32(p.To.Reg), uint32(p.Reg))
 		}
 
-	case 94: /* Z23-form instructions, 4-operands */
-		/* reg reg reg imm */
-		/* operand order: RA, RB, CY, RT */
+	case 94:
+
 		cy := int(c.regoff(p.GetFrom3()))
 		o1 = AOP_Z23I(c.oprrr(p.As), uint32(p.To.Reg), uint32(p.From.Reg), uint32(p.Reg), uint32(cy))
 	}
@@ -3631,7 +3451,7 @@ func (c *ctxt9) oprrr(a obj.As) uint32 {
 	case AADDZEVCC:
 		return OPVCC(31, 202, 1, 1)
 	case AADDEX:
-		return OPVCC(31, 170, 0, 0) /* addex - v3.0b */
+		return OPVCC(31, 170, 0, 0)
 
 	case AAND:
 		return OPVCC(31, 28, 0, 0)
@@ -3643,15 +3463,15 @@ func (c *ctxt9) oprrr(a obj.As) uint32 {
 		return OPVCC(31, 60, 0, 1)
 
 	case ACMP:
-		return OPVCC(31, 0, 0, 0) | 1<<21 /* L=1 */
+		return OPVCC(31, 0, 0, 0) | 1<<21
 	case ACMPU:
 		return OPVCC(31, 32, 0, 0) | 1<<21
 	case ACMPW:
-		return OPVCC(31, 0, 0, 0) /* L=0 */
+		return OPVCC(31, 0, 0, 0)
 	case ACMPWU:
 		return OPVCC(31, 32, 0, 0)
 	case ACMPB:
-		return OPVCC(31, 508, 0, 0) /* cmpb - v2.05 */
+		return OPVCC(31, 508, 0, 0)
 
 	case ACNTLZW:
 		return OPVCC(31, 26, 0, 0)
@@ -3835,7 +3655,7 @@ func (c *ctxt9) oprrr(a obj.As) uint32 {
 		return OPVCC(59, 29, 0, 1)
 
 	case AFMOVS, AFMOVD:
-		return OPVCC(63, 72, 0, 0) /* load */
+		return OPVCC(63, 72, 0, 0)
 	case AFMOVDCC:
 		return OPVCC(63, 72, 0, 1)
 	case AFMSUB:
@@ -4005,11 +3825,11 @@ func (c *ctxt9) oprrr(a obj.As) uint32 {
 		return OPVCC(31, 412, 0, 1)
 
 	case APOPCNTD:
-		return OPVCC(31, 506, 0, 0) /* popcntd - v2.06 */
+		return OPVCC(31, 506, 0, 0)
 	case APOPCNTW:
-		return OPVCC(31, 378, 0, 0) /* popcntw - v2.06 */
+		return OPVCC(31, 378, 0, 0)
 	case APOPCNTB:
-		return OPVCC(31, 122, 0, 0) /* popcntb - v2.02 */
+		return OPVCC(31, 122, 0, 0)
 
 	case ARFI:
 		return OPVCC(19, 50, 0, 0)
@@ -4039,9 +3859,9 @@ func (c *ctxt9) oprrr(a obj.As) uint32 {
 	case ARLDICLCC:
 		return OPVCC(30, 0, 0, 1)
 	case ARLDICR:
-		return OPVCC(30, 0, 0, 0) | 2<<1 // rldicr
+		return OPVCC(30, 0, 0, 0) | 2<<1
 	case ARLDICRCC:
-		return OPVCC(30, 0, 0, 1) | 2<<1 // rldicr.
+		return OPVCC(30, 0, 0, 1) | 2<<1
 
 	case ASYSCALL:
 		return OPVCC(17, 1, 0, 0)
@@ -4144,403 +3964,396 @@ func (c *ctxt9) oprrr(a obj.As) uint32 {
 	case ATD:
 		return OPVCC(31, 68, 0, 0)
 
-	/* Vector (VMX/Altivec) instructions */
-	/* ISA 2.03 enables these for PPC970. For POWERx processors, these */
-	/* are enabled starting at POWER6 (ISA 2.05). */
 	case AVAND:
-		return OPVX(4, 1028, 0, 0) /* vand - v2.03 */
+		return OPVX(4, 1028, 0, 0)
 	case AVANDC:
-		return OPVX(4, 1092, 0, 0) /* vandc - v2.03 */
+		return OPVX(4, 1092, 0, 0)
 	case AVNAND:
-		return OPVX(4, 1412, 0, 0) /* vnand - v2.07 */
+		return OPVX(4, 1412, 0, 0)
 
 	case AVOR:
-		return OPVX(4, 1156, 0, 0) /* vor - v2.03 */
+		return OPVX(4, 1156, 0, 0)
 	case AVORC:
-		return OPVX(4, 1348, 0, 0) /* vorc - v2.07 */
+		return OPVX(4, 1348, 0, 0)
 	case AVNOR:
-		return OPVX(4, 1284, 0, 0) /* vnor - v2.03 */
+		return OPVX(4, 1284, 0, 0)
 	case AVXOR:
-		return OPVX(4, 1220, 0, 0) /* vxor - v2.03 */
+		return OPVX(4, 1220, 0, 0)
 	case AVEQV:
-		return OPVX(4, 1668, 0, 0) /* veqv - v2.07 */
+		return OPVX(4, 1668, 0, 0)
 
 	case AVADDUBM:
-		return OPVX(4, 0, 0, 0) /* vaddubm - v2.03 */
+		return OPVX(4, 0, 0, 0)
 	case AVADDUHM:
-		return OPVX(4, 64, 0, 0) /* vadduhm - v2.03 */
+		return OPVX(4, 64, 0, 0)
 	case AVADDUWM:
-		return OPVX(4, 128, 0, 0) /* vadduwm - v2.03 */
+		return OPVX(4, 128, 0, 0)
 	case AVADDUDM:
-		return OPVX(4, 192, 0, 0) /* vaddudm - v2.07 */
+		return OPVX(4, 192, 0, 0)
 	case AVADDUQM:
-		return OPVX(4, 256, 0, 0) /* vadduqm - v2.07 */
+		return OPVX(4, 256, 0, 0)
 
 	case AVADDCUQ:
-		return OPVX(4, 320, 0, 0) /* vaddcuq - v2.07 */
+		return OPVX(4, 320, 0, 0)
 	case AVADDCUW:
-		return OPVX(4, 384, 0, 0) /* vaddcuw - v2.03 */
+		return OPVX(4, 384, 0, 0)
 
 	case AVADDUBS:
-		return OPVX(4, 512, 0, 0) /* vaddubs - v2.03 */
+		return OPVX(4, 512, 0, 0)
 	case AVADDUHS:
-		return OPVX(4, 576, 0, 0) /* vadduhs - v2.03 */
+		return OPVX(4, 576, 0, 0)
 	case AVADDUWS:
-		return OPVX(4, 640, 0, 0) /* vadduws - v2.03 */
+		return OPVX(4, 640, 0, 0)
 
 	case AVADDSBS:
-		return OPVX(4, 768, 0, 0) /* vaddsbs - v2.03 */
+		return OPVX(4, 768, 0, 0)
 	case AVADDSHS:
-		return OPVX(4, 832, 0, 0) /* vaddshs - v2.03 */
+		return OPVX(4, 832, 0, 0)
 	case AVADDSWS:
-		return OPVX(4, 896, 0, 0) /* vaddsws - v2.03 */
+		return OPVX(4, 896, 0, 0)
 
 	case AVADDEUQM:
-		return OPVX(4, 60, 0, 0) /* vaddeuqm - v2.07 */
+		return OPVX(4, 60, 0, 0)
 	case AVADDECUQ:
-		return OPVX(4, 61, 0, 0) /* vaddecuq - v2.07 */
+		return OPVX(4, 61, 0, 0)
 
 	case AVMULESB:
-		return OPVX(4, 776, 0, 0) /* vmulesb - v2.03 */
+		return OPVX(4, 776, 0, 0)
 	case AVMULOSB:
-		return OPVX(4, 264, 0, 0) /* vmulosb - v2.03 */
+		return OPVX(4, 264, 0, 0)
 	case AVMULEUB:
-		return OPVX(4, 520, 0, 0) /* vmuleub - v2.03 */
+		return OPVX(4, 520, 0, 0)
 	case AVMULOUB:
-		return OPVX(4, 8, 0, 0) /* vmuloub - v2.03 */
+		return OPVX(4, 8, 0, 0)
 	case AVMULESH:
-		return OPVX(4, 840, 0, 0) /* vmulesh - v2.03 */
+		return OPVX(4, 840, 0, 0)
 	case AVMULOSH:
-		return OPVX(4, 328, 0, 0) /* vmulosh - v2.03 */
+		return OPVX(4, 328, 0, 0)
 	case AVMULEUH:
-		return OPVX(4, 584, 0, 0) /* vmuleuh - v2.03 */
+		return OPVX(4, 584, 0, 0)
 	case AVMULOUH:
-		return OPVX(4, 72, 0, 0) /* vmulouh - v2.03 */
+		return OPVX(4, 72, 0, 0)
 	case AVMULESW:
-		return OPVX(4, 904, 0, 0) /* vmulesw - v2.07 */
+		return OPVX(4, 904, 0, 0)
 	case AVMULOSW:
-		return OPVX(4, 392, 0, 0) /* vmulosw - v2.07 */
+		return OPVX(4, 392, 0, 0)
 	case AVMULEUW:
-		return OPVX(4, 648, 0, 0) /* vmuleuw - v2.07 */
+		return OPVX(4, 648, 0, 0)
 	case AVMULOUW:
-		return OPVX(4, 136, 0, 0) /* vmulouw - v2.07 */
+		return OPVX(4, 136, 0, 0)
 	case AVMULUWM:
-		return OPVX(4, 137, 0, 0) /* vmuluwm - v2.07 */
+		return OPVX(4, 137, 0, 0)
 
 	case AVPMSUMB:
-		return OPVX(4, 1032, 0, 0) /* vpmsumb - v2.07 */
+		return OPVX(4, 1032, 0, 0)
 	case AVPMSUMH:
-		return OPVX(4, 1096, 0, 0) /* vpmsumh - v2.07 */
+		return OPVX(4, 1096, 0, 0)
 	case AVPMSUMW:
-		return OPVX(4, 1160, 0, 0) /* vpmsumw - v2.07 */
+		return OPVX(4, 1160, 0, 0)
 	case AVPMSUMD:
-		return OPVX(4, 1224, 0, 0) /* vpmsumd - v2.07 */
+		return OPVX(4, 1224, 0, 0)
 
 	case AVMSUMUDM:
-		return OPVX(4, 35, 0, 0) /* vmsumudm - v3.00b */
+		return OPVX(4, 35, 0, 0)
 
 	case AVSUBUBM:
-		return OPVX(4, 1024, 0, 0) /* vsububm - v2.03 */
+		return OPVX(4, 1024, 0, 0)
 	case AVSUBUHM:
-		return OPVX(4, 1088, 0, 0) /* vsubuhm - v2.03 */
+		return OPVX(4, 1088, 0, 0)
 	case AVSUBUWM:
-		return OPVX(4, 1152, 0, 0) /* vsubuwm - v2.03 */
+		return OPVX(4, 1152, 0, 0)
 	case AVSUBUDM:
-		return OPVX(4, 1216, 0, 0) /* vsubudm - v2.07 */
+		return OPVX(4, 1216, 0, 0)
 	case AVSUBUQM:
-		return OPVX(4, 1280, 0, 0) /* vsubuqm - v2.07 */
+		return OPVX(4, 1280, 0, 0)
 
 	case AVSUBCUQ:
-		return OPVX(4, 1344, 0, 0) /* vsubcuq - v2.07 */
+		return OPVX(4, 1344, 0, 0)
 	case AVSUBCUW:
-		return OPVX(4, 1408, 0, 0) /* vsubcuw - v2.03 */
+		return OPVX(4, 1408, 0, 0)
 
 	case AVSUBUBS:
-		return OPVX(4, 1536, 0, 0) /* vsububs - v2.03 */
+		return OPVX(4, 1536, 0, 0)
 	case AVSUBUHS:
-		return OPVX(4, 1600, 0, 0) /* vsubuhs - v2.03 */
+		return OPVX(4, 1600, 0, 0)
 	case AVSUBUWS:
-		return OPVX(4, 1664, 0, 0) /* vsubuws - v2.03 */
+		return OPVX(4, 1664, 0, 0)
 
 	case AVSUBSBS:
-		return OPVX(4, 1792, 0, 0) /* vsubsbs - v2.03 */
+		return OPVX(4, 1792, 0, 0)
 	case AVSUBSHS:
-		return OPVX(4, 1856, 0, 0) /* vsubshs - v2.03 */
+		return OPVX(4, 1856, 0, 0)
 	case AVSUBSWS:
-		return OPVX(4, 1920, 0, 0) /* vsubsws - v2.03 */
+		return OPVX(4, 1920, 0, 0)
 
 	case AVSUBEUQM:
-		return OPVX(4, 62, 0, 0) /* vsubeuqm - v2.07 */
+		return OPVX(4, 62, 0, 0)
 	case AVSUBECUQ:
-		return OPVX(4, 63, 0, 0) /* vsubecuq - v2.07 */
+		return OPVX(4, 63, 0, 0)
 
 	case AVRLB:
-		return OPVX(4, 4, 0, 0) /* vrlb - v2.03 */
+		return OPVX(4, 4, 0, 0)
 	case AVRLH:
-		return OPVX(4, 68, 0, 0) /* vrlh - v2.03 */
+		return OPVX(4, 68, 0, 0)
 	case AVRLW:
-		return OPVX(4, 132, 0, 0) /* vrlw - v2.03 */
+		return OPVX(4, 132, 0, 0)
 	case AVRLD:
-		return OPVX(4, 196, 0, 0) /* vrld - v2.07 */
+		return OPVX(4, 196, 0, 0)
 
 	case AVSLB:
-		return OPVX(4, 260, 0, 0) /* vslh - v2.03 */
+		return OPVX(4, 260, 0, 0)
 	case AVSLH:
-		return OPVX(4, 324, 0, 0) /* vslh - v2.03 */
+		return OPVX(4, 324, 0, 0)
 	case AVSLW:
-		return OPVX(4, 388, 0, 0) /* vslw - v2.03 */
+		return OPVX(4, 388, 0, 0)
 	case AVSL:
-		return OPVX(4, 452, 0, 0) /* vsl - v2.03 */
+		return OPVX(4, 452, 0, 0)
 	case AVSLO:
-		return OPVX(4, 1036, 0, 0) /* vsl - v2.03 */
+		return OPVX(4, 1036, 0, 0)
 	case AVSRB:
-		return OPVX(4, 516, 0, 0) /* vsrb - v2.03 */
+		return OPVX(4, 516, 0, 0)
 	case AVSRH:
-		return OPVX(4, 580, 0, 0) /* vsrh - v2.03 */
+		return OPVX(4, 580, 0, 0)
 	case AVSRW:
-		return OPVX(4, 644, 0, 0) /* vsrw - v2.03 */
+		return OPVX(4, 644, 0, 0)
 	case AVSR:
-		return OPVX(4, 708, 0, 0) /* vsr - v2.03 */
+		return OPVX(4, 708, 0, 0)
 	case AVSRO:
-		return OPVX(4, 1100, 0, 0) /* vsro - v2.03 */
+		return OPVX(4, 1100, 0, 0)
 	case AVSLD:
-		return OPVX(4, 1476, 0, 0) /* vsld - v2.07 */
+		return OPVX(4, 1476, 0, 0)
 	case AVSRD:
-		return OPVX(4, 1732, 0, 0) /* vsrd - v2.07 */
+		return OPVX(4, 1732, 0, 0)
 
 	case AVSRAB:
-		return OPVX(4, 772, 0, 0) /* vsrab - v2.03 */
+		return OPVX(4, 772, 0, 0)
 	case AVSRAH:
-		return OPVX(4, 836, 0, 0) /* vsrah - v2.03 */
+		return OPVX(4, 836, 0, 0)
 	case AVSRAW:
-		return OPVX(4, 900, 0, 0) /* vsraw - v2.03 */
+		return OPVX(4, 900, 0, 0)
 	case AVSRAD:
-		return OPVX(4, 964, 0, 0) /* vsrad - v2.07 */
+		return OPVX(4, 964, 0, 0)
 
 	case AVBPERMQ:
-		return OPVC(4, 1356, 0, 0) /* vbpermq - v2.07 */
+		return OPVC(4, 1356, 0, 0)
 	case AVBPERMD:
-		return OPVC(4, 1484, 0, 0) /* vbpermd - v3.00 */
+		return OPVC(4, 1484, 0, 0)
 
 	case AVCLZB:
-		return OPVX(4, 1794, 0, 0) /* vclzb - v2.07 */
+		return OPVX(4, 1794, 0, 0)
 	case AVCLZH:
-		return OPVX(4, 1858, 0, 0) /* vclzh - v2.07 */
+		return OPVX(4, 1858, 0, 0)
 	case AVCLZW:
-		return OPVX(4, 1922, 0, 0) /* vclzw - v2.07 */
+		return OPVX(4, 1922, 0, 0)
 	case AVCLZD:
-		return OPVX(4, 1986, 0, 0) /* vclzd - v2.07 */
+		return OPVX(4, 1986, 0, 0)
 
 	case AVPOPCNTB:
-		return OPVX(4, 1795, 0, 0) /* vpopcntb - v2.07 */
+		return OPVX(4, 1795, 0, 0)
 	case AVPOPCNTH:
-		return OPVX(4, 1859, 0, 0) /* vpopcnth - v2.07 */
+		return OPVX(4, 1859, 0, 0)
 	case AVPOPCNTW:
-		return OPVX(4, 1923, 0, 0) /* vpopcntw - v2.07 */
+		return OPVX(4, 1923, 0, 0)
 	case AVPOPCNTD:
-		return OPVX(4, 1987, 0, 0) /* vpopcntd - v2.07 */
+		return OPVX(4, 1987, 0, 0)
 
 	case AVCMPEQUB:
-		return OPVC(4, 6, 0, 0) /* vcmpequb - v2.03 */
+		return OPVC(4, 6, 0, 0)
 	case AVCMPEQUBCC:
-		return OPVC(4, 6, 0, 1) /* vcmpequb. - v2.03 */
+		return OPVC(4, 6, 0, 1)
 	case AVCMPEQUH:
-		return OPVC(4, 70, 0, 0) /* vcmpequh - v2.03 */
+		return OPVC(4, 70, 0, 0)
 	case AVCMPEQUHCC:
-		return OPVC(4, 70, 0, 1) /* vcmpequh. - v2.03 */
+		return OPVC(4, 70, 0, 1)
 	case AVCMPEQUW:
-		return OPVC(4, 134, 0, 0) /* vcmpequw - v2.03 */
+		return OPVC(4, 134, 0, 0)
 	case AVCMPEQUWCC:
-		return OPVC(4, 134, 0, 1) /* vcmpequw. - v2.03 */
+		return OPVC(4, 134, 0, 1)
 	case AVCMPEQUD:
-		return OPVC(4, 199, 0, 0) /* vcmpequd - v2.07 */
+		return OPVC(4, 199, 0, 0)
 	case AVCMPEQUDCC:
-		return OPVC(4, 199, 0, 1) /* vcmpequd. - v2.07 */
+		return OPVC(4, 199, 0, 1)
 
 	case AVCMPGTUB:
-		return OPVC(4, 518, 0, 0) /* vcmpgtub - v2.03 */
+		return OPVC(4, 518, 0, 0)
 	case AVCMPGTUBCC:
-		return OPVC(4, 518, 0, 1) /* vcmpgtub. - v2.03 */
+		return OPVC(4, 518, 0, 1)
 	case AVCMPGTUH:
-		return OPVC(4, 582, 0, 0) /* vcmpgtuh - v2.03 */
+		return OPVC(4, 582, 0, 0)
 	case AVCMPGTUHCC:
-		return OPVC(4, 582, 0, 1) /* vcmpgtuh. - v2.03 */
+		return OPVC(4, 582, 0, 1)
 	case AVCMPGTUW:
-		return OPVC(4, 646, 0, 0) /* vcmpgtuw - v2.03 */
+		return OPVC(4, 646, 0, 0)
 	case AVCMPGTUWCC:
-		return OPVC(4, 646, 0, 1) /* vcmpgtuw. - v2.03 */
+		return OPVC(4, 646, 0, 1)
 	case AVCMPGTUD:
-		return OPVC(4, 711, 0, 0) /* vcmpgtud - v2.07 */
+		return OPVC(4, 711, 0, 0)
 	case AVCMPGTUDCC:
-		return OPVC(4, 711, 0, 1) /* vcmpgtud. v2.07 */
+		return OPVC(4, 711, 0, 1)
 	case AVCMPGTSB:
-		return OPVC(4, 774, 0, 0) /* vcmpgtsb - v2.03 */
+		return OPVC(4, 774, 0, 0)
 	case AVCMPGTSBCC:
-		return OPVC(4, 774, 0, 1) /* vcmpgtsb. - v2.03 */
+		return OPVC(4, 774, 0, 1)
 	case AVCMPGTSH:
-		return OPVC(4, 838, 0, 0) /* vcmpgtsh - v2.03 */
+		return OPVC(4, 838, 0, 0)
 	case AVCMPGTSHCC:
-		return OPVC(4, 838, 0, 1) /* vcmpgtsh. - v2.03 */
+		return OPVC(4, 838, 0, 1)
 	case AVCMPGTSW:
-		return OPVC(4, 902, 0, 0) /* vcmpgtsw - v2.03 */
+		return OPVC(4, 902, 0, 0)
 	case AVCMPGTSWCC:
-		return OPVC(4, 902, 0, 1) /* vcmpgtsw. - v2.03 */
+		return OPVC(4, 902, 0, 1)
 	case AVCMPGTSD:
-		return OPVC(4, 967, 0, 0) /* vcmpgtsd - v2.07 */
+		return OPVC(4, 967, 0, 0)
 	case AVCMPGTSDCC:
-		return OPVC(4, 967, 0, 1) /* vcmpgtsd. - v2.07 */
+		return OPVC(4, 967, 0, 1)
 
 	case AVCMPNEZB:
-		return OPVC(4, 263, 0, 0) /* vcmpnezb - v3.00 */
+		return OPVC(4, 263, 0, 0)
 	case AVCMPNEZBCC:
-		return OPVC(4, 263, 0, 1) /* vcmpnezb. - v3.00 */
+		return OPVC(4, 263, 0, 1)
 
 	case AVPERM:
-		return OPVX(4, 43, 0, 0) /* vperm - v2.03 */
+		return OPVX(4, 43, 0, 0)
 
 	case AVSEL:
-		return OPVX(4, 42, 0, 0) /* vsel - v2.03 */
+		return OPVX(4, 42, 0, 0)
 
 	case AVCIPHER:
-		return OPVX(4, 1288, 0, 0) /* vcipher - v2.07 */
+		return OPVX(4, 1288, 0, 0)
 	case AVCIPHERLAST:
-		return OPVX(4, 1289, 0, 0) /* vcipherlast - v2.07 */
+		return OPVX(4, 1289, 0, 0)
 	case AVNCIPHER:
-		return OPVX(4, 1352, 0, 0) /* vncipher - v2.07 */
+		return OPVX(4, 1352, 0, 0)
 	case AVNCIPHERLAST:
-		return OPVX(4, 1353, 0, 0) /* vncipherlast - v2.07 */
+		return OPVX(4, 1353, 0, 0)
 	case AVSBOX:
-		return OPVX(4, 1480, 0, 0) /* vsbox - v2.07 */
-	/* End of vector instructions */
+		return OPVX(4, 1480, 0, 0)
 
-	/* Vector scalar (VSX) instructions */
-	/* ISA 2.06 enables these for POWER7. */
 	case AMFVSRD, AMFVRD, AMFFPRD:
-		return OPVXX1(31, 51, 0) /* mfvsrd - v2.07 */
+		return OPVXX1(31, 51, 0)
 	case AMFVSRWZ:
-		return OPVXX1(31, 115, 0) /* mfvsrwz - v2.07 */
+		return OPVXX1(31, 115, 0)
 	case AMFVSRLD:
-		return OPVXX1(31, 307, 0) /* mfvsrld - v3.00 */
+		return OPVXX1(31, 307, 0)
 
 	case AMTVSRD, AMTFPRD, AMTVRD:
-		return OPVXX1(31, 179, 0) /* mtvsrd - v2.07 */
+		return OPVXX1(31, 179, 0)
 	case AMTVSRWA:
-		return OPVXX1(31, 211, 0) /* mtvsrwa - v2.07 */
+		return OPVXX1(31, 211, 0)
 	case AMTVSRWZ:
-		return OPVXX1(31, 243, 0) /* mtvsrwz - v2.07 */
+		return OPVXX1(31, 243, 0)
 	case AMTVSRDD:
-		return OPVXX1(31, 435, 0) /* mtvsrdd - v3.00 */
+		return OPVXX1(31, 435, 0)
 	case AMTVSRWS:
-		return OPVXX1(31, 403, 0) /* mtvsrws - v3.00 */
+		return OPVXX1(31, 403, 0)
 
 	case AXXLANDQ:
-		return OPVXX3(60, 130, 0) /* xxland - v2.06 */
+		return OPVXX3(60, 130, 0)
 	case AXXLANDC:
-		return OPVXX3(60, 138, 0) /* xxlandc - v2.06 */
+		return OPVXX3(60, 138, 0)
 	case AXXLEQV:
-		return OPVXX3(60, 186, 0) /* xxleqv - v2.07 */
+		return OPVXX3(60, 186, 0)
 	case AXXLNAND:
-		return OPVXX3(60, 178, 0) /* xxlnand - v2.07 */
+		return OPVXX3(60, 178, 0)
 
 	case AXXLORC:
-		return OPVXX3(60, 170, 0) /* xxlorc - v2.07 */
+		return OPVXX3(60, 170, 0)
 	case AXXLNOR:
-		return OPVXX3(60, 162, 0) /* xxlnor - v2.06 */
+		return OPVXX3(60, 162, 0)
 	case AXXLORQ:
-		return OPVXX3(60, 146, 0) /* xxlor - v2.06 */
+		return OPVXX3(60, 146, 0)
 	case AXXLXOR:
-		return OPVXX3(60, 154, 0) /* xxlxor - v2.06 */
+		return OPVXX3(60, 154, 0)
 
 	case AXXSEL:
-		return OPVXX4(60, 3, 0) /* xxsel - v2.06 */
+		return OPVXX4(60, 3, 0)
 
 	case AXXMRGHW:
-		return OPVXX3(60, 18, 0) /* xxmrghw - v2.06 */
+		return OPVXX3(60, 18, 0)
 	case AXXMRGLW:
-		return OPVXX3(60, 50, 0) /* xxmrglw - v2.06 */
+		return OPVXX3(60, 50, 0)
 
 	case AXXSPLTW:
-		return OPVXX2(60, 164, 0) /* xxspltw - v2.06 */
+		return OPVXX2(60, 164, 0)
 
 	case AXXPERMDI:
-		return OPVXX3(60, 10, 0) /* xxpermdi - v2.06 */
+		return OPVXX3(60, 10, 0)
 
 	case AXXSLDWI:
-		return OPVXX3(60, 2, 0) /* xxsldwi - v2.06 */
+		return OPVXX3(60, 2, 0)
 
 	case AXSCVDPSP:
-		return OPVXX2(60, 265, 0) /* xscvdpsp - v2.06 */
+		return OPVXX2(60, 265, 0)
 	case AXSCVSPDP:
-		return OPVXX2(60, 329, 0) /* xscvspdp - v2.06 */
+		return OPVXX2(60, 329, 0)
 	case AXSCVDPSPN:
-		return OPVXX2(60, 267, 0) /* xscvdpspn - v2.07 */
+		return OPVXX2(60, 267, 0)
 	case AXSCVSPDPN:
-		return OPVXX2(60, 331, 0) /* xscvspdpn - v2.07 */
+		return OPVXX2(60, 331, 0)
 
 	case AXVCVDPSP:
-		return OPVXX2(60, 393, 0) /* xvcvdpsp - v2.06 */
+		return OPVXX2(60, 393, 0)
 	case AXVCVSPDP:
-		return OPVXX2(60, 457, 0) /* xvcvspdp - v2.06 */
+		return OPVXX2(60, 457, 0)
 
 	case AXSCVDPSXDS:
-		return OPVXX2(60, 344, 0) /* xscvdpsxds - v2.06 */
+		return OPVXX2(60, 344, 0)
 	case AXSCVDPSXWS:
-		return OPVXX2(60, 88, 0) /* xscvdpsxws - v2.06 */
+		return OPVXX2(60, 88, 0)
 	case AXSCVDPUXDS:
-		return OPVXX2(60, 328, 0) /* xscvdpuxds - v2.06 */
+		return OPVXX2(60, 328, 0)
 	case AXSCVDPUXWS:
-		return OPVXX2(60, 72, 0) /* xscvdpuxws - v2.06 */
+		return OPVXX2(60, 72, 0)
 
 	case AXSCVSXDDP:
-		return OPVXX2(60, 376, 0) /* xscvsxddp - v2.06 */
+		return OPVXX2(60, 376, 0)
 	case AXSCVUXDDP:
-		return OPVXX2(60, 360, 0) /* xscvuxddp - v2.06 */
+		return OPVXX2(60, 360, 0)
 	case AXSCVSXDSP:
-		return OPVXX2(60, 312, 0) /* xscvsxdsp - v2.06 */
+		return OPVXX2(60, 312, 0)
 	case AXSCVUXDSP:
-		return OPVXX2(60, 296, 0) /* xscvuxdsp - v2.06 */
+		return OPVXX2(60, 296, 0)
 
 	case AXVCVDPSXDS:
-		return OPVXX2(60, 472, 0) /* xvcvdpsxds - v2.06 */
+		return OPVXX2(60, 472, 0)
 	case AXVCVDPSXWS:
-		return OPVXX2(60, 216, 0) /* xvcvdpsxws - v2.06 */
+		return OPVXX2(60, 216, 0)
 	case AXVCVDPUXDS:
-		return OPVXX2(60, 456, 0) /* xvcvdpuxds - v2.06 */
+		return OPVXX2(60, 456, 0)
 	case AXVCVDPUXWS:
-		return OPVXX2(60, 200, 0) /* xvcvdpuxws - v2.06 */
+		return OPVXX2(60, 200, 0)
 	case AXVCVSPSXDS:
-		return OPVXX2(60, 408, 0) /* xvcvspsxds - v2.07 */
+		return OPVXX2(60, 408, 0)
 	case AXVCVSPSXWS:
-		return OPVXX2(60, 152, 0) /* xvcvspsxws - v2.07 */
+		return OPVXX2(60, 152, 0)
 	case AXVCVSPUXDS:
-		return OPVXX2(60, 392, 0) /* xvcvspuxds - v2.07 */
+		return OPVXX2(60, 392, 0)
 	case AXVCVSPUXWS:
-		return OPVXX2(60, 136, 0) /* xvcvspuxws - v2.07 */
+		return OPVXX2(60, 136, 0)
 
 	case AXVCVSXDDP:
-		return OPVXX2(60, 504, 0) /* xvcvsxddp - v2.06 */
+		return OPVXX2(60, 504, 0)
 	case AXVCVSXWDP:
-		return OPVXX2(60, 248, 0) /* xvcvsxwdp - v2.06 */
+		return OPVXX2(60, 248, 0)
 	case AXVCVUXDDP:
-		return OPVXX2(60, 488, 0) /* xvcvuxddp - v2.06 */
+		return OPVXX2(60, 488, 0)
 	case AXVCVUXWDP:
-		return OPVXX2(60, 232, 0) /* xvcvuxwdp - v2.06 */
+		return OPVXX2(60, 232, 0)
 	case AXVCVSXDSP:
-		return OPVXX2(60, 440, 0) /* xvcvsxdsp - v2.06 */
+		return OPVXX2(60, 440, 0)
 	case AXVCVSXWSP:
-		return OPVXX2(60, 184, 0) /* xvcvsxwsp - v2.06 */
+		return OPVXX2(60, 184, 0)
 	case AXVCVUXDSP:
-		return OPVXX2(60, 424, 0) /* xvcvuxdsp - v2.06 */
+		return OPVXX2(60, 424, 0)
 	case AXVCVUXWSP:
-		return OPVXX2(60, 168, 0) /* xvcvuxwsp - v2.06 */
-	/* End of VSX instructions */
+		return OPVXX2(60, 168, 0)
 
 	case AMADDHD:
-		return OPVX(4, 48, 0, 0) /* maddhd - v3.00 */
+		return OPVX(4, 48, 0, 0)
 	case AMADDHDU:
-		return OPVX(4, 49, 0, 0) /* maddhdu - v3.00 */
+		return OPVX(4, 49, 0, 0)
 	case AMADDLD:
-		return OPVX(4, 51, 0, 0) /* maddld - v3.00 */
+		return OPVX(4, 51, 0, 0)
 
 	case AXOR:
 		return OPVCC(31, 316, 0, 0)
@@ -4554,11 +4367,9 @@ func (c *ctxt9) oprrr(a obj.As) uint32 {
 
 func (c *ctxt9) opirrr(a obj.As) uint32 {
 	switch a {
-	/* Vector (VMX/Altivec) instructions */
-	/* ISA 2.03 enables these for PPC970. For POWERx processors, these */
-	/* are enabled starting at POWER6 (ISA 2.05). */
+
 	case AVSLDOI:
-		return OPVX(4, 44, 0, 0) /* vsldoi - v2.03 */
+		return OPVX(4, 44, 0, 0)
 	}
 
 	c.ctxt.Diag("bad i/r/r/r opcode %v", a)
@@ -4567,12 +4378,11 @@ func (c *ctxt9) opirrr(a obj.As) uint32 {
 
 func (c *ctxt9) opiirr(a obj.As) uint32 {
 	switch a {
-	/* Vector (VMX/Altivec) instructions */
-	/* ISA 2.07 enables these for POWER8 and beyond. */
+
 	case AVSHASIGMAW:
-		return OPVX(4, 1666, 0, 0) /* vshasigmaw - v2.07 */
+		return OPVX(4, 1666, 0, 0)
 	case AVSHASIGMAD:
-		return OPVX(4, 1730, 0, 0) /* vshasigmad - v2.07 */
+		return OPVX(4, 1730, 0, 0)
 	}
 
 	c.ctxt.Diag("bad i/i/r/r opcode %v", a)
@@ -4588,12 +4398,12 @@ func (c *ctxt9) opirr(a obj.As) uint32 {
 	case AADDCCC:
 		return OPVCC(13, 0, 0, 0)
 	case AADDIS:
-		return OPVCC(15, 0, 0, 0) /* ADDIS */
+		return OPVCC(15, 0, 0, 0)
 
 	case AANDCC:
 		return OPVCC(28, 0, 0, 0)
 	case AANDISCC:
-		return OPVCC(29, 0, 0, 0) /* ANDIS. */
+		return OPVCC(29, 0, 0, 0)
 
 	case ABR:
 		return OPVCC(18, 0, 0, 0)
@@ -4621,30 +4431,30 @@ func (c *ctxt9) opirr(a obj.As) uint32 {
 	case ABNE:
 		return AOP_RRR(16<<26, 4, 2, 0)
 	case ABVC:
-		return AOP_RRR(16<<26, 4, 3, 0) // apparently unordered-clear
+		return AOP_RRR(16<<26, 4, 3, 0)
 	case ABVS:
-		return AOP_RRR(16<<26, 12, 3, 0) // apparently unordered-set
+		return AOP_RRR(16<<26, 12, 3, 0)
 
 	case ACMP:
-		return OPVCC(11, 0, 0, 0) | 1<<21 /* L=1 */
+		return OPVCC(11, 0, 0, 0) | 1<<21
 	case ACMPU:
 		return OPVCC(10, 0, 0, 0) | 1<<21
 	case ACMPW:
-		return OPVCC(11, 0, 0, 0) /* L=0 */
+		return OPVCC(11, 0, 0, 0)
 	case ACMPWU:
 		return OPVCC(10, 0, 0, 0)
 	case ACMPEQB:
-		return OPVCC(31, 224, 0, 0) /* cmpeqb - v3.00 */
+		return OPVCC(31, 224, 0, 0)
 
 	case ALSW:
 		return OPVCC(31, 597, 0, 0)
 
 	case ACOPY:
-		return OPVCC(31, 774, 0, 0) /* copy - v3.00 */
+		return OPVCC(31, 774, 0, 0)
 	case APASTECC:
-		return OPVCC(31, 902, 0, 1) /* paste. - v3.00 */
+		return OPVCC(31, 902, 0, 1)
 	case ADARN:
-		return OPVCC(31, 755, 0, 0) /* darn - v3.00 */
+		return OPVCC(31, 755, 0, 0)
 
 	case AMULLW:
 		return OPVCC(7, 0, 0, 0)
@@ -4652,31 +4462,31 @@ func (c *ctxt9) opirr(a obj.As) uint32 {
 	case AOR:
 		return OPVCC(24, 0, 0, 0)
 	case AORIS:
-		return OPVCC(25, 0, 0, 0) /* ORIS */
+		return OPVCC(25, 0, 0, 0)
 
 	case ARLWMI:
-		return OPVCC(20, 0, 0, 0) /* rlwimi */
+		return OPVCC(20, 0, 0, 0)
 	case ARLWMICC:
 		return OPVCC(20, 0, 0, 1)
 	case ARLDMI:
-		return OPVCC(30, 0, 0, 0) | 3<<2 /* rldimi */
+		return OPVCC(30, 0, 0, 0) | 3<<2
 	case ARLDMICC:
 		return OPVCC(30, 0, 0, 1) | 3<<2
 	case ARLDIMI:
-		return OPVCC(30, 0, 0, 0) | 3<<2 /* rldimi */
+		return OPVCC(30, 0, 0, 0) | 3<<2
 	case ARLDIMICC:
 		return OPVCC(30, 0, 0, 1) | 3<<2
 	case ARLWNM:
-		return OPVCC(21, 0, 0, 0) /* rlwinm */
+		return OPVCC(21, 0, 0, 0)
 	case ARLWNMCC:
 		return OPVCC(21, 0, 0, 1)
 
 	case ARLDCL:
-		return OPVCC(30, 0, 0, 0) /* rldicl */
+		return OPVCC(30, 0, 0, 0)
 	case ARLDCLCC:
 		return OPVCC(30, 0, 0, 1)
 	case ARLDCR:
-		return OPVCC(30, 1, 0, 0) /* rldicr */
+		return OPVCC(30, 1, 0, 0)
 	case ARLDCRCC:
 		return OPVCC(30, 1, 0, 1)
 	case ARLDC:
@@ -4704,33 +4514,29 @@ func (c *ctxt9) opirr(a obj.As) uint32 {
 	case ATD:
 		return OPVCC(2, 0, 0, 0)
 
-	/* Vector (VMX/Altivec) instructions */
-	/* ISA 2.03 enables these for PPC970. For POWERx processors, these */
-	/* are enabled starting at POWER6 (ISA 2.05). */
 	case AVSPLTB:
-		return OPVX(4, 524, 0, 0) /* vspltb - v2.03 */
+		return OPVX(4, 524, 0, 0)
 	case AVSPLTH:
-		return OPVX(4, 588, 0, 0) /* vsplth - v2.03 */
+		return OPVX(4, 588, 0, 0)
 	case AVSPLTW:
-		return OPVX(4, 652, 0, 0) /* vspltw - v2.03 */
+		return OPVX(4, 652, 0, 0)
 
 	case AVSPLTISB:
-		return OPVX(4, 780, 0, 0) /* vspltisb - v2.03 */
+		return OPVX(4, 780, 0, 0)
 	case AVSPLTISH:
-		return OPVX(4, 844, 0, 0) /* vspltish - v2.03 */
+		return OPVX(4, 844, 0, 0)
 	case AVSPLTISW:
-		return OPVX(4, 908, 0, 0) /* vspltisw - v2.03 */
-	/* End of vector instructions */
+		return OPVX(4, 908, 0, 0)
 
 	case AFTDIV:
-		return OPVCC(63, 128, 0, 0) /* ftdiv - v2.06 */
+		return OPVCC(63, 128, 0, 0)
 	case AFTSQRT:
-		return OPVCC(63, 160, 0, 0) /* ftsqrt - v2.06 */
+		return OPVCC(63, 160, 0, 0)
 
 	case AXOR:
-		return OPVCC(26, 0, 0, 0) /* XORIL */
+		return OPVCC(26, 0, 0, 0)
 	case AXORIS:
-		return OPVCC(27, 0, 0, 0) /* XORIS */
+		return OPVCC(27, 0, 0, 0)
 	}
 
 	c.ctxt.Diag("bad opcode i/r or i/r/r %v", a)
@@ -4743,20 +4549,18 @@ func (c *ctxt9) opirr(a obj.As) uint32 {
 func (c *ctxt9) opload(a obj.As) uint32 {
 	switch a {
 	case AMOVD:
-		return OPVCC(58, 0, 0, 0) /* ld */
+		return OPVCC(58, 0, 0, 0)
 	case AMOVDU:
-		return OPVCC(58, 0, 0, 1) /* ldu */
+		return OPVCC(58, 0, 0, 1)
 	case AMOVWZ:
-		return OPVCC(32, 0, 0, 0) /* lwz */
+		return OPVCC(32, 0, 0, 0)
 	case AMOVWZU:
-		return OPVCC(33, 0, 0, 0) /* lwzu */
+		return OPVCC(33, 0, 0, 0)
 	case AMOVW:
-		return OPVCC(58, 0, 0, 0) | 1<<1 /* lwa */
+		return OPVCC(58, 0, 0, 0) | 1<<1
 
-		/* no AMOVWU */
 	case AMOVB, AMOVBZ:
 		return OPVCC(34, 0, 0, 0)
-		/* load */
 
 	case AMOVBU, AMOVBZU:
 		return OPVCC(35, 0, 0, 0)
@@ -4777,7 +4581,7 @@ func (c *ctxt9) opload(a obj.As) uint32 {
 	case AMOVHZU:
 		return OPVCC(41, 0, 0, 0)
 	case AMOVMW:
-		return OPVCC(46, 0, 0, 0) /* lmw */
+		return OPVCC(46, 0, 0, 0)
 	}
 
 	c.ctxt.Diag("bad load opcode %v", a)
@@ -4790,100 +4594,93 @@ func (c *ctxt9) opload(a obj.As) uint32 {
 func (c *ctxt9) oploadx(a obj.As) uint32 {
 	switch a {
 	case AMOVWZ:
-		return OPVCC(31, 23, 0, 0) /* lwzx */
+		return OPVCC(31, 23, 0, 0)
 	case AMOVWZU:
-		return OPVCC(31, 55, 0, 0) /* lwzux */
+		return OPVCC(31, 55, 0, 0)
 	case AMOVW:
-		return OPVCC(31, 341, 0, 0) /* lwax */
+		return OPVCC(31, 341, 0, 0)
 	case AMOVWU:
-		return OPVCC(31, 373, 0, 0) /* lwaux */
+		return OPVCC(31, 373, 0, 0)
 
 	case AMOVB, AMOVBZ:
-		return OPVCC(31, 87, 0, 0) /* lbzx */
+		return OPVCC(31, 87, 0, 0)
 
 	case AMOVBU, AMOVBZU:
-		return OPVCC(31, 119, 0, 0) /* lbzux */
+		return OPVCC(31, 119, 0, 0)
 	case AFMOVD:
-		return OPVCC(31, 599, 0, 0) /* lfdx */
+		return OPVCC(31, 599, 0, 0)
 	case AFMOVDU:
-		return OPVCC(31, 631, 0, 0) /*  lfdux */
+		return OPVCC(31, 631, 0, 0)
 	case AFMOVS:
-		return OPVCC(31, 535, 0, 0) /* lfsx */
+		return OPVCC(31, 535, 0, 0)
 	case AFMOVSU:
-		return OPVCC(31, 567, 0, 0) /* lfsux */
+		return OPVCC(31, 567, 0, 0)
 	case AFMOVSX:
-		return OPVCC(31, 855, 0, 0) /* lfiwax - power6, isa 2.05 */
+		return OPVCC(31, 855, 0, 0)
 	case AFMOVSZ:
-		return OPVCC(31, 887, 0, 0) /* lfiwzx - power7, isa 2.06 */
+		return OPVCC(31, 887, 0, 0)
 	case AMOVH:
-		return OPVCC(31, 343, 0, 0) /* lhax */
+		return OPVCC(31, 343, 0, 0)
 	case AMOVHU:
-		return OPVCC(31, 375, 0, 0) /* lhaux */
+		return OPVCC(31, 375, 0, 0)
 	case AMOVHBR:
-		return OPVCC(31, 790, 0, 0) /* lhbrx */
+		return OPVCC(31, 790, 0, 0)
 	case AMOVWBR:
-		return OPVCC(31, 534, 0, 0) /* lwbrx */
+		return OPVCC(31, 534, 0, 0)
 	case AMOVDBR:
-		return OPVCC(31, 532, 0, 0) /* ldbrx */
+		return OPVCC(31, 532, 0, 0)
 	case AMOVHZ:
-		return OPVCC(31, 279, 0, 0) /* lhzx */
+		return OPVCC(31, 279, 0, 0)
 	case AMOVHZU:
-		return OPVCC(31, 311, 0, 0) /* lhzux */
+		return OPVCC(31, 311, 0, 0)
 	case AECIWX:
-		return OPVCC(31, 310, 0, 0) /* eciwx */
+		return OPVCC(31, 310, 0, 0)
 	case ALBAR:
-		return OPVCC(31, 52, 0, 0) /* lbarx */
+		return OPVCC(31, 52, 0, 0)
 	case ALHAR:
-		return OPVCC(31, 116, 0, 0) /* lharx */
+		return OPVCC(31, 116, 0, 0)
 	case ALWAR:
-		return OPVCC(31, 20, 0, 0) /* lwarx */
+		return OPVCC(31, 20, 0, 0)
 	case ALDAR:
-		return OPVCC(31, 84, 0, 0) /* ldarx */
+		return OPVCC(31, 84, 0, 0)
 	case ALSW:
-		return OPVCC(31, 533, 0, 0) /* lswx */
+		return OPVCC(31, 533, 0, 0)
 	case AMOVD:
-		return OPVCC(31, 21, 0, 0) /* ldx */
+		return OPVCC(31, 21, 0, 0)
 	case AMOVDU:
-		return OPVCC(31, 53, 0, 0) /* ldux */
+		return OPVCC(31, 53, 0, 0)
 	case ALDMX:
-		return OPVCC(31, 309, 0, 0) /* ldmx */
+		return OPVCC(31, 309, 0, 0)
 
-	/* Vector (VMX/Altivec) instructions */
-	/* ISA 2.03 enables these for PPC970. For POWERx processors, these */
-	/* are enabled starting at POWER6 (ISA 2.05). */
 	case ALVEBX:
-		return OPVCC(31, 7, 0, 0) /* lvebx - v2.03 */
+		return OPVCC(31, 7, 0, 0)
 	case ALVEHX:
-		return OPVCC(31, 39, 0, 0) /* lvehx - v2.03 */
+		return OPVCC(31, 39, 0, 0)
 	case ALVEWX:
-		return OPVCC(31, 71, 0, 0) /* lvewx - v2.03 */
+		return OPVCC(31, 71, 0, 0)
 	case ALVX:
-		return OPVCC(31, 103, 0, 0) /* lvx - v2.03 */
+		return OPVCC(31, 103, 0, 0)
 	case ALVXL:
-		return OPVCC(31, 359, 0, 0) /* lvxl - v2.03 */
+		return OPVCC(31, 359, 0, 0)
 	case ALVSL:
-		return OPVCC(31, 6, 0, 0) /* lvsl - v2.03 */
+		return OPVCC(31, 6, 0, 0)
 	case ALVSR:
-		return OPVCC(31, 38, 0, 0) /* lvsr - v2.03 */
-		/* End of vector instructions */
+		return OPVCC(31, 38, 0, 0)
 
-	/* Vector scalar (VSX) instructions */
-	/* ISA 2.06 enables these for POWER7. */
 	case ALXVD2X:
-		return OPVXX1(31, 844, 0) /* lxvd2x - v2.06 */
+		return OPVXX1(31, 844, 0)
 	case ALXVDSX:
-		return OPVXX1(31, 332, 0) /* lxvdsx - v2.06 */
+		return OPVXX1(31, 332, 0)
 	case ALXVW4X:
-		return OPVXX1(31, 780, 0) /* lxvw4x - v2.06 */
+		return OPVXX1(31, 780, 0)
 
 	case ALXSDX:
-		return OPVXX1(31, 588, 0) /* lxsdx - v2.06 */
+		return OPVXX1(31, 588, 0)
 
 	case ALXSIWAX:
-		return OPVXX1(31, 76, 0) /* lxsiwax - v2.07 */
+		return OPVXX1(31, 76, 0)
 	case ALXSIWZX:
-		return OPVXX1(31, 12, 0) /* lxsiwzx - v2.07 */
-		/* End of vector scalar instructions */
+		return OPVXX1(31, 12, 0)
 
 	}
 
@@ -4897,38 +4694,38 @@ func (c *ctxt9) oploadx(a obj.As) uint32 {
 func (c *ctxt9) opstore(a obj.As) uint32 {
 	switch a {
 	case AMOVB, AMOVBZ:
-		return OPVCC(38, 0, 0, 0) /* stb */
+		return OPVCC(38, 0, 0, 0)
 
 	case AMOVBU, AMOVBZU:
-		return OPVCC(39, 0, 0, 0) /* stbu */
+		return OPVCC(39, 0, 0, 0)
 	case AFMOVD:
-		return OPVCC(54, 0, 0, 0) /* stfd */
+		return OPVCC(54, 0, 0, 0)
 	case AFMOVDU:
-		return OPVCC(55, 0, 0, 0) /* stfdu */
+		return OPVCC(55, 0, 0, 0)
 	case AFMOVS:
-		return OPVCC(52, 0, 0, 0) /* stfs */
+		return OPVCC(52, 0, 0, 0)
 	case AFMOVSU:
-		return OPVCC(53, 0, 0, 0) /* stfsu */
+		return OPVCC(53, 0, 0, 0)
 
 	case AMOVHZ, AMOVH:
-		return OPVCC(44, 0, 0, 0) /* sth */
+		return OPVCC(44, 0, 0, 0)
 
 	case AMOVHZU, AMOVHU:
-		return OPVCC(45, 0, 0, 0) /* sthu */
+		return OPVCC(45, 0, 0, 0)
 	case AMOVMW:
-		return OPVCC(47, 0, 0, 0) /* stmw */
+		return OPVCC(47, 0, 0, 0)
 	case ASTSW:
-		return OPVCC(31, 725, 0, 0) /* stswi */
+		return OPVCC(31, 725, 0, 0)
 
 	case AMOVWZ, AMOVW:
-		return OPVCC(36, 0, 0, 0) /* stw */
+		return OPVCC(36, 0, 0, 0)
 
 	case AMOVWZU, AMOVWU:
-		return OPVCC(37, 0, 0, 0) /* stwu */
+		return OPVCC(37, 0, 0, 0)
 	case AMOVD:
-		return OPVCC(62, 0, 0, 0) /* std */
+		return OPVCC(62, 0, 0, 0)
 	case AMOVDU:
-		return OPVCC(62, 0, 0, 1) /* stdu */
+		return OPVCC(62, 0, 0, 1)
 	}
 
 	c.ctxt.Diag("unknown store opcode %v", a)
@@ -4941,81 +4738,74 @@ func (c *ctxt9) opstore(a obj.As) uint32 {
 func (c *ctxt9) opstorex(a obj.As) uint32 {
 	switch a {
 	case AMOVB, AMOVBZ:
-		return OPVCC(31, 215, 0, 0) /* stbx */
+		return OPVCC(31, 215, 0, 0)
 
 	case AMOVBU, AMOVBZU:
-		return OPVCC(31, 247, 0, 0) /* stbux */
+		return OPVCC(31, 247, 0, 0)
 	case AFMOVD:
-		return OPVCC(31, 727, 0, 0) /* stfdx */
+		return OPVCC(31, 727, 0, 0)
 	case AFMOVDU:
-		return OPVCC(31, 759, 0, 0) /* stfdux */
+		return OPVCC(31, 759, 0, 0)
 	case AFMOVS:
-		return OPVCC(31, 663, 0, 0) /* stfsx */
+		return OPVCC(31, 663, 0, 0)
 	case AFMOVSU:
-		return OPVCC(31, 695, 0, 0) /* stfsux */
+		return OPVCC(31, 695, 0, 0)
 	case AFMOVSX:
-		return OPVCC(31, 983, 0, 0) /* stfiwx */
+		return OPVCC(31, 983, 0, 0)
 
 	case AMOVHZ, AMOVH:
-		return OPVCC(31, 407, 0, 0) /* sthx */
+		return OPVCC(31, 407, 0, 0)
 	case AMOVHBR:
-		return OPVCC(31, 918, 0, 0) /* sthbrx */
+		return OPVCC(31, 918, 0, 0)
 
 	case AMOVHZU, AMOVHU:
-		return OPVCC(31, 439, 0, 0) /* sthux */
+		return OPVCC(31, 439, 0, 0)
 
 	case AMOVWZ, AMOVW:
-		return OPVCC(31, 151, 0, 0) /* stwx */
+		return OPVCC(31, 151, 0, 0)
 
 	case AMOVWZU, AMOVWU:
-		return OPVCC(31, 183, 0, 0) /* stwux */
+		return OPVCC(31, 183, 0, 0)
 	case ASTSW:
-		return OPVCC(31, 661, 0, 0) /* stswx */
+		return OPVCC(31, 661, 0, 0)
 	case AMOVWBR:
-		return OPVCC(31, 662, 0, 0) /* stwbrx */
+		return OPVCC(31, 662, 0, 0)
 	case AMOVDBR:
-		return OPVCC(31, 660, 0, 0) /* stdbrx */
+		return OPVCC(31, 660, 0, 0)
 	case ASTBCCC:
-		return OPVCC(31, 694, 0, 1) /* stbcx. */
+		return OPVCC(31, 694, 0, 1)
 	case ASTWCCC:
-		return OPVCC(31, 150, 0, 1) /* stwcx. */
+		return OPVCC(31, 150, 0, 1)
 	case ASTDCCC:
-		return OPVCC(31, 214, 0, 1) /* stwdx. */
+		return OPVCC(31, 214, 0, 1)
 	case AECOWX:
-		return OPVCC(31, 438, 0, 0) /* ecowx */
+		return OPVCC(31, 438, 0, 0)
 	case AMOVD:
-		return OPVCC(31, 149, 0, 0) /* stdx */
+		return OPVCC(31, 149, 0, 0)
 	case AMOVDU:
-		return OPVCC(31, 181, 0, 0) /* stdux */
+		return OPVCC(31, 181, 0, 0)
 
-	/* Vector (VMX/Altivec) instructions */
-	/* ISA 2.03 enables these for PPC970. For POWERx processors, these */
-	/* are enabled starting at POWER6 (ISA 2.05). */
 	case ASTVEBX:
-		return OPVCC(31, 135, 0, 0) /* stvebx - v2.03 */
+		return OPVCC(31, 135, 0, 0)
 	case ASTVEHX:
-		return OPVCC(31, 167, 0, 0) /* stvehx - v2.03 */
+		return OPVCC(31, 167, 0, 0)
 	case ASTVEWX:
-		return OPVCC(31, 199, 0, 0) /* stvewx - v2.03 */
+		return OPVCC(31, 199, 0, 0)
 	case ASTVX:
-		return OPVCC(31, 231, 0, 0) /* stvx - v2.03 */
+		return OPVCC(31, 231, 0, 0)
 	case ASTVXL:
-		return OPVCC(31, 487, 0, 0) /* stvxl - v2.03 */
-		/* End of vector instructions */
+		return OPVCC(31, 487, 0, 0)
 
-	/* Vector scalar (VSX) instructions */
-	/* ISA 2.06 enables these for POWER7. */
 	case ASTXVD2X:
-		return OPVXX1(31, 972, 0) /* stxvd2x - v2.06 */
+		return OPVXX1(31, 972, 0)
 	case ASTXVW4X:
-		return OPVXX1(31, 908, 0) /* stxvw4x - v2.06 */
+		return OPVXX1(31, 908, 0)
 
 	case ASTXSDX:
-		return OPVXX1(31, 716, 0) /* stxsdx - v2.06 */
+		return OPVXX1(31, 716, 0)
 
 	case ASTXSIWX:
-		return OPVXX1(31, 140, 0) /* stxsiwx - v2.07 */
-		/* End of vector scalar instructions */
+		return OPVXX1(31, 140, 0)
 
 	}
 
