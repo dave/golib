@@ -58,7 +58,7 @@ func GoSyntax(inst Inst, pc uint64, symname func(uint64) (string, uint64), text 
 		case MemImmediate:
 			switch mem.Mode {
 			case AddrOffset:
-				// no suffix
+			// no suffix
 			case AddrPreIndex:
 				suffix = ".W"
 			case AddrPostIndex, AddrPostReg:
@@ -71,7 +71,7 @@ func GoSyntax(inst Inst, pc uint64, symname func(uint64) (string, uint64), text 
 		case MemImmediate:
 			switch mem.Mode {
 			case AddrOffset:
-				// no suffix
+			// no suffix
 			case AddrPreIndex:
 				suffix = ".W"
 			case AddrPostIndex:
@@ -435,37 +435,7 @@ func GoSyntax(inst Inst, pc uint64, symname func(uint64) (string, uint64), text 
 
 // No need add "W" to opcode suffix.
 // Opcode must be inserted in ascending order.
-var noSuffixOpSet = strings.Fields(`
-AESD
-AESE
-AESIMC
-AESMC
-CRC32B
-CRC32CB
-CRC32CH
-CRC32CW
-CRC32CX
-CRC32H
-CRC32W
-CRC32X
-LDARB
-LDARH
-LDAXRB
-LDAXRH
-LDTRH
-LDXRB
-LDXRH
-SHA1C
-SHA1H
-SHA1M
-SHA1P
-SHA1SU0
-SHA1SU1
-SHA256H
-SHA256H2
-SHA256SU0
-SHA256SU1
-`)
+var noSuffixOpSet = strings.Fields("\nAESD\nAESE\nAESIMC\nAESMC\nCRC32B\nCRC32CB\nCRC32CH\nCRC32CW\nCRC32CX\nCRC32H\nCRC32W\nCRC32X\nLDARB\nLDARH\nLDAXRB\nLDAXRH\nLDTRH\nLDXRB\nLDXRH\nSHA1C\nSHA1H\nSHA1M\nSHA1P\nSHA1SU0\nSHA1SU1\nSHA256H\nSHA256H2\nSHA256SU0\nSHA256SU1\n")
 
 func plan9Arg(inst *Inst, pc uint64, symname func(uint64) (string, uint64), arg Arg) string {
 	switch a := arg.(type) {

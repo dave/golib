@@ -5,42 +5,38 @@
 package ld
 
 import (
-	"cmd/link/internal/sym"
 	"encoding/binary"
 	"fmt"
+	"github.com/dave/golib/src/cmd/link/internal/sym"
 	"os"
 	"time"
 )
 
-var startTime time.Time
-
 // TODO(josharian): delete. See issue 19865.
-func Cputime() float64 {
-	if startTime.IsZero() {
-		startTime = time.Now()
+func (pstate *PackageState) Cputime() float64 {
+	if pstate.startTime.IsZero() {
+		pstate.startTime = time.Now()
 	}
-	return time.Since(startTime).Seconds()
+	return time.Since(pstate.startTime).Seconds()
 }
 
-var atExitFuncs []func()
-
-func AtExit(f func()) {
-	atExitFuncs = append(atExitFuncs, f)
+func (pstate *PackageState) AtExit(f func()) {
+	pstate.atExitFuncs = append(pstate.atExitFuncs, f)
 }
 
 // Exit exits with code after executing all atExitFuncs.
-func Exit(code int) {
-	for i := len(atExitFuncs) - 1; i >= 0; i-- {
-		atExitFuncs[i]()
+func (pstate *PackageState) Exit(code int) {
+	for i := len(pstate.atExitFuncs) - 1; i >= 0; i-- {
+		pstate.atExitFuncs[i]()
 	}
 	os.Exit(code)
 }
 
 // Exitf logs an error message then calls Exit(2).
-func Exitf(format string, a ...interface{}) {
+func (pstate *PackageState) Exitf(format string, a ...interface{}) {
 	fmt.Fprintf(os.Stderr, os.Args[0]+": "+format+"\n", a...)
-	nerrors++
-	Exit(2)
+	pstate.nerrors++
+	pstate.Exit(2)
 }
 
 // Errorf logs an error message.
@@ -49,18 +45,18 @@ func Exitf(format string, a ...interface{}) {
 //
 // Logging an error means that on exit cmd/link will delete any
 // output file and return a non-zero error code.
-func Errorf(s *sym.Symbol, format string, args ...interface{}) {
+func (pstate *PackageState) Errorf(s *sym.Symbol, format string, args ...interface{}) {
 	if s != nil {
 		format = s.Name + ": " + format
 	}
 	format += "\n"
 	fmt.Fprintf(os.Stderr, format, args...)
-	nerrors++
-	if *flagH {
+	pstate.nerrors++
+	if *pstate.flagH {
 		panic("error")
 	}
-	if nerrors > 20 {
-		Exitf("too many errors")
+	if pstate.nerrors > 20 {
+		pstate.Exitf("too many errors")
 	}
 }
 
@@ -84,8 +80,6 @@ func stringtouint32(x []uint32, s string) {
 	}
 }
 
-var start = time.Now()
-
-func elapsed() float64 {
-	return time.Since(start).Seconds()
+func (pstate *PackageState) elapsed() float64 {
+	return time.Since(pstate.start).Seconds()
 }

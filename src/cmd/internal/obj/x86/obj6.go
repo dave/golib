@@ -31,16 +31,16 @@
 package x86
 
 import (
-	"cmd/internal/obj"
-	"cmd/internal/objabi"
-	"cmd/internal/src"
-	"cmd/internal/sys"
+	"github.com/dave/golib/src/cmd/internal/obj"
+	"github.com/dave/golib/src/cmd/internal/objabi"
+	"github.com/dave/golib/src/cmd/internal/src"
+	"github.com/dave/golib/src/cmd/internal/sys"
 	"math"
 	"strings"
 )
 
-func CanUse1InsnTLS(ctxt *obj.Link) bool {
-	if isAndroid {
+func (pstate *PackageState) CanUse1InsnTLS(ctxt *obj.Link) bool {
+	if pstate.isAndroid {
 		// For android, we use a disgusting hack that assumes
 		// the thread-local storage slot for g is allocated
 		// using pthread_key_create with a fixed offset
@@ -72,7 +72,7 @@ func CanUse1InsnTLS(ctxt *obj.Link) bool {
 	return true
 }
 
-func progedit(ctxt *obj.Link, p *obj.Prog, newprog obj.ProgAlloc) {
+func (pstate *PackageState) progedit(ctxt *obj.Link, p *obj.Prog, newprog obj.ProgAlloc) {
 	// Thread-local storage references use the TLS pseudo-register.
 	// As a register, TLS refers to the thread-local storage base, and it
 	// can only be loaded into another register:
@@ -113,7 +113,7 @@ func progedit(ctxt *obj.Link, p *obj.Prog, newprog obj.ProgAlloc) {
 	// rewriting the instructions more comprehensively, and it only does because
 	// we only support a single TLS variable (g).
 
-	if CanUse1InsnTLS(ctxt) {
+	if pstate.CanUse1InsnTLS(ctxt) {
 		// Reduce 2-instruction sequence to 1-instruction sequence.
 		// Sequences like
 		//	MOVQ TLS, BX
@@ -291,7 +291,7 @@ func progedit(ctxt *obj.Link, p *obj.Prog, newprog obj.ProgAlloc) {
 	}
 
 	if ctxt.Flag_shared && ctxt.Arch.Family == sys.I386 {
-		rewriteToPcrel(ctxt, p, newprog)
+		pstate.rewriteToPcrel(ctxt, p, newprog)
 	}
 }
 
@@ -485,7 +485,7 @@ func rewriteToUseGot(ctxt *obj.Link, p *obj.Prog, newprog obj.ProgAlloc) {
 	obj.Nopout(p)
 }
 
-func rewriteToPcrel(ctxt *obj.Link, p *obj.Prog, newprog obj.ProgAlloc) {
+func (pstate *PackageState) rewriteToPcrel(ctxt *obj.Link, p *obj.Prog, newprog obj.ProgAlloc) {
 	// RegTo2 is set on the instructions we insert here so they don't get
 	// processed twice.
 	if p.RegTo2 != 0 {
@@ -539,7 +539,7 @@ func rewriteToPcrel(ctxt *obj.Link, p *obj.Prog, newprog obj.ProgAlloc) {
 	r := obj.Appendp(q, newprog)
 	r.RegTo2 = 1
 	q.As = obj.ACALL
-	thunkname := "__x86.get_pc_thunk." + strings.ToLower(rconv(int(dst)))
+	thunkname := "__x86.get_pc_thunk." + strings.ToLower(pstate.rconv(int(dst)))
 	q.To.Sym = ctxt.LookupInit(thunkname, func(s *obj.LSym) { s.Set(obj.AttrLocal, true) })
 	q.To.Type = obj.TYPE_MEM
 	q.To.Name = obj.NAME_EXTERN
@@ -593,7 +593,7 @@ func nacladdr(ctxt *obj.Link, p *obj.Prog, a *obj.Addr) {
 	}
 }
 
-func preprocess(ctxt *obj.Link, cursym *obj.LSym, newprog obj.ProgAlloc) {
+func (pstate *PackageState) preprocess(ctxt *obj.Link, cursym *obj.LSym, newprog obj.ProgAlloc) {
 	if cursym.Func.Text == nil || cursym.Func.Text.Link == nil {
 		return
 	}
@@ -670,11 +670,11 @@ func preprocess(ctxt *obj.Link, cursym *obj.LSym, newprog obj.ProgAlloc) {
 
 	if !p.From.Sym.NoSplit() || p.From.Sym.Wrapper() {
 		p = obj.Appendp(p, newprog)
-		p = load_g_cx(ctxt, p, newprog) // load g into CX
+		p = pstate.load_g_cx(ctxt, p, newprog) // load g into CX
 	}
 
 	if !cursym.Func.Text.From.Sym.NoSplit() {
-		p = stacksplit(ctxt, cursym, p, newprog, autoffset, int32(textarg)) // emit split check
+		p = pstate.stacksplit(ctxt, cursym, p, newprog, autoffset, int32(textarg)) // emit split check
 	}
 
 	// Delve debugger would like the next instruction to be noted as the end of the function prologue.
@@ -992,7 +992,7 @@ func indir_cx(ctxt *obj.Link, a *obj.Addr) {
 // Overwriting p is unusual but it lets use this in both the
 // prologue (caller must call appendp first) and in the epilogue.
 // Returns last new instruction.
-func load_g_cx(ctxt *obj.Link, p *obj.Prog, newprog obj.ProgAlloc) *obj.Prog {
+func (pstate *PackageState) load_g_cx(ctxt *obj.Link, p *obj.Prog, newprog obj.ProgAlloc) *obj.Prog {
 	p.As = AMOVQ
 	if ctxt.Arch.PtrSize == 4 {
 		p.As = AMOVL
@@ -1004,7 +1004,7 @@ func load_g_cx(ctxt *obj.Link, p *obj.Prog, newprog obj.ProgAlloc) *obj.Prog {
 	p.To.Reg = REG_CX
 
 	next := p.Link
-	progedit(ctxt, p, newprog)
+	pstate.progedit(ctxt, p, newprog)
 	for p.Link != next {
 		p = p.Link
 	}
@@ -1020,7 +1020,7 @@ func load_g_cx(ctxt *obj.Link, p *obj.Prog, newprog obj.ProgAlloc) *obj.Prog {
 // Appends to (does not overwrite) p.
 // Assumes g is in CX.
 // Returns last new instruction.
-func stacksplit(ctxt *obj.Link, cursym *obj.LSym, p *obj.Prog, newprog obj.ProgAlloc, framesize int32, textarg int32) *obj.Prog {
+func (pstate *PackageState) stacksplit(ctxt *obj.Link, cursym *obj.LSym, p *obj.Prog, newprog obj.ProgAlloc, framesize int32, textarg int32) *obj.Prog {
 	cmp := ACMPQ
 	lea := ALEAQ
 	mov := AMOVQ
@@ -1170,9 +1170,9 @@ func stacksplit(ctxt *obj.Link, cursym *obj.LSym, p *obj.Prog, newprog obj.ProgA
 	// to keep track of the start of the call (where the jump will be to) and the
 	// end (which following instructions are appended to).
 	callend := call
-	progedit(ctxt, callend, newprog)
+	pstate.progedit(ctxt, callend, newprog)
 	for ; callend.Link != nil; callend = callend.Link {
-		progedit(ctxt, callend.Link, newprog)
+		pstate.progedit(ctxt, callend.Link, newprog)
 	}
 
 	jmp := obj.Appendp(callend, newprog)
@@ -1187,118 +1187,4 @@ func stacksplit(ctxt *obj.Link, cursym *obj.LSym, p *obj.Prog, newprog obj.ProgA
 	}
 
 	return jls
-}
-
-var unaryDst = map[obj.As]bool{
-	ABSWAPL:     true,
-	ABSWAPQ:     true,
-	ABSWAPW:     true,
-	ACLFLUSH:    true,
-	ACLFLUSHOPT: true,
-	ACMPXCHG16B: true,
-	ACMPXCHG8B:  true,
-	ADECB:       true,
-	ADECL:       true,
-	ADECQ:       true,
-	ADECW:       true,
-	AFBSTP:      true,
-	AFFREE:      true,
-	AFLDENV:     true,
-	AFSAVE:      true,
-	AFSTCW:      true,
-	AFSTENV:     true,
-	AFSTSW:      true,
-	AFXSAVE64:   true,
-	AFXSAVE:     true,
-	AINCB:       true,
-	AINCL:       true,
-	AINCQ:       true,
-	AINCW:       true,
-	ANEGB:       true,
-	ANEGL:       true,
-	ANEGQ:       true,
-	ANEGW:       true,
-	ANOTB:       true,
-	ANOTL:       true,
-	ANOTQ:       true,
-	ANOTW:       true,
-	APOPL:       true,
-	APOPQ:       true,
-	APOPW:       true,
-	ARDFSBASEL:  true,
-	ARDFSBASEQ:  true,
-	ARDGSBASEL:  true,
-	ARDGSBASEQ:  true,
-	ARDRANDL:    true,
-	ARDRANDQ:    true,
-	ARDRANDW:    true,
-	ARDSEEDL:    true,
-	ARDSEEDQ:    true,
-	ARDSEEDW:    true,
-	ASETCC:      true,
-	ASETCS:      true,
-	ASETEQ:      true,
-	ASETGE:      true,
-	ASETGT:      true,
-	ASETHI:      true,
-	ASETLE:      true,
-	ASETLS:      true,
-	ASETLT:      true,
-	ASETMI:      true,
-	ASETNE:      true,
-	ASETOC:      true,
-	ASETOS:      true,
-	ASETPC:      true,
-	ASETPL:      true,
-	ASETPS:      true,
-	ASGDT:       true,
-	ASIDT:       true,
-	ASLDTL:      true,
-	ASLDTQ:      true,
-	ASLDTW:      true,
-	ASMSWL:      true,
-	ASMSWQ:      true,
-	ASMSWW:      true,
-	ASTMXCSR:    true,
-	ASTRL:       true,
-	ASTRQ:       true,
-	ASTRW:       true,
-	AXSAVE64:    true,
-	AXSAVE:      true,
-	AXSAVEC64:   true,
-	AXSAVEC:     true,
-	AXSAVEOPT64: true,
-	AXSAVEOPT:   true,
-	AXSAVES64:   true,
-	AXSAVES:     true,
-}
-
-var Linkamd64 = obj.LinkArch{
-	Arch:           sys.ArchAMD64,
-	Init:           instinit,
-	Preprocess:     preprocess,
-	Assemble:       span6,
-	Progedit:       progedit,
-	UnaryDst:       unaryDst,
-	DWARFRegisters: AMD64DWARFRegisters,
-}
-
-var Linkamd64p32 = obj.LinkArch{
-	Arch:           sys.ArchAMD64P32,
-	Init:           instinit,
-	Preprocess:     preprocess,
-	Assemble:       span6,
-	Progedit:       progedit,
-	UnaryDst:       unaryDst,
-	DWARFRegisters: AMD64DWARFRegisters,
-}
-
-var Link386 = obj.LinkArch{
-	Arch:           sys.Arch386,
-	Init:           instinit,
-	Preprocess:     preprocess,
-	Assemble:       span6,
-	Progedit:       progedit,
-	UnaryDst:       unaryDst,
-	DWARFRegisters: X86DWARFRegisters,
 }

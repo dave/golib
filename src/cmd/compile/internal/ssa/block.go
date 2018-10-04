@@ -5,8 +5,8 @@
 package ssa
 
 import (
-	"cmd/internal/src"
 	"fmt"
+	"github.com/dave/golib/src/cmd/internal/src"
 )
 
 // Block represents a basic block in the control flow graph of a function.
@@ -110,8 +110,8 @@ func (b *Block) String() string {
 }
 
 // long form print
-func (b *Block) LongString() string {
-	s := b.Kind.String()
+func (b *Block) LongString(pstate *PackageState) string {
+	s := b.Kind.String(pstate)
 	if b.Aux != nil {
 		s += fmt.Sprintf(" %s", b.Aux)
 	}
@@ -202,18 +202,18 @@ func (b *Block) swapSuccessors() {
 // from its successors.  This is true if all the values within it have unreliable positions
 // and if it is "plain", meaning that there is no control flow that is also very likely
 // to correspond to a well-understood source position.
-func (b *Block) LackingPos() bool {
+func (b *Block) LackingPos(pstate *PackageState) bool {
 	// Non-plain predecessors are If or Defer, which both (1) have two successors,
 	// which might have different line numbers and (2) correspond to statements
 	// in the source code that have positions, so this case ought not occur anyway.
 	if b.Kind != BlockPlain {
 		return false
 	}
-	if b.Pos != src.NoXPos {
+	if b.Pos != pstate.src.NoXPos {
 		return false
 	}
 	for _, v := range b.Values {
-		if v.LackingPos() {
+		if v.LackingPos(pstate) {
 			continue
 		}
 		return false

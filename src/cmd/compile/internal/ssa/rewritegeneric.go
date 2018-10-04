@@ -4,16 +4,16 @@
 package ssa
 
 import "math"
-import "cmd/internal/obj"
-import "cmd/internal/objabi"
-import "cmd/compile/internal/types"
+import "github.com/dave/golib/src/cmd/internal/obj"
+import "github.com/dave/golib/src/cmd/internal/objabi"
+import "github.com/dave/golib/src/cmd/compile/internal/types"
 
-var _ = math.MinInt8  // in case not otherwise used
-var _ = obj.ANOP      // in case not otherwise used
-var _ = objabi.GOROOT // in case not otherwise used
-var _ = types.TypeMem // in case not otherwise used
+var _ = math.MinInt8         // in case not otherwise used
+var _ = obj.ANOP             // in case not otherwise used
+var _ = pstate.objabi.GOROOT // in case not otherwise used
+var _ = pstate.types.TypeMem // in case not otherwise used
 
-func rewriteValuegeneric(v *Value) bool {
+func (pstate *PackageState) rewriteValuegeneric(v *Value) bool {
 	switch v.Op {
 	case OpAdd16:
 		return rewriteValuegeneric_OpAdd16_0(v) || rewriteValuegeneric_OpAdd16_10(v) || rewriteValuegeneric_OpAdd16_20(v) || rewriteValuegeneric_OpAdd16_30(v)
@@ -38,7 +38,7 @@ func rewriteValuegeneric(v *Value) bool {
 	case OpAnd8:
 		return rewriteValuegeneric_OpAnd8_0(v) || rewriteValuegeneric_OpAnd8_10(v) || rewriteValuegeneric_OpAnd8_20(v)
 	case OpArg:
-		return rewriteValuegeneric_OpArg_0(v) || rewriteValuegeneric_OpArg_10(v)
+		return pstate.rewriteValuegeneric_OpArg_0(v) || pstate.rewriteValuegeneric_OpArg_10(v)
 	case OpArraySelect:
 		return rewriteValuegeneric_OpArraySelect_0(v)
 	case OpCom16:
@@ -52,7 +52,7 @@ func rewriteValuegeneric(v *Value) bool {
 	case OpConstInterface:
 		return rewriteValuegeneric_OpConstInterface_0(v)
 	case OpConstSlice:
-		return rewriteValuegeneric_OpConstSlice_0(v)
+		return pstate.rewriteValuegeneric_OpConstSlice_0(v)
 	case OpConstString:
 		return rewriteValuegeneric_OpConstString_0(v)
 	case OpConvert:
@@ -208,7 +208,7 @@ func rewriteValuegeneric(v *Value) bool {
 	case OpLess8U:
 		return rewriteValuegeneric_OpLess8U_0(v)
 	case OpLoad:
-		return rewriteValuegeneric_OpLoad_0(v) || rewriteValuegeneric_OpLoad_10(v) || rewriteValuegeneric_OpLoad_20(v)
+		return pstate.rewriteValuegeneric_OpLoad_0(v) || pstate.rewriteValuegeneric_OpLoad_10(v) || pstate.rewriteValuegeneric_OpLoad_20(v)
 	case OpLsh16x16:
 		return rewriteValuegeneric_OpLsh16x16_0(v)
 	case OpLsh16x32:
@@ -258,7 +258,7 @@ func rewriteValuegeneric(v *Value) bool {
 	case OpMod8u:
 		return rewriteValuegeneric_OpMod8u_0(v)
 	case OpMove:
-		return rewriteValuegeneric_OpMove_0(v) || rewriteValuegeneric_OpMove_10(v) || rewriteValuegeneric_OpMove_20(v)
+		return pstate.rewriteValuegeneric_OpMove_0(v) || pstate.rewriteValuegeneric_OpMove_10(v) || pstate.rewriteValuegeneric_OpMove_20(v)
 	case OpMul16:
 		return rewriteValuegeneric_OpMul16_0(v) || rewriteValuegeneric_OpMul16_10(v)
 	case OpMul32:
@@ -308,7 +308,7 @@ func rewriteValuegeneric(v *Value) bool {
 	case OpNot:
 		return rewriteValuegeneric_OpNot_0(v) || rewriteValuegeneric_OpNot_10(v) || rewriteValuegeneric_OpNot_20(v) || rewriteValuegeneric_OpNot_30(v) || rewriteValuegeneric_OpNot_40(v)
 	case OpOffPtr:
-		return rewriteValuegeneric_OpOffPtr_0(v)
+		return pstate.rewriteValuegeneric_OpOffPtr_0(v)
 	case OpOr16:
 		return rewriteValuegeneric_OpOr16_0(v) || rewriteValuegeneric_OpOr16_10(v) || rewriteValuegeneric_OpOr16_20(v)
 	case OpOr32:
@@ -320,7 +320,7 @@ func rewriteValuegeneric(v *Value) bool {
 	case OpPhi:
 		return rewriteValuegeneric_OpPhi_0(v)
 	case OpPtrIndex:
-		return rewriteValuegeneric_OpPtrIndex_0(v)
+		return pstate.rewriteValuegeneric_OpPtrIndex_0(v)
 	case OpRound32F:
 		return rewriteValuegeneric_OpRound32F_0(v)
 	case OpRound64F:
@@ -412,15 +412,15 @@ func rewriteValuegeneric(v *Value) bool {
 	case OpSqrt:
 		return rewriteValuegeneric_OpSqrt_0(v)
 	case OpStaticCall:
-		return rewriteValuegeneric_OpStaticCall_0(v)
+		return pstate.rewriteValuegeneric_OpStaticCall_0(v)
 	case OpStore:
-		return rewriteValuegeneric_OpStore_0(v) || rewriteValuegeneric_OpStore_10(v) || rewriteValuegeneric_OpStore_20(v)
+		return pstate.rewriteValuegeneric_OpStore_0(v) || pstate.rewriteValuegeneric_OpStore_10(v) || pstate.rewriteValuegeneric_OpStore_20(v)
 	case OpStringLen:
 		return rewriteValuegeneric_OpStringLen_0(v)
 	case OpStringPtr:
 		return rewriteValuegeneric_OpStringPtr_0(v)
 	case OpStructSelect:
-		return rewriteValuegeneric_OpStructSelect_0(v) || rewriteValuegeneric_OpStructSelect_10(v)
+		return rewriteValuegeneric_OpStructSelect_0(v) || pstate.rewriteValuegeneric_OpStructSelect_10(v)
 	case OpSub16:
 		return rewriteValuegeneric_OpSub16_0(v) || rewriteValuegeneric_OpSub16_10(v)
 	case OpSub32:
@@ -454,7 +454,7 @@ func rewriteValuegeneric(v *Value) bool {
 	case OpXor8:
 		return rewriteValuegeneric_OpXor8_0(v) || rewriteValuegeneric_OpXor8_10(v)
 	case OpZero:
-		return rewriteValuegeneric_OpZero_0(v)
+		return pstate.rewriteValuegeneric_OpZero_0(v)
 	case OpZeroExt16to32:
 		return rewriteValuegeneric_OpZeroExt16to32_0(v)
 	case OpZeroExt16to64:
@@ -6887,7 +6887,7 @@ func rewriteValuegeneric_OpAnd8_20(v *Value) bool {
 	}
 	return false
 }
-func rewriteValuegeneric_OpArg_0(v *Value) bool {
+func (pstate *PackageState) rewriteValuegeneric_OpArg_0(v *Value) bool {
 	b := v.Block
 	_ = b
 	config := b.Func.Config
@@ -6926,7 +6926,7 @@ func rewriteValuegeneric_OpArg_0(v *Value) bool {
 			break
 		}
 		v.reset(OpSliceMake)
-		v0 := b.NewValue0(v.Pos, OpArg, v.Type.Elem().PtrTo())
+		v0 := b.NewValue0(v.Pos, OpArg, v.Type.Elem(pstate.types).PtrTo(pstate.types))
 		v0.AuxInt = off
 		v0.Aux = n
 		v.AddArg(v0)
@@ -6966,7 +6966,7 @@ func rewriteValuegeneric_OpArg_0(v *Value) bool {
 	for {
 		off := v.AuxInt
 		n := v.Aux
-		if !(v.Type.IsComplex() && v.Type.Size() == 16) {
+		if !(v.Type.IsComplex() && v.Type.Size(pstate.types) == 16) {
 			break
 		}
 		v.reset(OpComplexMake)
@@ -6986,7 +6986,7 @@ func rewriteValuegeneric_OpArg_0(v *Value) bool {
 	for {
 		off := v.AuxInt
 		n := v.Aux
-		if !(v.Type.IsComplex() && v.Type.Size() == 8) {
+		if !(v.Type.IsComplex() && v.Type.Size(pstate.types) == 8) {
 			break
 		}
 		v.reset(OpComplexMake)
@@ -7005,7 +7005,7 @@ func rewriteValuegeneric_OpArg_0(v *Value) bool {
 	// result: (StructMake0)
 	for {
 		t := v.Type
-		if !(t.IsStruct() && t.NumFields() == 0 && fe.CanSSA(t)) {
+		if !(t.IsStruct() && t.NumFields(pstate.types) == 0 && fe.CanSSA(t)) {
 			break
 		}
 		v.reset(OpStructMake0)
@@ -7018,12 +7018,12 @@ func rewriteValuegeneric_OpArg_0(v *Value) bool {
 		t := v.Type
 		off := v.AuxInt
 		n := v.Aux
-		if !(t.IsStruct() && t.NumFields() == 1 && fe.CanSSA(t)) {
+		if !(t.IsStruct() && t.NumFields(pstate.types) == 1 && fe.CanSSA(t)) {
 			break
 		}
 		v.reset(OpStructMake1)
-		v0 := b.NewValue0(v.Pos, OpArg, t.FieldType(0))
-		v0.AuxInt = off + t.FieldOff(0)
+		v0 := b.NewValue0(v.Pos, OpArg, t.FieldType(pstate.types, 0))
+		v0.AuxInt = off + t.FieldOff(pstate.types, 0)
 		v0.Aux = n
 		v.AddArg(v0)
 		return true
@@ -7035,16 +7035,16 @@ func rewriteValuegeneric_OpArg_0(v *Value) bool {
 		t := v.Type
 		off := v.AuxInt
 		n := v.Aux
-		if !(t.IsStruct() && t.NumFields() == 2 && fe.CanSSA(t)) {
+		if !(t.IsStruct() && t.NumFields(pstate.types) == 2 && fe.CanSSA(t)) {
 			break
 		}
 		v.reset(OpStructMake2)
-		v0 := b.NewValue0(v.Pos, OpArg, t.FieldType(0))
-		v0.AuxInt = off + t.FieldOff(0)
+		v0 := b.NewValue0(v.Pos, OpArg, t.FieldType(pstate.types, 0))
+		v0.AuxInt = off + t.FieldOff(pstate.types, 0)
 		v0.Aux = n
 		v.AddArg(v0)
-		v1 := b.NewValue0(v.Pos, OpArg, t.FieldType(1))
-		v1.AuxInt = off + t.FieldOff(1)
+		v1 := b.NewValue0(v.Pos, OpArg, t.FieldType(pstate.types, 1))
+		v1.AuxInt = off + t.FieldOff(pstate.types, 1)
 		v1.Aux = n
 		v.AddArg(v1)
 		return true
@@ -7056,20 +7056,20 @@ func rewriteValuegeneric_OpArg_0(v *Value) bool {
 		t := v.Type
 		off := v.AuxInt
 		n := v.Aux
-		if !(t.IsStruct() && t.NumFields() == 3 && fe.CanSSA(t)) {
+		if !(t.IsStruct() && t.NumFields(pstate.types) == 3 && fe.CanSSA(t)) {
 			break
 		}
 		v.reset(OpStructMake3)
-		v0 := b.NewValue0(v.Pos, OpArg, t.FieldType(0))
-		v0.AuxInt = off + t.FieldOff(0)
+		v0 := b.NewValue0(v.Pos, OpArg, t.FieldType(pstate.types, 0))
+		v0.AuxInt = off + t.FieldOff(pstate.types, 0)
 		v0.Aux = n
 		v.AddArg(v0)
-		v1 := b.NewValue0(v.Pos, OpArg, t.FieldType(1))
-		v1.AuxInt = off + t.FieldOff(1)
+		v1 := b.NewValue0(v.Pos, OpArg, t.FieldType(pstate.types, 1))
+		v1.AuxInt = off + t.FieldOff(pstate.types, 1)
 		v1.Aux = n
 		v.AddArg(v1)
-		v2 := b.NewValue0(v.Pos, OpArg, t.FieldType(2))
-		v2.AuxInt = off + t.FieldOff(2)
+		v2 := b.NewValue0(v.Pos, OpArg, t.FieldType(pstate.types, 2))
+		v2.AuxInt = off + t.FieldOff(pstate.types, 2)
 		v2.Aux = n
 		v.AddArg(v2)
 		return true
@@ -7081,31 +7081,31 @@ func rewriteValuegeneric_OpArg_0(v *Value) bool {
 		t := v.Type
 		off := v.AuxInt
 		n := v.Aux
-		if !(t.IsStruct() && t.NumFields() == 4 && fe.CanSSA(t)) {
+		if !(t.IsStruct() && t.NumFields(pstate.types) == 4 && fe.CanSSA(t)) {
 			break
 		}
 		v.reset(OpStructMake4)
-		v0 := b.NewValue0(v.Pos, OpArg, t.FieldType(0))
-		v0.AuxInt = off + t.FieldOff(0)
+		v0 := b.NewValue0(v.Pos, OpArg, t.FieldType(pstate.types, 0))
+		v0.AuxInt = off + t.FieldOff(pstate.types, 0)
 		v0.Aux = n
 		v.AddArg(v0)
-		v1 := b.NewValue0(v.Pos, OpArg, t.FieldType(1))
-		v1.AuxInt = off + t.FieldOff(1)
+		v1 := b.NewValue0(v.Pos, OpArg, t.FieldType(pstate.types, 1))
+		v1.AuxInt = off + t.FieldOff(pstate.types, 1)
 		v1.Aux = n
 		v.AddArg(v1)
-		v2 := b.NewValue0(v.Pos, OpArg, t.FieldType(2))
-		v2.AuxInt = off + t.FieldOff(2)
+		v2 := b.NewValue0(v.Pos, OpArg, t.FieldType(pstate.types, 2))
+		v2.AuxInt = off + t.FieldOff(pstate.types, 2)
 		v2.Aux = n
 		v.AddArg(v2)
-		v3 := b.NewValue0(v.Pos, OpArg, t.FieldType(3))
-		v3.AuxInt = off + t.FieldOff(3)
+		v3 := b.NewValue0(v.Pos, OpArg, t.FieldType(pstate.types, 3))
+		v3.AuxInt = off + t.FieldOff(pstate.types, 3)
 		v3.Aux = n
 		v.AddArg(v3)
 		return true
 	}
 	return false
 }
-func rewriteValuegeneric_OpArg_10(v *Value) bool {
+func (pstate *PackageState) rewriteValuegeneric_OpArg_10(v *Value) bool {
 	b := v.Block
 	_ = b
 	fe := b.Func.fe
@@ -7115,7 +7115,7 @@ func rewriteValuegeneric_OpArg_10(v *Value) bool {
 	// result: (ArrayMake0)
 	for {
 		t := v.Type
-		if !(t.IsArray() && t.NumElem() == 0) {
+		if !(t.IsArray() && t.NumElem(pstate.types) == 0) {
 			break
 		}
 		v.reset(OpArrayMake0)
@@ -7128,11 +7128,11 @@ func rewriteValuegeneric_OpArg_10(v *Value) bool {
 		t := v.Type
 		off := v.AuxInt
 		n := v.Aux
-		if !(t.IsArray() && t.NumElem() == 1 && fe.CanSSA(t)) {
+		if !(t.IsArray() && t.NumElem(pstate.types) == 1 && fe.CanSSA(t)) {
 			break
 		}
 		v.reset(OpArrayMake1)
-		v0 := b.NewValue0(v.Pos, OpArg, t.Elem())
+		v0 := b.NewValue0(v.Pos, OpArg, t.Elem(pstate.types))
 		v0.AuxInt = off
 		v0.Aux = n
 		v.AddArg(v0)
@@ -7310,7 +7310,7 @@ func rewriteValuegeneric_OpConstInterface_0(v *Value) bool {
 		return true
 	}
 }
-func rewriteValuegeneric_OpConstSlice_0(v *Value) bool {
+func (pstate *PackageState) rewriteValuegeneric_OpConstSlice_0(v *Value) bool {
 	b := v.Block
 	_ = b
 	config := b.Func.Config
@@ -7325,7 +7325,7 @@ func rewriteValuegeneric_OpConstSlice_0(v *Value) bool {
 			break
 		}
 		v.reset(OpSliceMake)
-		v0 := b.NewValue0(v.Pos, OpConstNil, v.Type.Elem().PtrTo())
+		v0 := b.NewValue0(v.Pos, OpConstNil, v.Type.Elem(pstate.types).PtrTo(pstate.types))
 		v.AddArg(v0)
 		v1 := b.NewValue0(v.Pos, OpConst32, typ.Int)
 		v1.AuxInt = 0
@@ -7343,7 +7343,7 @@ func rewriteValuegeneric_OpConstSlice_0(v *Value) bool {
 			break
 		}
 		v.reset(OpSliceMake)
-		v0 := b.NewValue0(v.Pos, OpConstNil, v.Type.Elem().PtrTo())
+		v0 := b.NewValue0(v.Pos, OpConstNil, v.Type.Elem(pstate.types).PtrTo(pstate.types))
 		v.AddArg(v0)
 		v1 := b.NewValue0(v.Pos, OpConst64, typ.Int)
 		v1.AuxInt = 0
@@ -13182,7 +13182,7 @@ func rewriteValuegeneric_OpLess8U_0(v *Value) bool {
 	}
 	return false
 }
-func rewriteValuegeneric_OpLoad_0(v *Value) bool {
+func (pstate *PackageState) rewriteValuegeneric_OpLoad_0(v *Value) bool {
 	b := v.Block
 	_ = b
 	fe := b.Func.fe
@@ -13202,7 +13202,7 @@ func rewriteValuegeneric_OpLoad_0(v *Value) bool {
 		_ = v_1.Args[2]
 		p2 := v_1.Args[0]
 		x := v_1.Args[1]
-		if !(isSamePtr(p1, p2) && t1.Compare(x.Type) == types.CMPeq && t1.Size() == sizeof(t2)) {
+		if !(isSamePtr(p1, p2) && t1.Compare(pstate.types, x.Type) == types.CMPeq && t1.Size(pstate.types) == pstate.sizeof(t2)) {
 			break
 		}
 		v.reset(OpCopy)
@@ -13232,7 +13232,7 @@ func rewriteValuegeneric_OpLoad_0(v *Value) bool {
 		_ = v_1_2.Args[2]
 		p3 := v_1_2.Args[0]
 		x := v_1_2.Args[1]
-		if !(isSamePtr(p1, p3) && t1.Compare(x.Type) == types.CMPeq && t1.Size() == sizeof(t2) && disjoint(p3, sizeof(t3), p2, sizeof(t2))) {
+		if !(isSamePtr(p1, p3) && t1.Compare(pstate.types, x.Type) == types.CMPeq && t1.Size(pstate.types) == pstate.sizeof(t2) && disjoint(p3, pstate.sizeof(t3), p2, pstate.sizeof(t2))) {
 			break
 		}
 		v.reset(OpCopy)
@@ -13269,7 +13269,7 @@ func rewriteValuegeneric_OpLoad_0(v *Value) bool {
 		_ = v_1_2_2.Args[2]
 		p4 := v_1_2_2.Args[0]
 		x := v_1_2_2.Args[1]
-		if !(isSamePtr(p1, p4) && t1.Compare(x.Type) == types.CMPeq && t1.Size() == sizeof(t2) && disjoint(p4, sizeof(t4), p2, sizeof(t2)) && disjoint(p4, sizeof(t4), p3, sizeof(t3))) {
+		if !(isSamePtr(p1, p4) && t1.Compare(pstate.types, x.Type) == types.CMPeq && t1.Size(pstate.types) == pstate.sizeof(t2) && disjoint(p4, pstate.sizeof(t4), p2, pstate.sizeof(t2)) && disjoint(p4, pstate.sizeof(t4), p3, pstate.sizeof(t3))) {
 			break
 		}
 		v.reset(OpCopy)
@@ -13313,7 +13313,7 @@ func rewriteValuegeneric_OpLoad_0(v *Value) bool {
 		_ = v_1_2_2_2.Args[2]
 		p5 := v_1_2_2_2.Args[0]
 		x := v_1_2_2_2.Args[1]
-		if !(isSamePtr(p1, p5) && t1.Compare(x.Type) == types.CMPeq && t1.Size() == sizeof(t2) && disjoint(p5, sizeof(t5), p2, sizeof(t2)) && disjoint(p5, sizeof(t5), p3, sizeof(t3)) && disjoint(p5, sizeof(t5), p4, sizeof(t4))) {
+		if !(isSamePtr(p1, p5) && t1.Compare(pstate.types, x.Type) == types.CMPeq && t1.Size(pstate.types) == pstate.sizeof(t2) && disjoint(p5, pstate.sizeof(t5), p2, pstate.sizeof(t2)) && disjoint(p5, pstate.sizeof(t5), p3, pstate.sizeof(t3)) && disjoint(p5, pstate.sizeof(t5), p4, pstate.sizeof(t4))) {
 			break
 		}
 		v.reset(OpCopy)
@@ -13340,7 +13340,7 @@ func rewriteValuegeneric_OpLoad_0(v *Value) bool {
 			break
 		}
 		x := v_1_1.AuxInt
-		if !(isSamePtr(p1, p2) && sizeof(t2) == 8 && is64BitFloat(t1)) {
+		if !(isSamePtr(p1, p2) && pstate.sizeof(t2) == 8 && pstate.is64BitFloat(t1)) {
 			break
 		}
 		v.reset(OpConst64F)
@@ -13366,7 +13366,7 @@ func rewriteValuegeneric_OpLoad_0(v *Value) bool {
 			break
 		}
 		x := v_1_1.AuxInt
-		if !(isSamePtr(p1, p2) && sizeof(t2) == 4 && is32BitFloat(t1)) {
+		if !(isSamePtr(p1, p2) && pstate.sizeof(t2) == 4 && pstate.is32BitFloat(t1)) {
 			break
 		}
 		v.reset(OpConst32F)
@@ -13392,7 +13392,7 @@ func rewriteValuegeneric_OpLoad_0(v *Value) bool {
 			break
 		}
 		x := v_1_1.AuxInt
-		if !(isSamePtr(p1, p2) && sizeof(t2) == 8 && is64BitInt(t1)) {
+		if !(isSamePtr(p1, p2) && pstate.sizeof(t2) == 8 && pstate.is64BitInt(t1)) {
 			break
 		}
 		v.reset(OpConst64)
@@ -13418,7 +13418,7 @@ func rewriteValuegeneric_OpLoad_0(v *Value) bool {
 			break
 		}
 		x := v_1_1.AuxInt
-		if !(isSamePtr(p1, p2) && sizeof(t2) == 4 && is32BitInt(t1)) {
+		if !(isSamePtr(p1, p2) && pstate.sizeof(t2) == 4 && pstate.is32BitInt(t1)) {
 			break
 		}
 		v.reset(OpConst32)
@@ -13451,7 +13451,7 @@ func rewriteValuegeneric_OpLoad_0(v *Value) bool {
 		n := mem.AuxInt
 		_ = mem.Args[1]
 		p3 := mem.Args[0]
-		if !(o1 >= 0 && o1+t1.Size() <= n && isSamePtr(p1, p3) && fe.CanSSA(t1) && disjoint(op, t1.Size(), p2, sizeof(t2))) {
+		if !(o1 >= 0 && o1+t1.Size(pstate.types) <= n && isSamePtr(p1, p3) && fe.CanSSA(t1) && disjoint(op, t1.Size(pstate.types), p2, pstate.sizeof(t2))) {
 			break
 		}
 		b = mem.Block
@@ -13498,7 +13498,7 @@ func rewriteValuegeneric_OpLoad_0(v *Value) bool {
 		n := mem.AuxInt
 		_ = mem.Args[1]
 		p4 := mem.Args[0]
-		if !(o1 >= 0 && o1+t1.Size() <= n && isSamePtr(p1, p4) && fe.CanSSA(t1) && disjoint(op, t1.Size(), p2, sizeof(t2)) && disjoint(op, t1.Size(), p3, sizeof(t3))) {
+		if !(o1 >= 0 && o1+t1.Size(pstate.types) <= n && isSamePtr(p1, p4) && fe.CanSSA(t1) && disjoint(op, t1.Size(pstate.types), p2, pstate.sizeof(t2)) && disjoint(op, t1.Size(pstate.types), p3, pstate.sizeof(t3))) {
 			break
 		}
 		b = mem.Block
@@ -13514,7 +13514,7 @@ func rewriteValuegeneric_OpLoad_0(v *Value) bool {
 	}
 	return false
 }
-func rewriteValuegeneric_OpLoad_10(v *Value) bool {
+func (pstate *PackageState) rewriteValuegeneric_OpLoad_10(v *Value) bool {
 	b := v.Block
 	_ = b
 	fe := b.Func.fe
@@ -13559,7 +13559,7 @@ func rewriteValuegeneric_OpLoad_10(v *Value) bool {
 		n := mem.AuxInt
 		_ = mem.Args[1]
 		p5 := mem.Args[0]
-		if !(o1 >= 0 && o1+t1.Size() <= n && isSamePtr(p1, p5) && fe.CanSSA(t1) && disjoint(op, t1.Size(), p2, sizeof(t2)) && disjoint(op, t1.Size(), p3, sizeof(t3)) && disjoint(op, t1.Size(), p4, sizeof(t4))) {
+		if !(o1 >= 0 && o1+t1.Size(pstate.types) <= n && isSamePtr(p1, p5) && fe.CanSSA(t1) && disjoint(op, t1.Size(pstate.types), p2, pstate.sizeof(t2)) && disjoint(op, t1.Size(pstate.types), p3, pstate.sizeof(t3)) && disjoint(op, t1.Size(pstate.types), p4, pstate.sizeof(t4))) {
 			break
 		}
 		b = mem.Block
@@ -13620,7 +13620,7 @@ func rewriteValuegeneric_OpLoad_10(v *Value) bool {
 		n := mem.AuxInt
 		_ = mem.Args[1]
 		p6 := mem.Args[0]
-		if !(o1 >= 0 && o1+t1.Size() <= n && isSamePtr(p1, p6) && fe.CanSSA(t1) && disjoint(op, t1.Size(), p2, sizeof(t2)) && disjoint(op, t1.Size(), p3, sizeof(t3)) && disjoint(op, t1.Size(), p4, sizeof(t4)) && disjoint(op, t1.Size(), p5, sizeof(t5))) {
+		if !(o1 >= 0 && o1+t1.Size(pstate.types) <= n && isSamePtr(p1, p6) && fe.CanSSA(t1) && disjoint(op, t1.Size(pstate.types), p2, pstate.sizeof(t2)) && disjoint(op, t1.Size(pstate.types), p3, pstate.sizeof(t3)) && disjoint(op, t1.Size(pstate.types), p4, pstate.sizeof(t4)) && disjoint(op, t1.Size(pstate.types), p5, pstate.sizeof(t5))) {
 			break
 		}
 		b = mem.Block
@@ -13679,7 +13679,7 @@ func rewriteValuegeneric_OpLoad_10(v *Value) bool {
 		n := v_1.AuxInt
 		_ = v_1.Args[1]
 		p2 := v_1.Args[0]
-		if !(is8BitInt(t1) && isSamePtr(p1, p2) && n >= o+1) {
+		if !(pstate.is8BitInt(t1) && isSamePtr(p1, p2) && n >= o+1) {
 			break
 		}
 		v.reset(OpConst8)
@@ -13705,7 +13705,7 @@ func rewriteValuegeneric_OpLoad_10(v *Value) bool {
 		n := v_1.AuxInt
 		_ = v_1.Args[1]
 		p2 := v_1.Args[0]
-		if !(is16BitInt(t1) && isSamePtr(p1, p2) && n >= o+2) {
+		if !(pstate.is16BitInt(t1) && isSamePtr(p1, p2) && n >= o+2) {
 			break
 		}
 		v.reset(OpConst16)
@@ -13731,7 +13731,7 @@ func rewriteValuegeneric_OpLoad_10(v *Value) bool {
 		n := v_1.AuxInt
 		_ = v_1.Args[1]
 		p2 := v_1.Args[0]
-		if !(is32BitInt(t1) && isSamePtr(p1, p2) && n >= o+4) {
+		if !(pstate.is32BitInt(t1) && isSamePtr(p1, p2) && n >= o+4) {
 			break
 		}
 		v.reset(OpConst32)
@@ -13757,7 +13757,7 @@ func rewriteValuegeneric_OpLoad_10(v *Value) bool {
 		n := v_1.AuxInt
 		_ = v_1.Args[1]
 		p2 := v_1.Args[0]
-		if !(is64BitInt(t1) && isSamePtr(p1, p2) && n >= o+8) {
+		if !(pstate.is64BitInt(t1) && isSamePtr(p1, p2) && n >= o+8) {
 			break
 		}
 		v.reset(OpConst64)
@@ -13783,7 +13783,7 @@ func rewriteValuegeneric_OpLoad_10(v *Value) bool {
 		n := v_1.AuxInt
 		_ = v_1.Args[1]
 		p2 := v_1.Args[0]
-		if !(is32BitFloat(t1) && isSamePtr(p1, p2) && n >= o+4) {
+		if !(pstate.is32BitFloat(t1) && isSamePtr(p1, p2) && n >= o+4) {
 			break
 		}
 		v.reset(OpConst32F)
@@ -13809,7 +13809,7 @@ func rewriteValuegeneric_OpLoad_10(v *Value) bool {
 		n := v_1.AuxInt
 		_ = v_1.Args[1]
 		p2 := v_1.Args[0]
-		if !(is64BitFloat(t1) && isSamePtr(p1, p2) && n >= o+8) {
+		if !(pstate.is64BitFloat(t1) && isSamePtr(p1, p2) && n >= o+8) {
 			break
 		}
 		v.reset(OpConst64F)
@@ -13822,7 +13822,7 @@ func rewriteValuegeneric_OpLoad_10(v *Value) bool {
 	for {
 		t := v.Type
 		_ = v.Args[1]
-		if !(t.IsStruct() && t.NumFields() == 0 && fe.CanSSA(t)) {
+		if !(t.IsStruct() && t.NumFields(pstate.types) == 0 && fe.CanSSA(t)) {
 			break
 		}
 		v.reset(OpStructMake0)
@@ -13830,7 +13830,7 @@ func rewriteValuegeneric_OpLoad_10(v *Value) bool {
 	}
 	return false
 }
-func rewriteValuegeneric_OpLoad_20(v *Value) bool {
+func (pstate *PackageState) rewriteValuegeneric_OpLoad_20(v *Value) bool {
 	b := v.Block
 	_ = b
 	fe := b.Func.fe
@@ -13843,12 +13843,12 @@ func rewriteValuegeneric_OpLoad_20(v *Value) bool {
 		_ = v.Args[1]
 		ptr := v.Args[0]
 		mem := v.Args[1]
-		if !(t.IsStruct() && t.NumFields() == 1 && fe.CanSSA(t)) {
+		if !(t.IsStruct() && t.NumFields(pstate.types) == 1 && fe.CanSSA(t)) {
 			break
 		}
 		v.reset(OpStructMake1)
-		v0 := b.NewValue0(v.Pos, OpLoad, t.FieldType(0))
-		v1 := b.NewValue0(v.Pos, OpOffPtr, t.FieldType(0).PtrTo())
+		v0 := b.NewValue0(v.Pos, OpLoad, t.FieldType(pstate.types, 0))
+		v1 := b.NewValue0(v.Pos, OpOffPtr, t.FieldType(pstate.types, 0).PtrTo(pstate.types))
 		v1.AuxInt = 0
 		v1.AddArg(ptr)
 		v0.AddArg(v1)
@@ -13864,20 +13864,20 @@ func rewriteValuegeneric_OpLoad_20(v *Value) bool {
 		_ = v.Args[1]
 		ptr := v.Args[0]
 		mem := v.Args[1]
-		if !(t.IsStruct() && t.NumFields() == 2 && fe.CanSSA(t)) {
+		if !(t.IsStruct() && t.NumFields(pstate.types) == 2 && fe.CanSSA(t)) {
 			break
 		}
 		v.reset(OpStructMake2)
-		v0 := b.NewValue0(v.Pos, OpLoad, t.FieldType(0))
-		v1 := b.NewValue0(v.Pos, OpOffPtr, t.FieldType(0).PtrTo())
+		v0 := b.NewValue0(v.Pos, OpLoad, t.FieldType(pstate.types, 0))
+		v1 := b.NewValue0(v.Pos, OpOffPtr, t.FieldType(pstate.types, 0).PtrTo(pstate.types))
 		v1.AuxInt = 0
 		v1.AddArg(ptr)
 		v0.AddArg(v1)
 		v0.AddArg(mem)
 		v.AddArg(v0)
-		v2 := b.NewValue0(v.Pos, OpLoad, t.FieldType(1))
-		v3 := b.NewValue0(v.Pos, OpOffPtr, t.FieldType(1).PtrTo())
-		v3.AuxInt = t.FieldOff(1)
+		v2 := b.NewValue0(v.Pos, OpLoad, t.FieldType(pstate.types, 1))
+		v3 := b.NewValue0(v.Pos, OpOffPtr, t.FieldType(pstate.types, 1).PtrTo(pstate.types))
+		v3.AuxInt = t.FieldOff(pstate.types, 1)
 		v3.AddArg(ptr)
 		v2.AddArg(v3)
 		v2.AddArg(mem)
@@ -13892,27 +13892,27 @@ func rewriteValuegeneric_OpLoad_20(v *Value) bool {
 		_ = v.Args[1]
 		ptr := v.Args[0]
 		mem := v.Args[1]
-		if !(t.IsStruct() && t.NumFields() == 3 && fe.CanSSA(t)) {
+		if !(t.IsStruct() && t.NumFields(pstate.types) == 3 && fe.CanSSA(t)) {
 			break
 		}
 		v.reset(OpStructMake3)
-		v0 := b.NewValue0(v.Pos, OpLoad, t.FieldType(0))
-		v1 := b.NewValue0(v.Pos, OpOffPtr, t.FieldType(0).PtrTo())
+		v0 := b.NewValue0(v.Pos, OpLoad, t.FieldType(pstate.types, 0))
+		v1 := b.NewValue0(v.Pos, OpOffPtr, t.FieldType(pstate.types, 0).PtrTo(pstate.types))
 		v1.AuxInt = 0
 		v1.AddArg(ptr)
 		v0.AddArg(v1)
 		v0.AddArg(mem)
 		v.AddArg(v0)
-		v2 := b.NewValue0(v.Pos, OpLoad, t.FieldType(1))
-		v3 := b.NewValue0(v.Pos, OpOffPtr, t.FieldType(1).PtrTo())
-		v3.AuxInt = t.FieldOff(1)
+		v2 := b.NewValue0(v.Pos, OpLoad, t.FieldType(pstate.types, 1))
+		v3 := b.NewValue0(v.Pos, OpOffPtr, t.FieldType(pstate.types, 1).PtrTo(pstate.types))
+		v3.AuxInt = t.FieldOff(pstate.types, 1)
 		v3.AddArg(ptr)
 		v2.AddArg(v3)
 		v2.AddArg(mem)
 		v.AddArg(v2)
-		v4 := b.NewValue0(v.Pos, OpLoad, t.FieldType(2))
-		v5 := b.NewValue0(v.Pos, OpOffPtr, t.FieldType(2).PtrTo())
-		v5.AuxInt = t.FieldOff(2)
+		v4 := b.NewValue0(v.Pos, OpLoad, t.FieldType(pstate.types, 2))
+		v5 := b.NewValue0(v.Pos, OpOffPtr, t.FieldType(pstate.types, 2).PtrTo(pstate.types))
+		v5.AuxInt = t.FieldOff(pstate.types, 2)
 		v5.AddArg(ptr)
 		v4.AddArg(v5)
 		v4.AddArg(mem)
@@ -13927,34 +13927,34 @@ func rewriteValuegeneric_OpLoad_20(v *Value) bool {
 		_ = v.Args[1]
 		ptr := v.Args[0]
 		mem := v.Args[1]
-		if !(t.IsStruct() && t.NumFields() == 4 && fe.CanSSA(t)) {
+		if !(t.IsStruct() && t.NumFields(pstate.types) == 4 && fe.CanSSA(t)) {
 			break
 		}
 		v.reset(OpStructMake4)
-		v0 := b.NewValue0(v.Pos, OpLoad, t.FieldType(0))
-		v1 := b.NewValue0(v.Pos, OpOffPtr, t.FieldType(0).PtrTo())
+		v0 := b.NewValue0(v.Pos, OpLoad, t.FieldType(pstate.types, 0))
+		v1 := b.NewValue0(v.Pos, OpOffPtr, t.FieldType(pstate.types, 0).PtrTo(pstate.types))
 		v1.AuxInt = 0
 		v1.AddArg(ptr)
 		v0.AddArg(v1)
 		v0.AddArg(mem)
 		v.AddArg(v0)
-		v2 := b.NewValue0(v.Pos, OpLoad, t.FieldType(1))
-		v3 := b.NewValue0(v.Pos, OpOffPtr, t.FieldType(1).PtrTo())
-		v3.AuxInt = t.FieldOff(1)
+		v2 := b.NewValue0(v.Pos, OpLoad, t.FieldType(pstate.types, 1))
+		v3 := b.NewValue0(v.Pos, OpOffPtr, t.FieldType(pstate.types, 1).PtrTo(pstate.types))
+		v3.AuxInt = t.FieldOff(pstate.types, 1)
 		v3.AddArg(ptr)
 		v2.AddArg(v3)
 		v2.AddArg(mem)
 		v.AddArg(v2)
-		v4 := b.NewValue0(v.Pos, OpLoad, t.FieldType(2))
-		v5 := b.NewValue0(v.Pos, OpOffPtr, t.FieldType(2).PtrTo())
-		v5.AuxInt = t.FieldOff(2)
+		v4 := b.NewValue0(v.Pos, OpLoad, t.FieldType(pstate.types, 2))
+		v5 := b.NewValue0(v.Pos, OpOffPtr, t.FieldType(pstate.types, 2).PtrTo(pstate.types))
+		v5.AuxInt = t.FieldOff(pstate.types, 2)
 		v5.AddArg(ptr)
 		v4.AddArg(v5)
 		v4.AddArg(mem)
 		v.AddArg(v4)
-		v6 := b.NewValue0(v.Pos, OpLoad, t.FieldType(3))
-		v7 := b.NewValue0(v.Pos, OpOffPtr, t.FieldType(3).PtrTo())
-		v7.AuxInt = t.FieldOff(3)
+		v6 := b.NewValue0(v.Pos, OpLoad, t.FieldType(pstate.types, 3))
+		v7 := b.NewValue0(v.Pos, OpOffPtr, t.FieldType(pstate.types, 3).PtrTo(pstate.types))
+		v7.AuxInt = t.FieldOff(pstate.types, 3)
 		v7.AddArg(ptr)
 		v6.AddArg(v7)
 		v6.AddArg(mem)
@@ -13967,7 +13967,7 @@ func rewriteValuegeneric_OpLoad_20(v *Value) bool {
 	for {
 		t := v.Type
 		_ = v.Args[1]
-		if !(t.IsArray() && t.NumElem() == 0) {
+		if !(t.IsArray() && t.NumElem(pstate.types) == 0) {
 			break
 		}
 		v.reset(OpArrayMake0)
@@ -13981,11 +13981,11 @@ func rewriteValuegeneric_OpLoad_20(v *Value) bool {
 		_ = v.Args[1]
 		ptr := v.Args[0]
 		mem := v.Args[1]
-		if !(t.IsArray() && t.NumElem() == 1 && fe.CanSSA(t)) {
+		if !(t.IsArray() && t.NumElem(pstate.types) == 1 && fe.CanSSA(t)) {
 			break
 		}
 		v.reset(OpArrayMake1)
-		v0 := b.NewValue0(v.Pos, OpLoad, t.Elem())
+		v0 := b.NewValue0(v.Pos, OpLoad, t.Elem(pstate.types))
 		v0.AddArg(ptr)
 		v0.AddArg(mem)
 		v.AddArg(v0)
@@ -15839,7 +15839,7 @@ func rewriteValuegeneric_OpMod8u_0(v *Value) bool {
 	}
 	return false
 }
-func rewriteValuegeneric_OpMove_0(v *Value) bool {
+func (pstate *PackageState) rewriteValuegeneric_OpMove_0(v *Value) bool {
 	b := v.Block
 	_ = b
 	// match: (Move {t} [n] dst1 src mem:(Zero {t} [n] dst2 _))
@@ -15930,7 +15930,7 @@ func rewriteValuegeneric_OpMove_0(v *Value) bool {
 		o2 := op.AuxInt
 		dst2 := op.Args[0]
 		mem := store.Args[2]
-		if !(isSamePtr(dst1, dst2) && store.Uses == 1 && n >= o2+sizeof(t2) && disjoint(src1, n, op, sizeof(t2)) && clobber(store)) {
+		if !(isSamePtr(dst1, dst2) && store.Uses == 1 && n >= o2+pstate.sizeof(t2) && disjoint(src1, n, op, pstate.sizeof(t2)) && clobber(store)) {
 			break
 		}
 		v.reset(OpMove)
@@ -16009,7 +16009,7 @@ func rewriteValuegeneric_OpMove_0(v *Value) bool {
 		v.Aux = t
 		v.AddArg(dst1)
 		v.AddArg(src1)
-		v0 := b.NewValue0(v.Pos, OpVarDef, types.TypeMem)
+		v0 := b.NewValue0(v.Pos, OpVarDef, pstate.types.TypeMem)
 		v0.Aux = x
 		v0.AddArg(mem)
 		v.AddArg(v0)
@@ -16083,7 +16083,7 @@ func rewriteValuegeneric_OpMove_0(v *Value) bool {
 		v.Aux = t
 		v.AddArg(dst1)
 		v.AddArg(src1)
-		v0 := b.NewValue0(v.Pos, OpVarDef, types.TypeMem)
+		v0 := b.NewValue0(v.Pos, OpVarDef, pstate.types.TypeMem)
 		v0.Aux = x
 		v0.AddArg(mem)
 		v.AddArg(v0)
@@ -16126,7 +16126,7 @@ func rewriteValuegeneric_OpMove_0(v *Value) bool {
 		}
 		p3 := op3.Args[0]
 		d2 := mem_2.Args[1]
-		if !(isSamePtr(p1, p2) && isSamePtr(p2, p3) && alignof(t2) <= alignof(t1) && alignof(t3) <= alignof(t1) && registerizable(b, t2) && registerizable(b, t3) && o2 == sizeof(t3) && n == sizeof(t2)+sizeof(t3)) {
+		if !(isSamePtr(p1, p2) && isSamePtr(p2, p3) && pstate.alignof(t2) <= pstate.alignof(t1) && pstate.alignof(t3) <= pstate.alignof(t1) && pstate.registerizable(b, t2) && pstate.registerizable(b, t3) && o2 == pstate.sizeof(t3) && n == pstate.sizeof(t2)+pstate.sizeof(t3)) {
 			break
 		}
 		v.reset(OpStore)
@@ -16136,7 +16136,7 @@ func rewriteValuegeneric_OpMove_0(v *Value) bool {
 		v0.AddArg(dst)
 		v.AddArg(v0)
 		v.AddArg(d1)
-		v1 := b.NewValue0(v.Pos, OpStore, types.TypeMem)
+		v1 := b.NewValue0(v.Pos, OpStore, pstate.types.TypeMem)
 		v1.Aux = t3
 		v2 := b.NewValue0(v.Pos, OpOffPtr, t3.(*types.Type))
 		v2.AuxInt = 0
@@ -16197,7 +16197,7 @@ func rewriteValuegeneric_OpMove_0(v *Value) bool {
 		}
 		p4 := op4.Args[0]
 		d3 := mem_2_2.Args[1]
-		if !(isSamePtr(p1, p2) && isSamePtr(p2, p3) && isSamePtr(p3, p4) && alignof(t2) <= alignof(t1) && alignof(t3) <= alignof(t1) && alignof(t4) <= alignof(t1) && registerizable(b, t2) && registerizable(b, t3) && registerizable(b, t4) && o3 == sizeof(t4) && o2-o3 == sizeof(t3) && n == sizeof(t2)+sizeof(t3)+sizeof(t4)) {
+		if !(isSamePtr(p1, p2) && isSamePtr(p2, p3) && isSamePtr(p3, p4) && pstate.alignof(t2) <= pstate.alignof(t1) && pstate.alignof(t3) <= pstate.alignof(t1) && pstate.alignof(t4) <= pstate.alignof(t1) && pstate.registerizable(b, t2) && pstate.registerizable(b, t3) && pstate.registerizable(b, t4) && o3 == pstate.sizeof(t4) && o2-o3 == pstate.sizeof(t3) && n == pstate.sizeof(t2)+pstate.sizeof(t3)+pstate.sizeof(t4)) {
 			break
 		}
 		v.reset(OpStore)
@@ -16207,14 +16207,14 @@ func rewriteValuegeneric_OpMove_0(v *Value) bool {
 		v0.AddArg(dst)
 		v.AddArg(v0)
 		v.AddArg(d1)
-		v1 := b.NewValue0(v.Pos, OpStore, types.TypeMem)
+		v1 := b.NewValue0(v.Pos, OpStore, pstate.types.TypeMem)
 		v1.Aux = t3
 		v2 := b.NewValue0(v.Pos, OpOffPtr, t3.(*types.Type))
 		v2.AuxInt = o3
 		v2.AddArg(dst)
 		v1.AddArg(v2)
 		v1.AddArg(d2)
-		v3 := b.NewValue0(v.Pos, OpStore, types.TypeMem)
+		v3 := b.NewValue0(v.Pos, OpStore, pstate.types.TypeMem)
 		v3.Aux = t4
 		v4 := b.NewValue0(v.Pos, OpOffPtr, t4.(*types.Type))
 		v4.AuxInt = 0
@@ -16289,7 +16289,7 @@ func rewriteValuegeneric_OpMove_0(v *Value) bool {
 		}
 		p5 := op5.Args[0]
 		d4 := mem_2_2_2.Args[1]
-		if !(isSamePtr(p1, p2) && isSamePtr(p2, p3) && isSamePtr(p3, p4) && isSamePtr(p4, p5) && alignof(t2) <= alignof(t1) && alignof(t3) <= alignof(t1) && alignof(t4) <= alignof(t1) && alignof(t5) <= alignof(t1) && registerizable(b, t2) && registerizable(b, t3) && registerizable(b, t4) && registerizable(b, t5) && o4 == sizeof(t5) && o3-o4 == sizeof(t4) && o2-o3 == sizeof(t3) && n == sizeof(t2)+sizeof(t3)+sizeof(t4)+sizeof(t5)) {
+		if !(isSamePtr(p1, p2) && isSamePtr(p2, p3) && isSamePtr(p3, p4) && isSamePtr(p4, p5) && pstate.alignof(t2) <= pstate.alignof(t1) && pstate.alignof(t3) <= pstate.alignof(t1) && pstate.alignof(t4) <= pstate.alignof(t1) && pstate.alignof(t5) <= pstate.alignof(t1) && pstate.registerizable(b, t2) && pstate.registerizable(b, t3) && pstate.registerizable(b, t4) && pstate.registerizable(b, t5) && o4 == pstate.sizeof(t5) && o3-o4 == pstate.sizeof(t4) && o2-o3 == pstate.sizeof(t3) && n == pstate.sizeof(t2)+pstate.sizeof(t3)+pstate.sizeof(t4)+pstate.sizeof(t5)) {
 			break
 		}
 		v.reset(OpStore)
@@ -16299,21 +16299,21 @@ func rewriteValuegeneric_OpMove_0(v *Value) bool {
 		v0.AddArg(dst)
 		v.AddArg(v0)
 		v.AddArg(d1)
-		v1 := b.NewValue0(v.Pos, OpStore, types.TypeMem)
+		v1 := b.NewValue0(v.Pos, OpStore, pstate.types.TypeMem)
 		v1.Aux = t3
 		v2 := b.NewValue0(v.Pos, OpOffPtr, t3.(*types.Type))
 		v2.AuxInt = o3
 		v2.AddArg(dst)
 		v1.AddArg(v2)
 		v1.AddArg(d2)
-		v3 := b.NewValue0(v.Pos, OpStore, types.TypeMem)
+		v3 := b.NewValue0(v.Pos, OpStore, pstate.types.TypeMem)
 		v3.Aux = t4
 		v4 := b.NewValue0(v.Pos, OpOffPtr, t4.(*types.Type))
 		v4.AuxInt = o4
 		v4.AddArg(dst)
 		v3.AddArg(v4)
 		v3.AddArg(d3)
-		v5 := b.NewValue0(v.Pos, OpStore, types.TypeMem)
+		v5 := b.NewValue0(v.Pos, OpStore, pstate.types.TypeMem)
 		v5.Aux = t5
 		v6 := b.NewValue0(v.Pos, OpOffPtr, t5.(*types.Type))
 		v6.AuxInt = 0
@@ -16328,7 +16328,7 @@ func rewriteValuegeneric_OpMove_0(v *Value) bool {
 	}
 	return false
 }
-func rewriteValuegeneric_OpMove_10(v *Value) bool {
+func (pstate *PackageState) rewriteValuegeneric_OpMove_10(v *Value) bool {
 	b := v.Block
 	_ = b
 	// match: (Move {t1} [n] dst p1 mem:(VarDef (Store {t2} op2:(OffPtr [o2] p2) d1 (Store {t3} op3:(OffPtr [0] p3) d2 _))))
@@ -16372,7 +16372,7 @@ func rewriteValuegeneric_OpMove_10(v *Value) bool {
 		}
 		p3 := op3.Args[0]
 		d2 := mem_0_2.Args[1]
-		if !(isSamePtr(p1, p2) && isSamePtr(p2, p3) && alignof(t2) <= alignof(t1) && alignof(t3) <= alignof(t1) && registerizable(b, t2) && registerizable(b, t3) && o2 == sizeof(t3) && n == sizeof(t2)+sizeof(t3)) {
+		if !(isSamePtr(p1, p2) && isSamePtr(p2, p3) && pstate.alignof(t2) <= pstate.alignof(t1) && pstate.alignof(t3) <= pstate.alignof(t1) && pstate.registerizable(b, t2) && pstate.registerizable(b, t3) && o2 == pstate.sizeof(t3) && n == pstate.sizeof(t2)+pstate.sizeof(t3)) {
 			break
 		}
 		v.reset(OpStore)
@@ -16382,7 +16382,7 @@ func rewriteValuegeneric_OpMove_10(v *Value) bool {
 		v0.AddArg(dst)
 		v.AddArg(v0)
 		v.AddArg(d1)
-		v1 := b.NewValue0(v.Pos, OpStore, types.TypeMem)
+		v1 := b.NewValue0(v.Pos, OpStore, pstate.types.TypeMem)
 		v1.Aux = t3
 		v2 := b.NewValue0(v.Pos, OpOffPtr, t3.(*types.Type))
 		v2.AuxInt = 0
@@ -16447,7 +16447,7 @@ func rewriteValuegeneric_OpMove_10(v *Value) bool {
 		}
 		p4 := op4.Args[0]
 		d3 := mem_0_2_2.Args[1]
-		if !(isSamePtr(p1, p2) && isSamePtr(p2, p3) && isSamePtr(p3, p4) && alignof(t2) <= alignof(t1) && alignof(t3) <= alignof(t1) && alignof(t4) <= alignof(t1) && registerizable(b, t2) && registerizable(b, t3) && registerizable(b, t4) && o3 == sizeof(t4) && o2-o3 == sizeof(t3) && n == sizeof(t2)+sizeof(t3)+sizeof(t4)) {
+		if !(isSamePtr(p1, p2) && isSamePtr(p2, p3) && isSamePtr(p3, p4) && pstate.alignof(t2) <= pstate.alignof(t1) && pstate.alignof(t3) <= pstate.alignof(t1) && pstate.alignof(t4) <= pstate.alignof(t1) && pstate.registerizable(b, t2) && pstate.registerizable(b, t3) && pstate.registerizable(b, t4) && o3 == pstate.sizeof(t4) && o2-o3 == pstate.sizeof(t3) && n == pstate.sizeof(t2)+pstate.sizeof(t3)+pstate.sizeof(t4)) {
 			break
 		}
 		v.reset(OpStore)
@@ -16457,14 +16457,14 @@ func rewriteValuegeneric_OpMove_10(v *Value) bool {
 		v0.AddArg(dst)
 		v.AddArg(v0)
 		v.AddArg(d1)
-		v1 := b.NewValue0(v.Pos, OpStore, types.TypeMem)
+		v1 := b.NewValue0(v.Pos, OpStore, pstate.types.TypeMem)
 		v1.Aux = t3
 		v2 := b.NewValue0(v.Pos, OpOffPtr, t3.(*types.Type))
 		v2.AuxInt = o3
 		v2.AddArg(dst)
 		v1.AddArg(v2)
 		v1.AddArg(d2)
-		v3 := b.NewValue0(v.Pos, OpStore, types.TypeMem)
+		v3 := b.NewValue0(v.Pos, OpStore, pstate.types.TypeMem)
 		v3.Aux = t4
 		v4 := b.NewValue0(v.Pos, OpOffPtr, t4.(*types.Type))
 		v4.AuxInt = 0
@@ -16543,7 +16543,7 @@ func rewriteValuegeneric_OpMove_10(v *Value) bool {
 		}
 		p5 := op5.Args[0]
 		d4 := mem_0_2_2_2.Args[1]
-		if !(isSamePtr(p1, p2) && isSamePtr(p2, p3) && isSamePtr(p3, p4) && isSamePtr(p4, p5) && alignof(t2) <= alignof(t1) && alignof(t3) <= alignof(t1) && alignof(t4) <= alignof(t1) && alignof(t5) <= alignof(t1) && registerizable(b, t2) && registerizable(b, t3) && registerizable(b, t4) && registerizable(b, t5) && o4 == sizeof(t5) && o3-o4 == sizeof(t4) && o2-o3 == sizeof(t3) && n == sizeof(t2)+sizeof(t3)+sizeof(t4)+sizeof(t5)) {
+		if !(isSamePtr(p1, p2) && isSamePtr(p2, p3) && isSamePtr(p3, p4) && isSamePtr(p4, p5) && pstate.alignof(t2) <= pstate.alignof(t1) && pstate.alignof(t3) <= pstate.alignof(t1) && pstate.alignof(t4) <= pstate.alignof(t1) && pstate.alignof(t5) <= pstate.alignof(t1) && pstate.registerizable(b, t2) && pstate.registerizable(b, t3) && pstate.registerizable(b, t4) && pstate.registerizable(b, t5) && o4 == pstate.sizeof(t5) && o3-o4 == pstate.sizeof(t4) && o2-o3 == pstate.sizeof(t3) && n == pstate.sizeof(t2)+pstate.sizeof(t3)+pstate.sizeof(t4)+pstate.sizeof(t5)) {
 			break
 		}
 		v.reset(OpStore)
@@ -16553,21 +16553,21 @@ func rewriteValuegeneric_OpMove_10(v *Value) bool {
 		v0.AddArg(dst)
 		v.AddArg(v0)
 		v.AddArg(d1)
-		v1 := b.NewValue0(v.Pos, OpStore, types.TypeMem)
+		v1 := b.NewValue0(v.Pos, OpStore, pstate.types.TypeMem)
 		v1.Aux = t3
 		v2 := b.NewValue0(v.Pos, OpOffPtr, t3.(*types.Type))
 		v2.AuxInt = o3
 		v2.AddArg(dst)
 		v1.AddArg(v2)
 		v1.AddArg(d2)
-		v3 := b.NewValue0(v.Pos, OpStore, types.TypeMem)
+		v3 := b.NewValue0(v.Pos, OpStore, pstate.types.TypeMem)
 		v3.Aux = t4
 		v4 := b.NewValue0(v.Pos, OpOffPtr, t4.(*types.Type))
 		v4.AuxInt = o4
 		v4.AddArg(dst)
 		v3.AddArg(v4)
 		v3.AddArg(d3)
-		v5 := b.NewValue0(v.Pos, OpStore, types.TypeMem)
+		v5 := b.NewValue0(v.Pos, OpStore, pstate.types.TypeMem)
 		v5.Aux = t5
 		v6 := b.NewValue0(v.Pos, OpOffPtr, t5.(*types.Type))
 		v6.AuxInt = 0
@@ -16613,7 +16613,7 @@ func rewriteValuegeneric_OpMove_10(v *Value) bool {
 		t3 := mem_2.Aux
 		_ = mem_2.Args[1]
 		p3 := mem_2.Args[0]
-		if !(isSamePtr(p1, p2) && isSamePtr(p2, p3) && alignof(t2) <= alignof(t1) && alignof(t3) <= alignof(t1) && registerizable(b, t2) && n >= o2+sizeof(t2)) {
+		if !(isSamePtr(p1, p2) && isSamePtr(p2, p3) && pstate.alignof(t2) <= pstate.alignof(t1) && pstate.alignof(t3) <= pstate.alignof(t1) && pstate.registerizable(b, t2) && n >= o2+pstate.sizeof(t2)) {
 			break
 		}
 		v.reset(OpStore)
@@ -16623,7 +16623,7 @@ func rewriteValuegeneric_OpMove_10(v *Value) bool {
 		v0.AddArg(dst)
 		v.AddArg(v0)
 		v.AddArg(d1)
-		v1 := b.NewValue0(v.Pos, OpZero, types.TypeMem)
+		v1 := b.NewValue0(v.Pos, OpZero, pstate.types.TypeMem)
 		v1.AuxInt = n
 		v1.Aux = t1
 		v1.AddArg(dst)
@@ -16678,7 +16678,7 @@ func rewriteValuegeneric_OpMove_10(v *Value) bool {
 		t4 := mem_2_2.Aux
 		_ = mem_2_2.Args[1]
 		p4 := mem_2_2.Args[0]
-		if !(isSamePtr(p1, p2) && isSamePtr(p2, p3) && isSamePtr(p3, p4) && alignof(t2) <= alignof(t1) && alignof(t3) <= alignof(t1) && alignof(t4) <= alignof(t1) && registerizable(b, t2) && registerizable(b, t3) && n >= o2+sizeof(t2) && n >= o3+sizeof(t3)) {
+		if !(isSamePtr(p1, p2) && isSamePtr(p2, p3) && isSamePtr(p3, p4) && pstate.alignof(t2) <= pstate.alignof(t1) && pstate.alignof(t3) <= pstate.alignof(t1) && pstate.alignof(t4) <= pstate.alignof(t1) && pstate.registerizable(b, t2) && pstate.registerizable(b, t3) && n >= o2+pstate.sizeof(t2) && n >= o3+pstate.sizeof(t3)) {
 			break
 		}
 		v.reset(OpStore)
@@ -16688,14 +16688,14 @@ func rewriteValuegeneric_OpMove_10(v *Value) bool {
 		v0.AddArg(dst)
 		v.AddArg(v0)
 		v.AddArg(d1)
-		v1 := b.NewValue0(v.Pos, OpStore, types.TypeMem)
+		v1 := b.NewValue0(v.Pos, OpStore, pstate.types.TypeMem)
 		v1.Aux = t3
 		v2 := b.NewValue0(v.Pos, OpOffPtr, tt3)
 		v2.AuxInt = o3
 		v2.AddArg(dst)
 		v1.AddArg(v2)
 		v1.AddArg(d2)
-		v3 := b.NewValue0(v.Pos, OpZero, types.TypeMem)
+		v3 := b.NewValue0(v.Pos, OpZero, pstate.types.TypeMem)
 		v3.AuxInt = n
 		v3.Aux = t1
 		v3.AddArg(dst)
@@ -16765,7 +16765,7 @@ func rewriteValuegeneric_OpMove_10(v *Value) bool {
 		t5 := mem_2_2_2.Aux
 		_ = mem_2_2_2.Args[1]
 		p5 := mem_2_2_2.Args[0]
-		if !(isSamePtr(p1, p2) && isSamePtr(p2, p3) && isSamePtr(p3, p4) && isSamePtr(p4, p5) && alignof(t2) <= alignof(t1) && alignof(t3) <= alignof(t1) && alignof(t4) <= alignof(t1) && alignof(t5) <= alignof(t1) && registerizable(b, t2) && registerizable(b, t3) && registerizable(b, t4) && n >= o2+sizeof(t2) && n >= o3+sizeof(t3) && n >= o4+sizeof(t4)) {
+		if !(isSamePtr(p1, p2) && isSamePtr(p2, p3) && isSamePtr(p3, p4) && isSamePtr(p4, p5) && pstate.alignof(t2) <= pstate.alignof(t1) && pstate.alignof(t3) <= pstate.alignof(t1) && pstate.alignof(t4) <= pstate.alignof(t1) && pstate.alignof(t5) <= pstate.alignof(t1) && pstate.registerizable(b, t2) && pstate.registerizable(b, t3) && pstate.registerizable(b, t4) && n >= o2+pstate.sizeof(t2) && n >= o3+pstate.sizeof(t3) && n >= o4+pstate.sizeof(t4)) {
 			break
 		}
 		v.reset(OpStore)
@@ -16775,21 +16775,21 @@ func rewriteValuegeneric_OpMove_10(v *Value) bool {
 		v0.AddArg(dst)
 		v.AddArg(v0)
 		v.AddArg(d1)
-		v1 := b.NewValue0(v.Pos, OpStore, types.TypeMem)
+		v1 := b.NewValue0(v.Pos, OpStore, pstate.types.TypeMem)
 		v1.Aux = t3
 		v2 := b.NewValue0(v.Pos, OpOffPtr, tt3)
 		v2.AuxInt = o3
 		v2.AddArg(dst)
 		v1.AddArg(v2)
 		v1.AddArg(d2)
-		v3 := b.NewValue0(v.Pos, OpStore, types.TypeMem)
+		v3 := b.NewValue0(v.Pos, OpStore, pstate.types.TypeMem)
 		v3.Aux = t4
 		v4 := b.NewValue0(v.Pos, OpOffPtr, tt4)
 		v4.AuxInt = o4
 		v4.AddArg(dst)
 		v3.AddArg(v4)
 		v3.AddArg(d3)
-		v5 := b.NewValue0(v.Pos, OpZero, types.TypeMem)
+		v5 := b.NewValue0(v.Pos, OpZero, pstate.types.TypeMem)
 		v5.AuxInt = n
 		v5.Aux = t1
 		v5.AddArg(dst)
@@ -16874,7 +16874,7 @@ func rewriteValuegeneric_OpMove_10(v *Value) bool {
 		t6 := mem_2_2_2_2.Aux
 		_ = mem_2_2_2_2.Args[1]
 		p6 := mem_2_2_2_2.Args[0]
-		if !(isSamePtr(p1, p2) && isSamePtr(p2, p3) && isSamePtr(p3, p4) && isSamePtr(p4, p5) && isSamePtr(p5, p6) && alignof(t2) <= alignof(t1) && alignof(t3) <= alignof(t1) && alignof(t4) <= alignof(t1) && alignof(t5) <= alignof(t1) && alignof(t6) <= alignof(t1) && registerizable(b, t2) && registerizable(b, t3) && registerizable(b, t4) && registerizable(b, t5) && n >= o2+sizeof(t2) && n >= o3+sizeof(t3) && n >= o4+sizeof(t4) && n >= o5+sizeof(t5)) {
+		if !(isSamePtr(p1, p2) && isSamePtr(p2, p3) && isSamePtr(p3, p4) && isSamePtr(p4, p5) && isSamePtr(p5, p6) && pstate.alignof(t2) <= pstate.alignof(t1) && pstate.alignof(t3) <= pstate.alignof(t1) && pstate.alignof(t4) <= pstate.alignof(t1) && pstate.alignof(t5) <= pstate.alignof(t1) && pstate.alignof(t6) <= pstate.alignof(t1) && pstate.registerizable(b, t2) && pstate.registerizable(b, t3) && pstate.registerizable(b, t4) && pstate.registerizable(b, t5) && n >= o2+pstate.sizeof(t2) && n >= o3+pstate.sizeof(t3) && n >= o4+pstate.sizeof(t4) && n >= o5+pstate.sizeof(t5)) {
 			break
 		}
 		v.reset(OpStore)
@@ -16884,28 +16884,28 @@ func rewriteValuegeneric_OpMove_10(v *Value) bool {
 		v0.AddArg(dst)
 		v.AddArg(v0)
 		v.AddArg(d1)
-		v1 := b.NewValue0(v.Pos, OpStore, types.TypeMem)
+		v1 := b.NewValue0(v.Pos, OpStore, pstate.types.TypeMem)
 		v1.Aux = t3
 		v2 := b.NewValue0(v.Pos, OpOffPtr, tt3)
 		v2.AuxInt = o3
 		v2.AddArg(dst)
 		v1.AddArg(v2)
 		v1.AddArg(d2)
-		v3 := b.NewValue0(v.Pos, OpStore, types.TypeMem)
+		v3 := b.NewValue0(v.Pos, OpStore, pstate.types.TypeMem)
 		v3.Aux = t4
 		v4 := b.NewValue0(v.Pos, OpOffPtr, tt4)
 		v4.AuxInt = o4
 		v4.AddArg(dst)
 		v3.AddArg(v4)
 		v3.AddArg(d3)
-		v5 := b.NewValue0(v.Pos, OpStore, types.TypeMem)
+		v5 := b.NewValue0(v.Pos, OpStore, pstate.types.TypeMem)
 		v5.Aux = t5
 		v6 := b.NewValue0(v.Pos, OpOffPtr, tt5)
 		v6.AuxInt = o5
 		v6.AddArg(dst)
 		v5.AddArg(v6)
 		v5.AddArg(d4)
-		v7 := b.NewValue0(v.Pos, OpZero, types.TypeMem)
+		v7 := b.NewValue0(v.Pos, OpZero, pstate.types.TypeMem)
 		v7.AuxInt = n
 		v7.Aux = t1
 		v7.AddArg(dst)
@@ -16953,7 +16953,7 @@ func rewriteValuegeneric_OpMove_10(v *Value) bool {
 		t3 := mem_0_2.Aux
 		_ = mem_0_2.Args[1]
 		p3 := mem_0_2.Args[0]
-		if !(isSamePtr(p1, p2) && isSamePtr(p2, p3) && alignof(t2) <= alignof(t1) && alignof(t3) <= alignof(t1) && registerizable(b, t2) && n >= o2+sizeof(t2)) {
+		if !(isSamePtr(p1, p2) && isSamePtr(p2, p3) && pstate.alignof(t2) <= pstate.alignof(t1) && pstate.alignof(t3) <= pstate.alignof(t1) && pstate.registerizable(b, t2) && n >= o2+pstate.sizeof(t2)) {
 			break
 		}
 		v.reset(OpStore)
@@ -16963,7 +16963,7 @@ func rewriteValuegeneric_OpMove_10(v *Value) bool {
 		v0.AddArg(dst)
 		v.AddArg(v0)
 		v.AddArg(d1)
-		v1 := b.NewValue0(v.Pos, OpZero, types.TypeMem)
+		v1 := b.NewValue0(v.Pos, OpZero, pstate.types.TypeMem)
 		v1.AuxInt = n
 		v1.Aux = t1
 		v1.AddArg(dst)
@@ -17022,7 +17022,7 @@ func rewriteValuegeneric_OpMove_10(v *Value) bool {
 		t4 := mem_0_2_2.Aux
 		_ = mem_0_2_2.Args[1]
 		p4 := mem_0_2_2.Args[0]
-		if !(isSamePtr(p1, p2) && isSamePtr(p2, p3) && isSamePtr(p3, p4) && alignof(t2) <= alignof(t1) && alignof(t3) <= alignof(t1) && alignof(t4) <= alignof(t1) && registerizable(b, t2) && registerizable(b, t3) && n >= o2+sizeof(t2) && n >= o3+sizeof(t3)) {
+		if !(isSamePtr(p1, p2) && isSamePtr(p2, p3) && isSamePtr(p3, p4) && pstate.alignof(t2) <= pstate.alignof(t1) && pstate.alignof(t3) <= pstate.alignof(t1) && pstate.alignof(t4) <= pstate.alignof(t1) && pstate.registerizable(b, t2) && pstate.registerizable(b, t3) && n >= o2+pstate.sizeof(t2) && n >= o3+pstate.sizeof(t3)) {
 			break
 		}
 		v.reset(OpStore)
@@ -17032,14 +17032,14 @@ func rewriteValuegeneric_OpMove_10(v *Value) bool {
 		v0.AddArg(dst)
 		v.AddArg(v0)
 		v.AddArg(d1)
-		v1 := b.NewValue0(v.Pos, OpStore, types.TypeMem)
+		v1 := b.NewValue0(v.Pos, OpStore, pstate.types.TypeMem)
 		v1.Aux = t3
 		v2 := b.NewValue0(v.Pos, OpOffPtr, tt3)
 		v2.AuxInt = o3
 		v2.AddArg(dst)
 		v1.AddArg(v2)
 		v1.AddArg(d2)
-		v3 := b.NewValue0(v.Pos, OpZero, types.TypeMem)
+		v3 := b.NewValue0(v.Pos, OpZero, pstate.types.TypeMem)
 		v3.AuxInt = n
 		v3.Aux = t1
 		v3.AddArg(dst)
@@ -17113,7 +17113,7 @@ func rewriteValuegeneric_OpMove_10(v *Value) bool {
 		t5 := mem_0_2_2_2.Aux
 		_ = mem_0_2_2_2.Args[1]
 		p5 := mem_0_2_2_2.Args[0]
-		if !(isSamePtr(p1, p2) && isSamePtr(p2, p3) && isSamePtr(p3, p4) && isSamePtr(p4, p5) && alignof(t2) <= alignof(t1) && alignof(t3) <= alignof(t1) && alignof(t4) <= alignof(t1) && alignof(t5) <= alignof(t1) && registerizable(b, t2) && registerizable(b, t3) && registerizable(b, t4) && n >= o2+sizeof(t2) && n >= o3+sizeof(t3) && n >= o4+sizeof(t4)) {
+		if !(isSamePtr(p1, p2) && isSamePtr(p2, p3) && isSamePtr(p3, p4) && isSamePtr(p4, p5) && pstate.alignof(t2) <= pstate.alignof(t1) && pstate.alignof(t3) <= pstate.alignof(t1) && pstate.alignof(t4) <= pstate.alignof(t1) && pstate.alignof(t5) <= pstate.alignof(t1) && pstate.registerizable(b, t2) && pstate.registerizable(b, t3) && pstate.registerizable(b, t4) && n >= o2+pstate.sizeof(t2) && n >= o3+pstate.sizeof(t3) && n >= o4+pstate.sizeof(t4)) {
 			break
 		}
 		v.reset(OpStore)
@@ -17123,21 +17123,21 @@ func rewriteValuegeneric_OpMove_10(v *Value) bool {
 		v0.AddArg(dst)
 		v.AddArg(v0)
 		v.AddArg(d1)
-		v1 := b.NewValue0(v.Pos, OpStore, types.TypeMem)
+		v1 := b.NewValue0(v.Pos, OpStore, pstate.types.TypeMem)
 		v1.Aux = t3
 		v2 := b.NewValue0(v.Pos, OpOffPtr, tt3)
 		v2.AuxInt = o3
 		v2.AddArg(dst)
 		v1.AddArg(v2)
 		v1.AddArg(d2)
-		v3 := b.NewValue0(v.Pos, OpStore, types.TypeMem)
+		v3 := b.NewValue0(v.Pos, OpStore, pstate.types.TypeMem)
 		v3.Aux = t4
 		v4 := b.NewValue0(v.Pos, OpOffPtr, tt4)
 		v4.AuxInt = o4
 		v4.AddArg(dst)
 		v3.AddArg(v4)
 		v3.AddArg(d3)
-		v5 := b.NewValue0(v.Pos, OpZero, types.TypeMem)
+		v5 := b.NewValue0(v.Pos, OpZero, pstate.types.TypeMem)
 		v5.AuxInt = n
 		v5.Aux = t1
 		v5.AddArg(dst)
@@ -17149,7 +17149,7 @@ func rewriteValuegeneric_OpMove_10(v *Value) bool {
 	}
 	return false
 }
-func rewriteValuegeneric_OpMove_20(v *Value) bool {
+func (pstate *PackageState) rewriteValuegeneric_OpMove_20(v *Value) bool {
 	b := v.Block
 	_ = b
 	// match: (Move {t1} [n] dst p1 mem:(VarDef (Store {t2} (OffPtr <tt2> [o2] p2) d1 (Store {t3} (OffPtr <tt3> [o3] p3) d2 (Store {t4} (OffPtr <tt4> [o4] p4) d3 (Store {t5} (OffPtr <tt5> [o5] p5) d4 (Zero {t6} [n] p6 _)))))))
@@ -17231,7 +17231,7 @@ func rewriteValuegeneric_OpMove_20(v *Value) bool {
 		t6 := mem_0_2_2_2_2.Aux
 		_ = mem_0_2_2_2_2.Args[1]
 		p6 := mem_0_2_2_2_2.Args[0]
-		if !(isSamePtr(p1, p2) && isSamePtr(p2, p3) && isSamePtr(p3, p4) && isSamePtr(p4, p5) && isSamePtr(p5, p6) && alignof(t2) <= alignof(t1) && alignof(t3) <= alignof(t1) && alignof(t4) <= alignof(t1) && alignof(t5) <= alignof(t1) && alignof(t6) <= alignof(t1) && registerizable(b, t2) && registerizable(b, t3) && registerizable(b, t4) && registerizable(b, t5) && n >= o2+sizeof(t2) && n >= o3+sizeof(t3) && n >= o4+sizeof(t4) && n >= o5+sizeof(t5)) {
+		if !(isSamePtr(p1, p2) && isSamePtr(p2, p3) && isSamePtr(p3, p4) && isSamePtr(p4, p5) && isSamePtr(p5, p6) && pstate.alignof(t2) <= pstate.alignof(t1) && pstate.alignof(t3) <= pstate.alignof(t1) && pstate.alignof(t4) <= pstate.alignof(t1) && pstate.alignof(t5) <= pstate.alignof(t1) && pstate.alignof(t6) <= pstate.alignof(t1) && pstate.registerizable(b, t2) && pstate.registerizable(b, t3) && pstate.registerizable(b, t4) && pstate.registerizable(b, t5) && n >= o2+pstate.sizeof(t2) && n >= o3+pstate.sizeof(t3) && n >= o4+pstate.sizeof(t4) && n >= o5+pstate.sizeof(t5)) {
 			break
 		}
 		v.reset(OpStore)
@@ -17241,28 +17241,28 @@ func rewriteValuegeneric_OpMove_20(v *Value) bool {
 		v0.AddArg(dst)
 		v.AddArg(v0)
 		v.AddArg(d1)
-		v1 := b.NewValue0(v.Pos, OpStore, types.TypeMem)
+		v1 := b.NewValue0(v.Pos, OpStore, pstate.types.TypeMem)
 		v1.Aux = t3
 		v2 := b.NewValue0(v.Pos, OpOffPtr, tt3)
 		v2.AuxInt = o3
 		v2.AddArg(dst)
 		v1.AddArg(v2)
 		v1.AddArg(d2)
-		v3 := b.NewValue0(v.Pos, OpStore, types.TypeMem)
+		v3 := b.NewValue0(v.Pos, OpStore, pstate.types.TypeMem)
 		v3.Aux = t4
 		v4 := b.NewValue0(v.Pos, OpOffPtr, tt4)
 		v4.AuxInt = o4
 		v4.AddArg(dst)
 		v3.AddArg(v4)
 		v3.AddArg(d3)
-		v5 := b.NewValue0(v.Pos, OpStore, types.TypeMem)
+		v5 := b.NewValue0(v.Pos, OpStore, pstate.types.TypeMem)
 		v5.Aux = t5
 		v6 := b.NewValue0(v.Pos, OpOffPtr, tt5)
 		v6.AuxInt = o5
 		v6.AddArg(dst)
 		v5.AddArg(v6)
 		v5.AddArg(d4)
-		v7 := b.NewValue0(v.Pos, OpZero, types.TypeMem)
+		v7 := b.NewValue0(v.Pos, OpZero, pstate.types.TypeMem)
 		v7.AuxInt = n
 		v7.Aux = t1
 		v7.AddArg(dst)
@@ -21926,7 +21926,7 @@ func rewriteValuegeneric_OpNot_40(v *Value) bool {
 	}
 	return false
 }
-func rewriteValuegeneric_OpOffPtr_0(v *Value) bool {
+func (pstate *PackageState) rewriteValuegeneric_OpOffPtr_0(v *Value) bool {
 	// match: (OffPtr (OffPtr p [b]) [a])
 	// cond:
 	// result: (OffPtr p [a+b])
@@ -21951,7 +21951,7 @@ func rewriteValuegeneric_OpOffPtr_0(v *Value) bool {
 			break
 		}
 		p := v.Args[0]
-		if !(v.Type.Compare(p.Type) == types.CMPeq) {
+		if !(v.Type.Compare(pstate.types, p.Type) == types.CMPeq) {
 			break
 		}
 		v.reset(OpCopy)
@@ -24384,7 +24384,7 @@ func rewriteValuegeneric_OpPhi_0(v *Value) bool {
 	}
 	return false
 }
-func rewriteValuegeneric_OpPtrIndex_0(v *Value) bool {
+func (pstate *PackageState) rewriteValuegeneric_OpPtrIndex_0(v *Value) bool {
 	b := v.Block
 	_ = b
 	config := b.Func.Config
@@ -24407,7 +24407,7 @@ func rewriteValuegeneric_OpPtrIndex_0(v *Value) bool {
 		v0 := b.NewValue0(v.Pos, OpMul32, typ.Int)
 		v0.AddArg(idx)
 		v1 := b.NewValue0(v.Pos, OpConst32, typ.Int)
-		v1.AuxInt = t.Elem().Size()
+		v1.AuxInt = t.Elem(pstate.types).Size(pstate.types)
 		v0.AddArg(v1)
 		v.AddArg(v0)
 		return true
@@ -24428,7 +24428,7 @@ func rewriteValuegeneric_OpPtrIndex_0(v *Value) bool {
 		v0 := b.NewValue0(v.Pos, OpMul64, typ.Int)
 		v0.AddArg(idx)
 		v1 := b.NewValue0(v.Pos, OpConst64, typ.Int)
-		v1.AuxInt = t.Elem().Size()
+		v1.AuxInt = t.Elem(pstate.types).Size(pstate.types)
 		v0.AddArg(v1)
 		v.AddArg(v0)
 		return true
@@ -27259,7 +27259,7 @@ func rewriteValuegeneric_OpSqrt_0(v *Value) bool {
 	}
 	return false
 }
-func rewriteValuegeneric_OpStaticCall_0(v *Value) bool {
+func (pstate *PackageState) rewriteValuegeneric_OpStaticCall_0(v *Value) bool {
 	b := v.Block
 	_ = b
 	config := b.Func.Config
@@ -27298,7 +27298,7 @@ func rewriteValuegeneric_OpStaticCall_0(v *Value) bool {
 		}
 		v.reset(OpMove)
 		v.AuxInt = sz
-		v.Aux = t.(*types.Type).Elem()
+		v.Aux = t.(*types.Type).Elem(pstate.types)
 		v.AddArg(dst)
 		v.AddArg(src)
 		v.AddArg(mem)
@@ -27338,7 +27338,7 @@ func rewriteValuegeneric_OpStaticCall_0(v *Value) bool {
 		}
 		v.reset(OpMove)
 		v.AuxInt = sz
-		v.Aux = t.(*types.Type).Elem()
+		v.Aux = t.(*types.Type).Elem(pstate.types)
 		v.AddArg(dst)
 		v.AddArg(src)
 		v.AddArg(mem)
@@ -27346,7 +27346,7 @@ func rewriteValuegeneric_OpStaticCall_0(v *Value) bool {
 	}
 	return false
 }
-func rewriteValuegeneric_OpStore_0(v *Value) bool {
+func (pstate *PackageState) rewriteValuegeneric_OpStore_0(v *Value) bool {
 	b := v.Block
 	_ = b
 	// match: (Store {t1} p1 (Load <t2> p2 mem) mem)
@@ -27367,7 +27367,7 @@ func rewriteValuegeneric_OpStore_0(v *Value) bool {
 		if mem != v.Args[2] {
 			break
 		}
-		if !(isSamePtr(p1, p2) && t2.Size() == sizeof(t1)) {
+		if !(isSamePtr(p1, p2) && t2.Size(pstate.types) == pstate.sizeof(t1)) {
 			break
 		}
 		v.reset(OpCopy)
@@ -27400,7 +27400,7 @@ func rewriteValuegeneric_OpStore_0(v *Value) bool {
 		if oldmem != mem.Args[2] {
 			break
 		}
-		if !(isSamePtr(p1, p2) && t2.Size() == sizeof(t1) && disjoint(p1, sizeof(t1), p3, sizeof(t3))) {
+		if !(isSamePtr(p1, p2) && t2.Size(pstate.types) == pstate.sizeof(t1) && disjoint(p1, pstate.sizeof(t1), p3, pstate.sizeof(t3))) {
 			break
 		}
 		v.reset(OpCopy)
@@ -27440,7 +27440,7 @@ func rewriteValuegeneric_OpStore_0(v *Value) bool {
 		if oldmem != mem_2.Args[2] {
 			break
 		}
-		if !(isSamePtr(p1, p2) && t2.Size() == sizeof(t1) && disjoint(p1, sizeof(t1), p3, sizeof(t3)) && disjoint(p1, sizeof(t1), p4, sizeof(t4))) {
+		if !(isSamePtr(p1, p2) && t2.Size(pstate.types) == pstate.sizeof(t1) && disjoint(p1, pstate.sizeof(t1), p3, pstate.sizeof(t3)) && disjoint(p1, pstate.sizeof(t1), p4, pstate.sizeof(t4))) {
 			break
 		}
 		v.reset(OpCopy)
@@ -27487,7 +27487,7 @@ func rewriteValuegeneric_OpStore_0(v *Value) bool {
 		if oldmem != mem_2_2.Args[2] {
 			break
 		}
-		if !(isSamePtr(p1, p2) && t2.Size() == sizeof(t1) && disjoint(p1, sizeof(t1), p3, sizeof(t3)) && disjoint(p1, sizeof(t1), p4, sizeof(t4)) && disjoint(p1, sizeof(t1), p5, sizeof(t5))) {
+		if !(isSamePtr(p1, p2) && t2.Size(pstate.types) == pstate.sizeof(t1) && disjoint(p1, pstate.sizeof(t1), p3, pstate.sizeof(t3)) && disjoint(p1, pstate.sizeof(t1), p4, pstate.sizeof(t4)) && disjoint(p1, pstate.sizeof(t1), p5, pstate.sizeof(t5))) {
 			break
 		}
 		v.reset(OpCopy)
@@ -27515,7 +27515,7 @@ func rewriteValuegeneric_OpStore_0(v *Value) bool {
 		n := mem.AuxInt
 		_ = mem.Args[1]
 		p2 := mem.Args[0]
-		if !(isConstZero(x) && o >= 0 && sizeof(t)+o <= n && isSamePtr(p1, p2)) {
+		if !(isConstZero(x) && o >= 0 && pstate.sizeof(t)+o <= n && isSamePtr(p1, p2)) {
 			break
 		}
 		v.reset(OpCopy)
@@ -27550,7 +27550,7 @@ func rewriteValuegeneric_OpStore_0(v *Value) bool {
 		n := mem_2.AuxInt
 		_ = mem_2.Args[1]
 		p3 := mem_2.Args[0]
-		if !(isConstZero(x) && o1 >= 0 && sizeof(t1)+o1 <= n && isSamePtr(p1, p3) && disjoint(op, sizeof(t1), p2, sizeof(t2))) {
+		if !(isConstZero(x) && o1 >= 0 && pstate.sizeof(t1)+o1 <= n && isSamePtr(p1, p3) && disjoint(op, pstate.sizeof(t1), p2, pstate.sizeof(t2))) {
 			break
 		}
 		v.reset(OpCopy)
@@ -27592,7 +27592,7 @@ func rewriteValuegeneric_OpStore_0(v *Value) bool {
 		n := mem_2_2.AuxInt
 		_ = mem_2_2.Args[1]
 		p4 := mem_2_2.Args[0]
-		if !(isConstZero(x) && o1 >= 0 && sizeof(t1)+o1 <= n && isSamePtr(p1, p4) && disjoint(op, sizeof(t1), p2, sizeof(t2)) && disjoint(op, sizeof(t1), p3, sizeof(t3))) {
+		if !(isConstZero(x) && o1 >= 0 && pstate.sizeof(t1)+o1 <= n && isSamePtr(p1, p4) && disjoint(op, pstate.sizeof(t1), p2, pstate.sizeof(t2)) && disjoint(op, pstate.sizeof(t1), p3, pstate.sizeof(t3))) {
 			break
 		}
 		v.reset(OpCopy)
@@ -27641,7 +27641,7 @@ func rewriteValuegeneric_OpStore_0(v *Value) bool {
 		n := mem_2_2_2.AuxInt
 		_ = mem_2_2_2.Args[1]
 		p5 := mem_2_2_2.Args[0]
-		if !(isConstZero(x) && o1 >= 0 && sizeof(t1)+o1 <= n && isSamePtr(p1, p5) && disjoint(op, sizeof(t1), p2, sizeof(t2)) && disjoint(op, sizeof(t1), p3, sizeof(t3)) && disjoint(op, sizeof(t1), p4, sizeof(t4))) {
+		if !(isConstZero(x) && o1 >= 0 && pstate.sizeof(t1)+o1 <= n && isSamePtr(p1, p5) && disjoint(op, pstate.sizeof(t1), p2, pstate.sizeof(t2)) && disjoint(op, pstate.sizeof(t1), p3, pstate.sizeof(t3)) && disjoint(op, pstate.sizeof(t1), p4, pstate.sizeof(t4))) {
 			break
 		}
 		v.reset(OpCopy)
@@ -27678,8 +27678,8 @@ func rewriteValuegeneric_OpStore_0(v *Value) bool {
 		f0 := v_1.Args[0]
 		mem := v.Args[2]
 		v.reset(OpStore)
-		v.Aux = t.FieldType(0)
-		v0 := b.NewValue0(v.Pos, OpOffPtr, t.FieldType(0).PtrTo())
+		v.Aux = t.FieldType(pstate.types, 0)
+		v0 := b.NewValue0(v.Pos, OpOffPtr, t.FieldType(pstate.types, 0).PtrTo(pstate.types))
 		v0.AuxInt = 0
 		v0.AddArg(dst)
 		v.AddArg(v0)
@@ -27689,7 +27689,7 @@ func rewriteValuegeneric_OpStore_0(v *Value) bool {
 	}
 	return false
 }
-func rewriteValuegeneric_OpStore_10(v *Value) bool {
+func (pstate *PackageState) rewriteValuegeneric_OpStore_10(v *Value) bool {
 	b := v.Block
 	_ = b
 	config := b.Func.Config
@@ -27712,15 +27712,15 @@ func rewriteValuegeneric_OpStore_10(v *Value) bool {
 		f1 := v_1.Args[1]
 		mem := v.Args[2]
 		v.reset(OpStore)
-		v.Aux = t.FieldType(1)
-		v0 := b.NewValue0(v.Pos, OpOffPtr, t.FieldType(1).PtrTo())
-		v0.AuxInt = t.FieldOff(1)
+		v.Aux = t.FieldType(pstate.types, 1)
+		v0 := b.NewValue0(v.Pos, OpOffPtr, t.FieldType(pstate.types, 1).PtrTo(pstate.types))
+		v0.AuxInt = t.FieldOff(pstate.types, 1)
 		v0.AddArg(dst)
 		v.AddArg(v0)
 		v.AddArg(f1)
-		v1 := b.NewValue0(v.Pos, OpStore, types.TypeMem)
-		v1.Aux = t.FieldType(0)
-		v2 := b.NewValue0(v.Pos, OpOffPtr, t.FieldType(0).PtrTo())
+		v1 := b.NewValue0(v.Pos, OpStore, pstate.types.TypeMem)
+		v1.Aux = t.FieldType(pstate.types, 0)
+		v2 := b.NewValue0(v.Pos, OpOffPtr, t.FieldType(pstate.types, 0).PtrTo(pstate.types))
 		v2.AuxInt = 0
 		v2.AddArg(dst)
 		v1.AddArg(v2)
@@ -27746,22 +27746,22 @@ func rewriteValuegeneric_OpStore_10(v *Value) bool {
 		f2 := v_1.Args[2]
 		mem := v.Args[2]
 		v.reset(OpStore)
-		v.Aux = t.FieldType(2)
-		v0 := b.NewValue0(v.Pos, OpOffPtr, t.FieldType(2).PtrTo())
-		v0.AuxInt = t.FieldOff(2)
+		v.Aux = t.FieldType(pstate.types, 2)
+		v0 := b.NewValue0(v.Pos, OpOffPtr, t.FieldType(pstate.types, 2).PtrTo(pstate.types))
+		v0.AuxInt = t.FieldOff(pstate.types, 2)
 		v0.AddArg(dst)
 		v.AddArg(v0)
 		v.AddArg(f2)
-		v1 := b.NewValue0(v.Pos, OpStore, types.TypeMem)
-		v1.Aux = t.FieldType(1)
-		v2 := b.NewValue0(v.Pos, OpOffPtr, t.FieldType(1).PtrTo())
-		v2.AuxInt = t.FieldOff(1)
+		v1 := b.NewValue0(v.Pos, OpStore, pstate.types.TypeMem)
+		v1.Aux = t.FieldType(pstate.types, 1)
+		v2 := b.NewValue0(v.Pos, OpOffPtr, t.FieldType(pstate.types, 1).PtrTo(pstate.types))
+		v2.AuxInt = t.FieldOff(pstate.types, 1)
 		v2.AddArg(dst)
 		v1.AddArg(v2)
 		v1.AddArg(f1)
-		v3 := b.NewValue0(v.Pos, OpStore, types.TypeMem)
-		v3.Aux = t.FieldType(0)
-		v4 := b.NewValue0(v.Pos, OpOffPtr, t.FieldType(0).PtrTo())
+		v3 := b.NewValue0(v.Pos, OpStore, pstate.types.TypeMem)
+		v3.Aux = t.FieldType(pstate.types, 0)
+		v4 := b.NewValue0(v.Pos, OpOffPtr, t.FieldType(pstate.types, 0).PtrTo(pstate.types))
 		v4.AuxInt = 0
 		v4.AddArg(dst)
 		v3.AddArg(v4)
@@ -27789,29 +27789,29 @@ func rewriteValuegeneric_OpStore_10(v *Value) bool {
 		f3 := v_1.Args[3]
 		mem := v.Args[2]
 		v.reset(OpStore)
-		v.Aux = t.FieldType(3)
-		v0 := b.NewValue0(v.Pos, OpOffPtr, t.FieldType(3).PtrTo())
-		v0.AuxInt = t.FieldOff(3)
+		v.Aux = t.FieldType(pstate.types, 3)
+		v0 := b.NewValue0(v.Pos, OpOffPtr, t.FieldType(pstate.types, 3).PtrTo(pstate.types))
+		v0.AuxInt = t.FieldOff(pstate.types, 3)
 		v0.AddArg(dst)
 		v.AddArg(v0)
 		v.AddArg(f3)
-		v1 := b.NewValue0(v.Pos, OpStore, types.TypeMem)
-		v1.Aux = t.FieldType(2)
-		v2 := b.NewValue0(v.Pos, OpOffPtr, t.FieldType(2).PtrTo())
-		v2.AuxInt = t.FieldOff(2)
+		v1 := b.NewValue0(v.Pos, OpStore, pstate.types.TypeMem)
+		v1.Aux = t.FieldType(pstate.types, 2)
+		v2 := b.NewValue0(v.Pos, OpOffPtr, t.FieldType(pstate.types, 2).PtrTo(pstate.types))
+		v2.AuxInt = t.FieldOff(pstate.types, 2)
 		v2.AddArg(dst)
 		v1.AddArg(v2)
 		v1.AddArg(f2)
-		v3 := b.NewValue0(v.Pos, OpStore, types.TypeMem)
-		v3.Aux = t.FieldType(1)
-		v4 := b.NewValue0(v.Pos, OpOffPtr, t.FieldType(1).PtrTo())
-		v4.AuxInt = t.FieldOff(1)
+		v3 := b.NewValue0(v.Pos, OpStore, pstate.types.TypeMem)
+		v3.Aux = t.FieldType(pstate.types, 1)
+		v4 := b.NewValue0(v.Pos, OpOffPtr, t.FieldType(pstate.types, 1).PtrTo(pstate.types))
+		v4.AuxInt = t.FieldOff(pstate.types, 1)
 		v4.AddArg(dst)
 		v3.AddArg(v4)
 		v3.AddArg(f1)
-		v5 := b.NewValue0(v.Pos, OpStore, types.TypeMem)
-		v5.Aux = t.FieldType(0)
-		v6 := b.NewValue0(v.Pos, OpOffPtr, t.FieldType(0).PtrTo())
+		v5 := b.NewValue0(v.Pos, OpStore, pstate.types.TypeMem)
+		v5.Aux = t.FieldType(pstate.types, 0)
+		v6 := b.NewValue0(v.Pos, OpOffPtr, t.FieldType(pstate.types, 0).PtrTo(pstate.types))
 		v6.AuxInt = 0
 		v6.AddArg(dst)
 		v5.AddArg(v6)
@@ -27843,7 +27843,7 @@ func rewriteValuegeneric_OpStore_10(v *Value) bool {
 			break
 		}
 		v.reset(OpMove)
-		v.AuxInt = sizeof(t)
+		v.AuxInt = pstate.sizeof(t)
 		v.Aux = t
 		v.AddArg(dst)
 		v.AddArg(src)
@@ -27876,11 +27876,11 @@ func rewriteValuegeneric_OpStore_10(v *Value) bool {
 			break
 		}
 		v.reset(OpMove)
-		v.AuxInt = sizeof(t)
+		v.AuxInt = pstate.sizeof(t)
 		v.Aux = t
 		v.AddArg(dst)
 		v.AddArg(src)
-		v0 := b.NewValue0(v.Pos, OpVarDef, types.TypeMem)
+		v0 := b.NewValue0(v.Pos, OpVarDef, pstate.types.TypeMem)
 		v0.Aux = x
 		v0.AddArg(mem)
 		v.AddArg(v0)
@@ -28024,14 +28024,14 @@ func rewriteValuegeneric_OpStore_10(v *Value) bool {
 		_ = m3.Args[2]
 		p3 := m3.Args[0]
 		mem := m3.Args[2]
-		if !(m2.Uses == 1 && m3.Uses == 1 && o1 == sizeof(t2) && n == sizeof(t2)+sizeof(t1) && isSamePtr(p1, p2) && isSamePtr(p2, p3) && clobber(m2) && clobber(m3)) {
+		if !(m2.Uses == 1 && m3.Uses == 1 && o1 == pstate.sizeof(t2) && n == pstate.sizeof(t2)+pstate.sizeof(t1) && isSamePtr(p1, p2) && isSamePtr(p2, p3) && clobber(m2) && clobber(m3)) {
 			break
 		}
 		v.reset(OpStore)
 		v.Aux = t1
 		v.AddArg(op1)
 		v.AddArg(d1)
-		v0 := b.NewValue0(v.Pos, OpStore, types.TypeMem)
+		v0 := b.NewValue0(v.Pos, OpStore, pstate.types.TypeMem)
 		v0.Aux = t2
 		v0.AddArg(op2)
 		v0.AddArg(d2)
@@ -28041,7 +28041,7 @@ func rewriteValuegeneric_OpStore_10(v *Value) bool {
 	}
 	return false
 }
-func rewriteValuegeneric_OpStore_20(v *Value) bool {
+func (pstate *PackageState) rewriteValuegeneric_OpStore_20(v *Value) bool {
 	b := v.Block
 	_ = b
 	// match: (Store {t1} op1:(OffPtr [o1] p1) d1 m2:(Store {t2} op2:(OffPtr [o2] p2) d2 m3:(Store {t3} op3:(OffPtr [0] p3) d3 m4:(Move [n] p4 _ mem))))
@@ -28093,18 +28093,18 @@ func rewriteValuegeneric_OpStore_20(v *Value) bool {
 		_ = m4.Args[2]
 		p4 := m4.Args[0]
 		mem := m4.Args[2]
-		if !(m2.Uses == 1 && m3.Uses == 1 && m4.Uses == 1 && o2 == sizeof(t3) && o1-o2 == sizeof(t2) && n == sizeof(t3)+sizeof(t2)+sizeof(t1) && isSamePtr(p1, p2) && isSamePtr(p2, p3) && isSamePtr(p3, p4) && clobber(m2) && clobber(m3) && clobber(m4)) {
+		if !(m2.Uses == 1 && m3.Uses == 1 && m4.Uses == 1 && o2 == pstate.sizeof(t3) && o1-o2 == pstate.sizeof(t2) && n == pstate.sizeof(t3)+pstate.sizeof(t2)+pstate.sizeof(t1) && isSamePtr(p1, p2) && isSamePtr(p2, p3) && isSamePtr(p3, p4) && clobber(m2) && clobber(m3) && clobber(m4)) {
 			break
 		}
 		v.reset(OpStore)
 		v.Aux = t1
 		v.AddArg(op1)
 		v.AddArg(d1)
-		v0 := b.NewValue0(v.Pos, OpStore, types.TypeMem)
+		v0 := b.NewValue0(v.Pos, OpStore, pstate.types.TypeMem)
 		v0.Aux = t2
 		v0.AddArg(op2)
 		v0.AddArg(d2)
-		v1 := b.NewValue0(v.Pos, OpStore, types.TypeMem)
+		v1 := b.NewValue0(v.Pos, OpStore, pstate.types.TypeMem)
 		v1.Aux = t3
 		v1.AddArg(op3)
 		v1.AddArg(d3)
@@ -28175,22 +28175,22 @@ func rewriteValuegeneric_OpStore_20(v *Value) bool {
 		_ = m5.Args[2]
 		p5 := m5.Args[0]
 		mem := m5.Args[2]
-		if !(m2.Uses == 1 && m3.Uses == 1 && m4.Uses == 1 && m5.Uses == 1 && o3 == sizeof(t4) && o2-o3 == sizeof(t3) && o1-o2 == sizeof(t2) && n == sizeof(t4)+sizeof(t3)+sizeof(t2)+sizeof(t1) && isSamePtr(p1, p2) && isSamePtr(p2, p3) && isSamePtr(p3, p4) && isSamePtr(p4, p5) && clobber(m2) && clobber(m3) && clobber(m4) && clobber(m5)) {
+		if !(m2.Uses == 1 && m3.Uses == 1 && m4.Uses == 1 && m5.Uses == 1 && o3 == pstate.sizeof(t4) && o2-o3 == pstate.sizeof(t3) && o1-o2 == pstate.sizeof(t2) && n == pstate.sizeof(t4)+pstate.sizeof(t3)+pstate.sizeof(t2)+pstate.sizeof(t1) && isSamePtr(p1, p2) && isSamePtr(p2, p3) && isSamePtr(p3, p4) && isSamePtr(p4, p5) && clobber(m2) && clobber(m3) && clobber(m4) && clobber(m5)) {
 			break
 		}
 		v.reset(OpStore)
 		v.Aux = t1
 		v.AddArg(op1)
 		v.AddArg(d1)
-		v0 := b.NewValue0(v.Pos, OpStore, types.TypeMem)
+		v0 := b.NewValue0(v.Pos, OpStore, pstate.types.TypeMem)
 		v0.Aux = t2
 		v0.AddArg(op2)
 		v0.AddArg(d2)
-		v1 := b.NewValue0(v.Pos, OpStore, types.TypeMem)
+		v1 := b.NewValue0(v.Pos, OpStore, pstate.types.TypeMem)
 		v1.Aux = t3
 		v1.AddArg(op3)
 		v1.AddArg(d3)
-		v2 := b.NewValue0(v.Pos, OpStore, types.TypeMem)
+		v2 := b.NewValue0(v.Pos, OpStore, pstate.types.TypeMem)
 		v2.Aux = t4
 		v2.AddArg(op4)
 		v2.AddArg(d4)
@@ -28236,14 +28236,14 @@ func rewriteValuegeneric_OpStore_20(v *Value) bool {
 		_ = m3.Args[1]
 		p3 := m3.Args[0]
 		mem := m3.Args[1]
-		if !(m2.Uses == 1 && m3.Uses == 1 && o1 == sizeof(t2) && n == sizeof(t2)+sizeof(t1) && isSamePtr(p1, p2) && isSamePtr(p2, p3) && clobber(m2) && clobber(m3)) {
+		if !(m2.Uses == 1 && m3.Uses == 1 && o1 == pstate.sizeof(t2) && n == pstate.sizeof(t2)+pstate.sizeof(t1) && isSamePtr(p1, p2) && isSamePtr(p2, p3) && clobber(m2) && clobber(m3)) {
 			break
 		}
 		v.reset(OpStore)
 		v.Aux = t1
 		v.AddArg(op1)
 		v.AddArg(d1)
-		v0 := b.NewValue0(v.Pos, OpStore, types.TypeMem)
+		v0 := b.NewValue0(v.Pos, OpStore, pstate.types.TypeMem)
 		v0.Aux = t2
 		v0.AddArg(op2)
 		v0.AddArg(d2)
@@ -28300,18 +28300,18 @@ func rewriteValuegeneric_OpStore_20(v *Value) bool {
 		_ = m4.Args[1]
 		p4 := m4.Args[0]
 		mem := m4.Args[1]
-		if !(m2.Uses == 1 && m3.Uses == 1 && m4.Uses == 1 && o2 == sizeof(t3) && o1-o2 == sizeof(t2) && n == sizeof(t3)+sizeof(t2)+sizeof(t1) && isSamePtr(p1, p2) && isSamePtr(p2, p3) && isSamePtr(p3, p4) && clobber(m2) && clobber(m3) && clobber(m4)) {
+		if !(m2.Uses == 1 && m3.Uses == 1 && m4.Uses == 1 && o2 == pstate.sizeof(t3) && o1-o2 == pstate.sizeof(t2) && n == pstate.sizeof(t3)+pstate.sizeof(t2)+pstate.sizeof(t1) && isSamePtr(p1, p2) && isSamePtr(p2, p3) && isSamePtr(p3, p4) && clobber(m2) && clobber(m3) && clobber(m4)) {
 			break
 		}
 		v.reset(OpStore)
 		v.Aux = t1
 		v.AddArg(op1)
 		v.AddArg(d1)
-		v0 := b.NewValue0(v.Pos, OpStore, types.TypeMem)
+		v0 := b.NewValue0(v.Pos, OpStore, pstate.types.TypeMem)
 		v0.Aux = t2
 		v0.AddArg(op2)
 		v0.AddArg(d2)
-		v1 := b.NewValue0(v.Pos, OpStore, types.TypeMem)
+		v1 := b.NewValue0(v.Pos, OpStore, pstate.types.TypeMem)
 		v1.Aux = t3
 		v1.AddArg(op3)
 		v1.AddArg(d3)
@@ -28382,22 +28382,22 @@ func rewriteValuegeneric_OpStore_20(v *Value) bool {
 		_ = m5.Args[1]
 		p5 := m5.Args[0]
 		mem := m5.Args[1]
-		if !(m2.Uses == 1 && m3.Uses == 1 && m4.Uses == 1 && m5.Uses == 1 && o3 == sizeof(t4) && o2-o3 == sizeof(t3) && o1-o2 == sizeof(t2) && n == sizeof(t4)+sizeof(t3)+sizeof(t2)+sizeof(t1) && isSamePtr(p1, p2) && isSamePtr(p2, p3) && isSamePtr(p3, p4) && isSamePtr(p4, p5) && clobber(m2) && clobber(m3) && clobber(m4) && clobber(m5)) {
+		if !(m2.Uses == 1 && m3.Uses == 1 && m4.Uses == 1 && m5.Uses == 1 && o3 == pstate.sizeof(t4) && o2-o3 == pstate.sizeof(t3) && o1-o2 == pstate.sizeof(t2) && n == pstate.sizeof(t4)+pstate.sizeof(t3)+pstate.sizeof(t2)+pstate.sizeof(t1) && isSamePtr(p1, p2) && isSamePtr(p2, p3) && isSamePtr(p3, p4) && isSamePtr(p4, p5) && clobber(m2) && clobber(m3) && clobber(m4) && clobber(m5)) {
 			break
 		}
 		v.reset(OpStore)
 		v.Aux = t1
 		v.AddArg(op1)
 		v.AddArg(d1)
-		v0 := b.NewValue0(v.Pos, OpStore, types.TypeMem)
+		v0 := b.NewValue0(v.Pos, OpStore, pstate.types.TypeMem)
 		v0.Aux = t2
 		v0.AddArg(op2)
 		v0.AddArg(d2)
-		v1 := b.NewValue0(v.Pos, OpStore, types.TypeMem)
+		v1 := b.NewValue0(v.Pos, OpStore, pstate.types.TypeMem)
 		v1.Aux = t3
 		v1.AddArg(op3)
 		v1.AddArg(d3)
-		v2 := b.NewValue0(v.Pos, OpStore, types.TypeMem)
+		v2 := b.NewValue0(v.Pos, OpStore, pstate.types.TypeMem)
 		v2.Aux = t4
 		v2.AddArg(op4)
 		v2.AddArg(d4)
@@ -28634,7 +28634,7 @@ func rewriteValuegeneric_OpStructSelect_0(v *Value) bool {
 	}
 	return false
 }
-func rewriteValuegeneric_OpStructSelect_10(v *Value) bool {
+func (pstate *PackageState) rewriteValuegeneric_OpStructSelect_10(v *Value) bool {
 	b := v.Block
 	_ = b
 	fe := b.Func.fe
@@ -28659,8 +28659,8 @@ func rewriteValuegeneric_OpStructSelect_10(v *Value) bool {
 		v0 := b.NewValue0(v.Pos, OpLoad, v.Type)
 		v.reset(OpCopy)
 		v.AddArg(v0)
-		v1 := b.NewValue0(v.Pos, OpOffPtr, v.Type.PtrTo())
-		v1.AuxInt = t.FieldOff(int(i))
+		v1 := b.NewValue0(v.Pos, OpOffPtr, v.Type.PtrTo(pstate.types))
+		v1.AuxInt = t.FieldOff(pstate.types, int(i))
 		v1.AddArg(ptr)
 		v0.AddArg(v1)
 		v0.AddArg(mem)
@@ -32600,7 +32600,7 @@ func rewriteValuegeneric_OpXor8_10(v *Value) bool {
 	}
 	return false
 }
-func rewriteValuegeneric_OpZero_0(v *Value) bool {
+func (pstate *PackageState) rewriteValuegeneric_OpZero_0(v *Value) bool {
 	b := v.Block
 	_ = b
 	config := b.Func.Config
@@ -32657,7 +32657,7 @@ func rewriteValuegeneric_OpZero_0(v *Value) bool {
 		o2 := store_0.AuxInt
 		p2 := store_0.Args[0]
 		mem := store.Args[2]
-		if !(isSamePtr(p1, p2) && store.Uses == 1 && n >= o2+sizeof(t2) && clobber(store)) {
+		if !(isSamePtr(p1, p2) && store.Uses == 1 && n >= o2+pstate.sizeof(t2) && clobber(store)) {
 			break
 		}
 		v.reset(OpZero)
@@ -32731,7 +32731,7 @@ func rewriteValuegeneric_OpZero_0(v *Value) bool {
 		v.AuxInt = n
 		v.Aux = t
 		v.AddArg(dst1)
-		v0 := b.NewValue0(v.Pos, OpVarDef, types.TypeMem)
+		v0 := b.NewValue0(v.Pos, OpVarDef, pstate.types.TypeMem)
 		v0.Aux = x
 		v0.AddArg(mem)
 		v.AddArg(v0)

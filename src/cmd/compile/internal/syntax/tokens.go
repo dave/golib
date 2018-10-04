@@ -10,7 +10,7 @@ type token uint
 
 const (
 	_    token = iota
-	_EOF       // EOF
+	_EOF // EOF
 
 	// names and literals
 	_Name    // name

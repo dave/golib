@@ -31,16 +31,16 @@
 package ppc64
 
 import (
-	"cmd/internal/objabi"
-	"cmd/internal/sys"
-	"cmd/link/internal/ld"
 	"fmt"
+	"github.com/dave/golib/src/cmd/internal/objabi"
+	"github.com/dave/golib/src/cmd/internal/sys"
+	"github.com/dave/golib/src/cmd/link/internal/ld"
 )
 
-func Init() (*sys.Arch, ld.Arch) {
-	arch := sys.ArchPPC64
-	if objabi.GOARCH == "ppc64le" {
-		arch = sys.ArchPPC64LE
+func (pstate *PackageState) Init() (*sys.Arch, ld.Arch) {
+	arch := pstate.sys.ArchPPC64
+	if pstate.objabi.GOARCH == "ppc64le" {
+		arch = pstate.sys.ArchPPC64LE
 	}
 
 	theArch := ld.Arch{
@@ -50,15 +50,15 @@ func Init() (*sys.Arch, ld.Arch) {
 		Dwarfregsp: dwarfRegSP,
 		Dwarfreglr: dwarfRegLR,
 
-		Adddynrel:        adddynrel,
-		Archinit:         archinit,
-		Archreloc:        archreloc,
-		Archrelocvariant: archrelocvariant,
-		Asmb:             asmb,
+		Adddynrel:        pstate.adddynrel,
+		Archinit:         pstate.archinit,
+		Archreloc:        pstate.archreloc,
+		Archrelocvariant: pstate.archrelocvariant,
+		Asmb:             pstate.asmb,
 		Elfreloc1:        elfreloc1,
 		Elfsetupplt:      elfsetupplt,
-		Gentext:          gentext,
-		Trampoline:       trampoline,
+		Gentext:          pstate.gentext,
+		Trampoline:       pstate.trampoline,
 		Machoreloc1:      machoreloc1,
 
 		// TODO(austin): ABI v1 uses /usr/lib/ld.so.1,
@@ -74,56 +74,56 @@ func Init() (*sys.Arch, ld.Arch) {
 	return arch, theArch
 }
 
-func archinit(ctxt *ld.Link) {
+func (pstate *PackageState) archinit(ctxt *ld.Link) {
 	switch ctxt.HeadType {
 	default:
-		ld.Exitf("unknown -H option: %v", ctxt.HeadType)
+		pstate.ld.Exitf("unknown -H option: %v", ctxt.HeadType)
 
 	case objabi.Hplan9: /* plan 9 */
-		ld.HEADR = 32
+		pstate.ld.HEADR = 32
 
-		if *ld.FlagTextAddr == -1 {
-			*ld.FlagTextAddr = 4128
+		if *pstate.ld.FlagTextAddr == -1 {
+			*pstate.ld.FlagTextAddr = 4128
 		}
-		if *ld.FlagDataAddr == -1 {
-			*ld.FlagDataAddr = 0
+		if *pstate.ld.FlagDataAddr == -1 {
+			*pstate.ld.FlagDataAddr = 0
 		}
-		if *ld.FlagRound == -1 {
-			*ld.FlagRound = 4096
+		if *pstate.ld.FlagRound == -1 {
+			*pstate.ld.FlagRound = 4096
 		}
 
 	case objabi.Hlinux: /* ppc64 elf */
-		if ctxt.Arch == sys.ArchPPC64 {
-			*ld.FlagD = true // TODO(austin): ELF ABI v1 not supported yet
+		if ctxt.Arch == pstate.sys.ArchPPC64 {
+			*pstate.ld.FlagD = true // TODO(austin): ELF ABI v1 not supported yet
 		}
-		ld.Elfinit(ctxt)
-		ld.HEADR = ld.ELFRESERVE
-		if *ld.FlagTextAddr == -1 {
-			*ld.FlagTextAddr = 0x10000 + int64(ld.HEADR)
+		pstate.ld.Elfinit(ctxt)
+		pstate.ld.HEADR = ld.ELFRESERVE
+		if *pstate.ld.FlagTextAddr == -1 {
+			*pstate.ld.FlagTextAddr = 0x10000 + int64(pstate.ld.HEADR)
 		}
-		if *ld.FlagDataAddr == -1 {
-			*ld.FlagDataAddr = 0
+		if *pstate.ld.FlagDataAddr == -1 {
+			*pstate.ld.FlagDataAddr = 0
 		}
-		if *ld.FlagRound == -1 {
-			*ld.FlagRound = 0x10000
+		if *pstate.ld.FlagRound == -1 {
+			*pstate.ld.FlagRound = 0x10000
 		}
 
 	case objabi.Hnacl:
-		ld.Elfinit(ctxt)
-		ld.HEADR = 0x10000
-		ld.Funcalign = 16
-		if *ld.FlagTextAddr == -1 {
-			*ld.FlagTextAddr = 0x20000
+		pstate.ld.Elfinit(ctxt)
+		pstate.ld.HEADR = 0x10000
+		pstate.ld.Funcalign = 16
+		if *pstate.ld.FlagTextAddr == -1 {
+			*pstate.ld.FlagTextAddr = 0x20000
 		}
-		if *ld.FlagDataAddr == -1 {
-			*ld.FlagDataAddr = 0
+		if *pstate.ld.FlagDataAddr == -1 {
+			*pstate.ld.FlagDataAddr = 0
 		}
-		if *ld.FlagRound == -1 {
-			*ld.FlagRound = 0x10000
+		if *pstate.ld.FlagRound == -1 {
+			*pstate.ld.FlagRound = 0x10000
 		}
 	}
 
-	if *ld.FlagDataAddr != 0 && *ld.FlagRound != 0 {
-		fmt.Printf("warning: -D0x%x is ignored because of -R0x%x\n", uint64(*ld.FlagDataAddr), uint32(*ld.FlagRound))
+	if *pstate.ld.FlagDataAddr != 0 && *pstate.ld.FlagRound != 0 {
+		fmt.Printf("warning: -D0x%x is ignored because of -R0x%x\n", uint64(*pstate.ld.FlagDataAddr), uint32(*pstate.ld.FlagRound))
 	}
 }

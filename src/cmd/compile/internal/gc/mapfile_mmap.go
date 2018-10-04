@@ -18,7 +18,7 @@ import (
 
 // mapFile returns length bytes from the file starting at the
 // specified offset as a string.
-func mapFile(f *os.File, offset, length int64) (string, error) {
+func (pstate *PackageState) mapFile(f *os.File, offset, length int64) (string, error) {
 	// POSIX mmap: "The implementation may require that off is a
 	// multiple of the page size."
 	x := offset & int64(os.Getpagesize()-1)
@@ -26,7 +26,7 @@ func mapFile(f *os.File, offset, length int64) (string, error) {
 	length += x
 
 	buf, err := syscall.Mmap(int(f.Fd()), offset, int(length), syscall.PROT_READ, syscall.MAP_SHARED)
-	keepAlive(f)
+	pstate.keepAlive(f)
 	if err != nil {
 		return "", err
 	}
@@ -42,7 +42,3 @@ func mapFile(f *os.File, offset, length int64) (string, error) {
 
 	return res, nil
 }
-
-// keepAlive is a reimplementation of runtime.KeepAlive, which wasn't
-// added until Go 1.7, whereas we need to compile with Go 1.4.
-var keepAlive = func(interface{}) {}

@@ -5,8 +5,8 @@
 package types_test
 
 import (
-	"cmd/compile/internal/types"
-	"cmd/internal/obj"
+	"github.com/dave/golib/src/cmd/compile/internal/types"
+	"github.com/dave/golib/src/cmd/internal/obj"
 	"reflect"
 	"testing"
 )

@@ -5,19 +5,15 @@
 package gc
 
 import (
-	"cmd/compile/internal/syntax"
-	"cmd/internal/objabi"
-	"cmd/internal/src"
 	"fmt"
+	"github.com/dave/golib/src/cmd/compile/internal/syntax"
+	"github.com/dave/golib/src/cmd/internal/objabi"
+	"github.com/dave/golib/src/cmd/internal/src"
 	"strings"
 )
 
-// lineno is the source position at the start of the most recently lexed token.
-// TODO(gri) rename and eventually remove
-var lineno src.XPos
-
-func makePos(base *src.PosBase, line, col uint) src.XPos {
-	return Ctxt.PosTable.XPos(src.MakePos(base, line, col))
+func (pstate *PackageState) makePos(base *src.PosBase, line, col uint) src.XPos {
+	return pstate.Ctxt.PosTable.XPos(src.MakePos(base, line, col))
 }
 
 func isSpace(c rune) bool {
@@ -49,10 +45,10 @@ const (
 	NotInHeap // values of this type must not be heap allocated
 )
 
-func pragmaValue(verb string) syntax.Pragma {
+func (pstate *PackageState) pragmaValue(verb string) syntax.Pragma {
 	switch verb {
 	case "go:nointerface":
-		if objabi.Fieldtrack_enabled != 0 {
+		if pstate.objabi.Fieldtrack_enabled != 0 {
 			return Nointerface
 		}
 	case "go:noescape":
@@ -105,7 +101,7 @@ func (p *noder) pragcgo(pos syntax.Pos, text string) {
 		case len(f) == 2 && !isQuoted(f[1]):
 		case len(f) == 3 && !isQuoted(f[1]) && !isQuoted(f[2]):
 		default:
-			p.error(syntax.Error{Pos: pos, Msg: fmt.Sprintf(`usage: //go:%s local [remote]`, verb)})
+			p.error(syntax.Error{Pos: pos, Msg: fmt.Sprintf("usage: //go:%s local [remote]", verb)})
 			return
 		}
 	case "cgo_import_dynamic":
@@ -113,32 +109,32 @@ func (p *noder) pragcgo(pos syntax.Pos, text string) {
 		case len(f) == 2 && !isQuoted(f[1]):
 		case len(f) == 3 && !isQuoted(f[1]) && !isQuoted(f[2]):
 		case len(f) == 4 && !isQuoted(f[1]) && !isQuoted(f[2]) && isQuoted(f[3]):
-			f[3] = strings.Trim(f[3], `"`)
+			f[3] = strings.Trim(f[3], "\"")
 		default:
-			p.error(syntax.Error{Pos: pos, Msg: `usage: //go:cgo_import_dynamic local [remote ["library"]]`})
+			p.error(syntax.Error{Pos: pos, Msg: "usage: //go:cgo_import_dynamic local [remote [\"library\"]]"})
 			return
 		}
 	case "cgo_import_static":
 		switch {
 		case len(f) == 2 && !isQuoted(f[1]):
 		default:
-			p.error(syntax.Error{Pos: pos, Msg: `usage: //go:cgo_import_static local`})
+			p.error(syntax.Error{Pos: pos, Msg: "usage: //go:cgo_import_static local"})
 			return
 		}
 	case "cgo_dynamic_linker":
 		switch {
 		case len(f) == 2 && isQuoted(f[1]):
-			f[1] = strings.Trim(f[1], `"`)
+			f[1] = strings.Trim(f[1], "\"")
 		default:
-			p.error(syntax.Error{Pos: pos, Msg: `usage: //go:cgo_dynamic_linker "path"`})
+			p.error(syntax.Error{Pos: pos, Msg: "usage: //go:cgo_dynamic_linker \"path\""})
 			return
 		}
 	case "cgo_ldflag":
 		switch {
 		case len(f) == 2 && isQuoted(f[1]):
-			f[1] = strings.Trim(f[1], `"`)
+			f[1] = strings.Trim(f[1], "\"")
 		default:
-			p.error(syntax.Error{Pos: pos, Msg: `usage: //go:cgo_ldflag "arg"`})
+			p.error(syntax.Error{Pos: pos, Msg: "usage: //go:cgo_ldflag \"arg\""})
 			return
 		}
 	default:

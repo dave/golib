@@ -5,19 +5,19 @@
 package main
 
 import (
-	"cmd/internal/objabi"
-	"cmd/internal/sys"
-	"cmd/link/internal/amd64"
-	"cmd/link/internal/arm"
-	"cmd/link/internal/arm64"
-	"cmd/link/internal/ld"
-	"cmd/link/internal/mips"
-	"cmd/link/internal/mips64"
-	"cmd/link/internal/ppc64"
-	"cmd/link/internal/s390x"
-	"cmd/link/internal/wasm"
-	"cmd/link/internal/x86"
 	"fmt"
+	"github.com/dave/golib/src/cmd/internal/objabi"
+	"github.com/dave/golib/src/cmd/internal/sys"
+	"github.com/dave/golib/src/cmd/link/internal/amd64"
+	"github.com/dave/golib/src/cmd/link/internal/arm"
+	"github.com/dave/golib/src/cmd/link/internal/arm64"
+	"github.com/dave/golib/src/cmd/link/internal/ld"
+	"github.com/dave/golib/src/cmd/link/internal/mips"
+	"github.com/dave/golib/src/cmd/link/internal/mips64"
+	"github.com/dave/golib/src/cmd/link/internal/ppc64"
+	"github.com/dave/golib/src/cmd/link/internal/s390x"
+	"github.com/dave/golib/src/cmd/link/internal/wasm"
+	"github.com/dave/golib/src/cmd/link/internal/x86"
 	"os"
 )
 
@@ -35,32 +35,32 @@ import (
 // packages a second chance to modify the linker's configuration
 // via the ld.Arch.Archinit function.
 
-func main() {
+func (pstate *PackageState) main() {
 	var arch *sys.Arch
 	var theArch ld.Arch
 
-	switch objabi.GOARCH {
+	switch pstate.objabi.GOARCH {
 	default:
-		fmt.Fprintf(os.Stderr, "link: unknown architecture %q\n", objabi.GOARCH)
+		fmt.Fprintf(os.Stderr, "link: unknown architecture %q\n", pstate.objabi.GOARCH)
 		os.Exit(2)
 	case "386":
-		arch, theArch = x86.Init()
+		arch, theArch = pstate.x86.Init()
 	case "amd64", "amd64p32":
-		arch, theArch = amd64.Init()
+		arch, theArch = pstate.amd64.Init()
 	case "arm":
-		arch, theArch = arm.Init()
+		arch, theArch = pstate.arm.Init()
 	case "arm64":
-		arch, theArch = arm64.Init()
+		arch, theArch = pstate.arm64.Init()
 	case "mips", "mipsle":
-		arch, theArch = mips.Init()
+		arch, theArch = pstate.mips.Init()
 	case "mips64", "mips64le":
-		arch, theArch = mips64.Init()
+		arch, theArch = pstate.mips64.Init()
 	case "ppc64", "ppc64le":
-		arch, theArch = ppc64.Init()
+		arch, theArch = pstate.ppc64.Init()
 	case "s390x":
-		arch, theArch = s390x.Init()
+		arch, theArch = pstate.s390x.Init()
 	case "wasm":
-		arch, theArch = wasm.Init()
+		arch, theArch = pstate.wasm.Init()
 	}
-	ld.Main(arch, theArch)
+	pstate.ld.Main(arch, theArch)
 }

@@ -74,20 +74,18 @@ func AddVersionFlag() {
 	flag.Var(versionFlag{}, "V", "print version and exit")
 }
 
-var buildID string // filled in by linker
-
 type versionFlag struct{}
 
 func (versionFlag) IsBoolFlag() bool { return true }
 func (versionFlag) Get() interface{} { return nil }
 func (versionFlag) String() string   { return "" }
-func (versionFlag) Set(s string) error {
+func (versionFlag) Set(pstate *PackageState, s string) error {
 	name := os.Args[0]
-	name = name[strings.LastIndex(name, `/`)+1:]
-	name = name[strings.LastIndex(name, `\`)+1:]
+	name = name[strings.LastIndex(name, "/")+1:]
+	name = name[strings.LastIndex(name, "\\")+1:]
 	name = strings.TrimSuffix(name, ".exe")
-	p := Expstring()
-	if p == DefaultExpstring() {
+	p := pstate.Expstring()
+	if p == pstate.DefaultExpstring() {
 		p = ""
 	}
 	sep := ""
@@ -100,10 +98,10 @@ func (versionFlag) Set(s string) error {
 	// for releases, but during development we include the full
 	// build ID of the binary, so that if the compiler is changed and
 	// rebuilt, we notice and rebuild all packages.
-	if s == "full" && strings.HasPrefix(Version, "devel") {
-		p += " buildID=" + buildID
+	if s == "full" && strings.HasPrefix(pstate.Version, "devel") {
+		p += " buildID=" + pstate.buildID
 	}
-	fmt.Printf("%s version %s%s%s\n", name, Version, sep, p)
+	fmt.Printf("%s version %s%s%s\n", name, pstate.Version, sep, p)
 	os.Exit(0)
 	return nil
 }

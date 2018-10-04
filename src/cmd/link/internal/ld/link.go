@@ -32,11 +32,11 @@ package ld
 
 import (
 	"bufio"
-	"cmd/internal/objabi"
-	"cmd/internal/sys"
-	"cmd/link/internal/sym"
 	"debug/elf"
 	"fmt"
+	"github.com/dave/golib/src/cmd/internal/objabi"
+	"github.com/dave/golib/src/cmd/internal/sys"
+	"github.com/dave/golib/src/cmd/link/internal/sym"
 )
 
 type Shlib struct {
@@ -93,7 +93,7 @@ type unresolvedSymKey struct {
 }
 
 // ErrorUnresolved prints unresolved symbol error for r.Sym that is referenced from s.
-func (ctxt *Link) ErrorUnresolved(s *sym.Symbol, r *sym.Reloc) {
+func (ctxt *Link) ErrorUnresolved(pstate *PackageState, s *sym.Symbol, r *sym.Reloc) {
 	if ctxt.unresolvedSymSet == nil {
 		ctxt.unresolvedSymSet = make(map[unresolvedSymKey]bool)
 	}
@@ -103,9 +103,9 @@ func (ctxt *Link) ErrorUnresolved(s *sym.Symbol, r *sym.Reloc) {
 		ctxt.unresolvedSymSet[k] = true
 		// Give a special error message for main symbol (see #24809).
 		if r.Sym.Name == "main.main" {
-			Errorf(s, "function main is undeclared in the main package")
+			pstate.Errorf(s, "function main is undeclared in the main package")
 		} else {
-			Errorf(s, "relocation target %s not defined", r.Sym.Name)
+			pstate.Errorf(s, "relocation target %s not defined", r.Sym.Name)
 		}
 	}
 }
@@ -132,10 +132,10 @@ func (ctxt *Link) Logf(format string, args ...interface{}) {
 	ctxt.Bso.Flush()
 }
 
-func addImports(ctxt *Link, l *sym.Library, pn string) {
+func (pstate *PackageState) addImports(ctxt *Link, l *sym.Library, pn string) {
 	pkg := objabi.PathToPrefix(l.Pkg)
 	for _, importStr := range l.ImportStrings {
-		lib := addlib(ctxt, pkg, pn, importStr)
+		lib := pstate.addlib(ctxt, pkg, pn, importStr)
 		if lib != nil {
 			l.Imports = append(l.Imports, lib)
 		}

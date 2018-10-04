@@ -9,7 +9,7 @@ package ssa
 // if it doesn't also create more live values.
 // A Value can be moved to any block that
 // dominates all blocks in which it is used.
-func tighten(f *Func) {
+func (pstate *PackageState) tighten(f *Func) {
 	canMove := make([]bool, f.NumValues())
 	for _, b := range f.Blocks {
 		for _, v := range b.Values {
@@ -25,7 +25,7 @@ func tighten(f *Func) {
 				// Tuple selectors must stay with the tuple generator.
 				continue
 			}
-			if v.MemoryArg() != nil {
+			if v.MemoryArg(pstate) != nil {
 				// We can't move values which have a memory arg - it might
 				// make two memory values live across a block boundary.
 				continue
@@ -33,11 +33,11 @@ func tighten(f *Func) {
 			// Count arguments which will need a register.
 			narg := 0
 			for _, a := range v.Args {
-				if !a.rematerializeable() {
+				if !a.rematerializeable(pstate) {
 					narg++
 				}
 			}
-			if narg >= 2 && !v.Type.IsFlags() {
+			if narg >= 2 && !v.Type.IsFlags(pstate.types) {
 				// Don't move values with more than one input, as that may
 				// increase register pressure.
 				// We make an exception for flags, as we want flag generators
@@ -57,7 +57,7 @@ func tighten(f *Func) {
 	// Grab loop information.
 	// We use this to make sure we don't tighten a value into a (deeper) loop.
 	idom := f.Idom()
-	loops := f.loopnest()
+	loops := f.loopnest(pstate)
 	loops.calculateDepths()
 
 	changed := true
@@ -144,21 +144,21 @@ func tighten(f *Func) {
 // phiTighten moves constants closer to phi users.
 // This pass avoids having lots of constants live for lots of the program.
 // See issue 16407.
-func phiTighten(f *Func) {
+func (pstate *PackageState) phiTighten(f *Func) {
 	for _, b := range f.Blocks {
 		for _, v := range b.Values {
 			if v.Op != OpPhi {
 				continue
 			}
 			for i, a := range v.Args {
-				if !a.rematerializeable() {
+				if !a.rematerializeable(pstate) {
 					continue // not a constant we can move around
 				}
 				if a.Block == b.Preds[i].b {
 					continue // already in the right place
 				}
 				// Make a copy of a, put in predecessor block.
-				v.SetArg(i, a.copyInto(b.Preds[i].b))
+				v.SetArg(i, a.copyInto(pstate, b.Preds[i].b))
 			}
 		}
 	}

@@ -8,7 +8,7 @@ import (
 	"bytes"
 	"flag"
 	"fmt"
-	"internal/testenv"
+	"github.com/dave/golib/src/internal/testenv"
 	"io"
 	"io/ioutil"
 	"os"

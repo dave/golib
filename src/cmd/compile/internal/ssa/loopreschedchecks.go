@@ -5,8 +5,8 @@
 package ssa
 
 import (
-	"cmd/compile/internal/types"
 	"fmt"
+	"github.com/dave/golib/src/cmd/compile/internal/types"
 )
 
 // an edgeMem records a backedge, together with the memory
@@ -31,17 +31,17 @@ type rewrite struct {
 	rewrites      []rewriteTarget // all the targets for this rewrite.
 }
 
-func (r *rewrite) String() string {
+func (r *rewrite) String(pstate *PackageState) string {
 	s := "\n\tbefore=" + r.before.String() + ", after=" + r.after.String()
 	for _, rw := range r.rewrites {
-		s += ", (i=" + fmt.Sprint(rw.i) + ", v=" + rw.v.LongString() + ")"
+		s += ", (i=" + fmt.Sprint(rw.i) + ", v=" + rw.v.LongString(pstate) + ")"
 	}
 	s += "\n"
 	return s
 }
 
 // insertLoopReschedChecks inserts rescheduling checks on loop backedges.
-func insertLoopReschedChecks(f *Func) {
+func (pstate *PackageState) insertLoopReschedChecks(f *Func) {
 	// TODO: when split information is recorded in export data, insert checks only on backedges that can be reached on a split-call-free path.
 
 	// Loop reschedule checks compare the stack pointer with
@@ -70,7 +70,7 @@ func insertLoopReschedChecks(f *Func) {
 		return
 	}
 
-	lastMems := findLastMems(f)
+	lastMems := pstate.findLastMems(f)
 
 	idom := f.Idom()
 	po := f.postorder()
@@ -91,7 +91,7 @@ func insertLoopReschedChecks(f *Func) {
 
 	// It's possible that there is no memory state (no global/pointer loads/stores or calls)
 	if lastMems[f.Entry.ID] == nil {
-		lastMems[f.Entry.ID] = f.Entry.NewValue0(f.Entry.Pos, OpInitMem, types.TypeMem)
+		lastMems[f.Entry.ID] = f.Entry.NewValue0(f.Entry.Pos, OpInitMem, pstate.types.TypeMem)
 	}
 
 	memDefsAtBlockEnds := make([]*Value, f.NumBlocks()) // For each block, the mem def seen at its bottom. Could be from earlier block.
@@ -122,7 +122,7 @@ func insertLoopReschedChecks(f *Func) {
 		var headerMemPhi *Value // look for header mem phi
 
 		for _, v := range h.Values {
-			if v.Op == OpPhi && v.Type.IsMemory() {
+			if v.Op == OpPhi && v.Type.IsMemory(pstate.types) {
 				headerMemPhi = v
 			}
 		}
@@ -140,7 +140,7 @@ func insertLoopReschedChecks(f *Func) {
 	}
 	if f.pass.debug > 0 {
 		for b, r := range newmemphis {
-			fmt.Printf("before b=%s, rewrite=%s\n", b, r.String())
+			fmt.Printf("before b=%s, rewrite=%s\n", b, r.String(pstate))
 		}
 	}
 
@@ -148,11 +148,11 @@ func insertLoopReschedChecks(f *Func) {
 	// be rewritten as part of the dominated children of some outer rewrite.
 	dfPhiTargets := make(map[rewriteTarget]bool)
 
-	rewriteNewPhis(f.Entry, f.Entry, f, memDefsAtBlockEnds, newmemphis, dfPhiTargets, sdom)
+	pstate.rewriteNewPhis(f.Entry, f.Entry, f, memDefsAtBlockEnds, newmemphis, dfPhiTargets, sdom)
 
 	if f.pass.debug > 0 {
 		for b, r := range newmemphis {
-			fmt.Printf("after b=%s, rewrite=%s\n", b, r.String())
+			fmt.Printf("after b=%s, rewrite=%s\n", b, r.String(pstate))
 		}
 	}
 
@@ -222,10 +222,10 @@ func insertLoopReschedChecks(f *Func) {
 		g := test.NewValue1(bb.Pos, OpGetG, pt, mem0)
 		sp := test.NewValue0(bb.Pos, OpSP, pt)
 		cmpOp := OpLess64U
-		if pt.Size() == 4 {
+		if pt.Size(pstate.types) == 4 {
 			cmpOp = OpLess32U
 		}
-		limaddr := test.NewValue1I(bb.Pos, OpOffPtr, pt, 2*pt.Size(), g)
+		limaddr := test.NewValue1I(bb.Pos, OpOffPtr, pt, 2*pt.Size(pstate.types), g)
 		lim := test.NewValue2(bb.Pos, OpLoad, pt, limaddr, mem0)
 		cmp := test.NewValue2(bb.Pos, cmpOp, cfgtypes.Bool, sp, lim)
 		test.SetControl(cmp)
@@ -246,7 +246,7 @@ func insertLoopReschedChecks(f *Func) {
 		//    mem1 := call resched (mem0)
 		//    goto header
 		resched := f.fe.Syslook("goschedguarded")
-		mem1 := sched.NewValue1A(bb.Pos, OpStaticCall, types.TypeMem, resched, mem0)
+		mem1 := sched.NewValue1A(bb.Pos, OpStaticCall, pstate.types.TypeMem, resched, mem0)
 		sched.AddEdgeTo(h)
 		headerMemPhi.AddArg(mem1)
 
@@ -290,7 +290,7 @@ func newPhiFor(b *Block, v *Value) *Value {
 // sdom must yield a preorder of the flow graph if recursively walked, root-to-children.
 // The result of newSparseOrderedTree with order supplied by a dfs-postorder satisfies this
 // requirement.
-func rewriteNewPhis(h, b *Block, f *Func, defsForUses []*Value, newphis map[*Block]rewrite, dfPhiTargets map[rewriteTarget]bool, sdom SparseTree) {
+func (pstate *PackageState) rewriteNewPhis(h, b *Block, f *Func, defsForUses []*Value, newphis map[*Block]rewrite, dfPhiTargets map[rewriteTarget]bool, sdom SparseTree) {
 	// If b is a block with a new phi, then a new rewrite applies below it in the dominator tree.
 	if _, ok := newphis[b]; ok {
 		h = b
@@ -342,7 +342,7 @@ func rewriteNewPhis(h, b *Block, f *Func, defsForUses []*Value, newphis map[*Blo
 						dfPhiTargets[tgt] = true
 						if f.pass.debug > 1 {
 							fmt.Printf("added phi target for h=%v, b=%v, s=%v, x=%v, y=%v, tgt.v=%s, tgt.i=%d\n",
-								h, b, s, x, y, v.LongString(), e.i)
+								h, b, s, x, y, v.LongString(pstate), e.i)
 						}
 						break
 					}
@@ -353,7 +353,7 @@ func rewriteNewPhis(h, b *Block, f *Func, defsForUses []*Value, newphis map[*Blo
 	}
 
 	for c := sdom[b.ID].child; c != nil; c = sdom[c.ID].sibling {
-		rewriteNewPhis(h, c, f, defsForUses, newphis, dfPhiTargets, sdom) // TODO: convert to explicit stack from recursion.
+		pstate.rewriteNewPhis(h, c, f, defsForUses, newphis, dfPhiTargets, sdom) // TODO: convert to explicit stack from recursion.
 	}
 }
 
@@ -400,7 +400,7 @@ outer:
 }
 
 // findLastMems maps block ids to last memory-output op in a block, if any
-func findLastMems(f *Func) []*Value {
+func (pstate *PackageState) findLastMems(f *Func) []*Value {
 
 	var stores []*Value
 	lastMems := make([]*Value, f.NumBlocks())
@@ -414,15 +414,15 @@ func findLastMems(f *Func) []*Value {
 		var memPhi *Value
 		for _, v := range b.Values {
 			if v.Op == OpPhi {
-				if v.Type.IsMemory() {
+				if v.Type.IsMemory(pstate.types) {
 					memPhi = v
 				}
 				continue
 			}
-			if v.Type.IsMemory() {
+			if v.Type.IsMemory(pstate.types) {
 				stores = append(stores, v)
 				for _, a := range v.Args {
-					if a.Block == b && a.Type.IsMemory() {
+					if a.Block == b && a.Type.IsMemory(pstate.types) {
 						storeUse.add(a.ID)
 					}
 				}

@@ -5,22 +5,22 @@
 package arm
 
 import (
-	"cmd/compile/internal/gc"
-	"cmd/compile/internal/ssa"
-	"cmd/internal/obj/arm"
-	"cmd/internal/objabi"
+	"github.com/dave/golib/src/cmd/compile/internal/gc"
+	"github.com/dave/golib/src/cmd/compile/internal/ssa"
+	"github.com/dave/golib/src/cmd/internal/obj/arm"
+	"github.com/dave/golib/src/cmd/internal/objabi"
 )
 
-func Init(arch *gc.Arch) {
-	arch.LinkArch = &arm.Linkarm
+func (pstate *PackageState) Init(arch *gc.Arch) {
+	arch.LinkArch = &pstate.arm.Linkarm
 	arch.REGSP = arm.REGSP
 	arch.MAXWIDTH = (1 << 32) - 1
-	arch.SoftFloat = objabi.GOARM == 5
-	arch.ZeroRange = zerorange
-	arch.ZeroAuto = zeroAuto
-	arch.Ginsnop = ginsnop
+	arch.SoftFloat = pstate.objabi.GOARM == 5
+	arch.ZeroRange = pstate.zerorange
+	arch.ZeroAuto = pstate.zeroAuto
+	arch.Ginsnop = pstate.ginsnop
 
 	arch.SSAMarkMoves = func(s *gc.SSAGenState, b *ssa.Block) {}
-	arch.SSAGenValue = ssaGenValue
-	arch.SSAGenBlock = ssaGenBlock
+	arch.SSAGenValue = pstate.ssaGenValue
+	arch.SSAGenBlock = pstate.ssaGenBlock
 }

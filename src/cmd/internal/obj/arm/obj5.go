@@ -31,14 +31,12 @@
 package arm
 
 import (
-	"cmd/internal/obj"
-	"cmd/internal/objabi"
-	"cmd/internal/sys"
+	"github.com/dave/golib/src/cmd/internal/obj"
+	"github.com/dave/golib/src/cmd/internal/objabi"
+	"github.com/dave/golib/src/cmd/internal/sys"
 )
 
-var progedit_tlsfallback *obj.LSym
-
-func progedit(ctxt *obj.Link, p *obj.Prog, newprog obj.ProgAlloc) {
+func (pstate *PackageState) progedit(ctxt *obj.Link, p *obj.Prog, newprog obj.ProgAlloc) {
 	p.From.Class = 0
 	p.To.Class = 0
 
@@ -60,13 +58,13 @@ func progedit(ctxt *obj.Link, p *obj.Prog, newprog obj.ProgAlloc) {
 			// Because the instruction might be rewritten to a BL which returns in R0
 			// the register must be zero.
 			if p.To.Offset&0xf000 != 0 {
-				ctxt.Diag("%v: TLS MRC instruction must write to R0 as it might get translated into a BL instruction", p.Line())
+				ctxt.Diag("%v: TLS MRC instruction must write to R0 as it might get translated into a BL instruction", p.Line(pstate.obj))
 			}
 
-			if objabi.GOARM < 7 {
+			if pstate.objabi.GOARM < 7 {
 				// Replace it with BL runtime.read_tls_fallback(SB) for ARM CPUs that lack the tls extension.
-				if progedit_tlsfallback == nil {
-					progedit_tlsfallback = ctxt.Lookup("runtime.read_tls_fallback")
+				if pstate.progedit_tlsfallback == nil {
+					pstate.progedit_tlsfallback = ctxt.Lookup("runtime.read_tls_fallback")
 				}
 
 				// MOVW	LR, R11
@@ -82,7 +80,7 @@ func progedit(ctxt *obj.Link, p *obj.Prog, newprog obj.ProgAlloc) {
 
 				p.As = ABL
 				p.To.Type = obj.TYPE_BRANCH
-				p.To.Sym = progedit_tlsfallback
+				p.To.Sym = pstate.progedit_tlsfallback
 				p.To.Offset = 0
 
 				// MOVW	R11, LR
@@ -104,7 +102,7 @@ func progedit(ctxt *obj.Link, p *obj.Prog, newprog obj.ProgAlloc) {
 	// Rewrite float constants to values stored in memory.
 	switch p.As {
 	case AMOVF:
-		if p.From.Type == obj.TYPE_FCONST && c.chipfloat5(p.From.Val.(float64)) < 0 && (c.chipzero5(p.From.Val.(float64)) < 0 || p.Scond&C_SCOND != C_SCOND_NONE) {
+		if p.From.Type == obj.TYPE_FCONST && c.chipfloat5(pstate, p.From.Val.(float64)) < 0 && (c.chipzero5(pstate, p.From.Val.(float64)) < 0 || p.Scond&C_SCOND != C_SCOND_NONE) {
 			f32 := float32(p.From.Val.(float64))
 			p.From.Type = obj.TYPE_MEM
 			p.From.Sym = ctxt.Float32Sym(f32)
@@ -113,7 +111,7 @@ func progedit(ctxt *obj.Link, p *obj.Prog, newprog obj.ProgAlloc) {
 		}
 
 	case AMOVD:
-		if p.From.Type == obj.TYPE_FCONST && c.chipfloat5(p.From.Val.(float64)) < 0 && (c.chipzero5(p.From.Val.(float64)) < 0 || p.Scond&C_SCOND != C_SCOND_NONE) {
+		if p.From.Type == obj.TYPE_FCONST && c.chipfloat5(pstate, p.From.Val.(float64)) < 0 && (c.chipzero5(pstate, p.From.Val.(float64)) < 0 || p.Scond&C_SCOND != C_SCOND_NONE) {
 			p.From.Type = obj.TYPE_MEM
 			p.From.Sym = ctxt.Float64Sym(p.From.Val.(float64))
 			p.From.Name = obj.NAME_EXTERN
@@ -246,7 +244,7 @@ const (
 	LEAF  = 1 << 2
 )
 
-func preprocess(ctxt *obj.Link, cursym *obj.LSym, newprog obj.ProgAlloc) {
+func (pstate *PackageState) preprocess(ctxt *obj.Link, cursym *obj.LSym, newprog obj.ProgAlloc) {
 	autosize := int32(0)
 
 	if cursym.Func.Text == nil || cursym.Func.Text.Link == nil {
@@ -614,13 +612,13 @@ func preprocess(ctxt *obj.Link, cursym *obj.LSym, newprog obj.ProgAlloc) {
 			p.To.Type = obj.TYPE_BRANCH
 			switch o {
 			case ADIV:
-				p.To.Sym = symdiv
+				p.To.Sym = pstate.symdiv
 			case ADIVU:
-				p.To.Sym = symdivu
+				p.To.Sym = pstate.symdivu
 			case AMOD:
-				p.To.Sym = symmod
+				p.To.Sym = pstate.symmod
 			case AMODU:
-				p.To.Sym = symmodu
+				p.To.Sym = pstate.symmodu
 			}
 
 			/* MOV REGTMP, b */
@@ -801,19 +799,4 @@ func (c *ctxt5) stacksplit(p *obj.Prog, framesize int32) *obj.Prog {
 	b.Spadj = +framesize
 
 	return bls
-}
-
-var unaryDst = map[obj.As]bool{
-	ASWI:  true,
-	AWORD: true,
-}
-
-var Linkarm = obj.LinkArch{
-	Arch:           sys.ArchARM,
-	Init:           buildop,
-	Preprocess:     preprocess,
-	Assemble:       span5,
-	Progedit:       progedit,
-	UnaryDst:       unaryDst,
-	DWARFRegisters: ARMDWARFRegisters,
 }

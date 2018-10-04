@@ -31,12 +31,12 @@
 package mips
 
 import (
-	"cmd/internal/objabi"
-	"cmd/internal/sys"
-	"cmd/link/internal/ld"
-	"cmd/link/internal/sym"
 	"debug/elf"
 	"fmt"
+	"github.com/dave/golib/src/cmd/internal/objabi"
+	"github.com/dave/golib/src/cmd/internal/sys"
+	"github.com/dave/golib/src/cmd/link/internal/ld"
+	"github.com/dave/golib/src/cmd/link/internal/sym"
 	"log"
 )
 
@@ -94,7 +94,7 @@ func applyrel(arch *sys.Arch, r *sym.Reloc, s *sym.Symbol, val *int64, t int64) 
 	}
 }
 
-func archreloc(ctxt *ld.Link, r *sym.Reloc, s *sym.Symbol, val *int64) bool {
+func (pstate *PackageState) archreloc(ctxt *ld.Link, r *sym.Reloc, s *sym.Symbol, val *int64) bool {
 	if ctxt.LinkMode == ld.LinkExternal {
 		switch r.Type {
 		default:
@@ -106,12 +106,12 @@ func archreloc(ctxt *ld.Link, r *sym.Reloc, s *sym.Symbol, val *int64) bool {
 			rs := r.Sym
 			r.Xadd = r.Add
 			for rs.Outer != nil {
-				r.Xadd += ld.Symaddr(rs) - ld.Symaddr(rs.Outer)
+				r.Xadd += pstate.ld.Symaddr(rs) - pstate.ld.Symaddr(rs.Outer)
 				rs = rs.Outer
 			}
 
 			if rs.Type != sym.SHOSTOBJ && rs.Type != sym.SDYNIMPORT && rs.Sect == nil {
-				ld.Errorf(s, "missing section for %s", rs.Name)
+				pstate.ld.Errorf(s, "missing section for %s", rs.Name)
 			}
 			r.Xsym = rs
 			applyrel(ctxt.Arch, r, s, val, r.Xadd)
@@ -130,31 +130,31 @@ func archreloc(ctxt *ld.Link, r *sym.Reloc, s *sym.Symbol, val *int64) bool {
 		*val = r.Add
 		return true
 	case objabi.R_GOTOFF:
-		*val = ld.Symaddr(r.Sym) + r.Add - ld.Symaddr(ctxt.Syms.Lookup(".got", 0))
+		*val = pstate.ld.Symaddr(r.Sym) + r.Add - pstate.ld.Symaddr(ctxt.Syms.Lookup(".got", 0))
 		return true
 	case objabi.R_ADDRMIPS, objabi.R_ADDRMIPSU:
-		t := ld.Symaddr(r.Sym) + r.Add
+		t := pstate.ld.Symaddr(r.Sym) + r.Add
 		applyrel(ctxt.Arch, r, s, val, t)
 		return true
 	case objabi.R_CALLMIPS, objabi.R_JMPMIPS:
-		t := ld.Symaddr(r.Sym) + r.Add
+		t := pstate.ld.Symaddr(r.Sym) + r.Add
 
 		if t&3 != 0 {
-			ld.Errorf(s, "direct call is not aligned: %s %x", r.Sym.Name, t)
+			pstate.ld.Errorf(s, "direct call is not aligned: %s %x", r.Sym.Name, t)
 		}
 
 		// check if target address is in the same 256 MB region as the next instruction
 		if (s.Value+int64(r.Off)+4)&0xf0000000 != (t & 0xf0000000) {
-			ld.Errorf(s, "direct call too far: %s %x", r.Sym.Name, t)
+			pstate.ld.Errorf(s, "direct call too far: %s %x", r.Sym.Name, t)
 		}
 
 		applyrel(ctxt.Arch, r, s, val, t)
 		return true
 	case objabi.R_ADDRMIPSTLS:
 		// thread pointer is at 0x7000 offset from the start of TLS data area
-		t := ld.Symaddr(r.Sym) + r.Add - 0x7000
+		t := pstate.ld.Symaddr(r.Sym) + r.Add - 0x7000
 		if t < -32768 || t >= 32678 {
-			ld.Errorf(s, "TLS offset out of range %d", t)
+			pstate.ld.Errorf(s, "TLS offset out of range %d", t)
 		}
 		applyrel(ctxt.Arch, r, s, val, t)
 		return true
@@ -167,93 +167,93 @@ func archrelocvariant(ctxt *ld.Link, r *sym.Reloc, s *sym.Symbol, t int64) int64
 	return -1
 }
 
-func asmb(ctxt *ld.Link) {
+func (pstate *PackageState) asmb(ctxt *ld.Link) {
 	if ctxt.Debugvlog != 0 {
-		ctxt.Logf("%5.2f asmb\n", ld.Cputime())
+		ctxt.Logf("%5.2f asmb\n", pstate.ld.Cputime())
 	}
 
 	if ctxt.IsELF {
-		ld.Asmbelfsetup()
+		pstate.ld.Asmbelfsetup()
 	}
 
-	sect := ld.Segtext.Sections[0]
-	ctxt.Out.SeekSet(int64(sect.Vaddr - ld.Segtext.Vaddr + ld.Segtext.Fileoff))
-	ld.Codeblk(ctxt, int64(sect.Vaddr), int64(sect.Length))
-	for _, sect = range ld.Segtext.Sections[1:] {
-		ctxt.Out.SeekSet(int64(sect.Vaddr - ld.Segtext.Vaddr + ld.Segtext.Fileoff))
-		ld.Datblk(ctxt, int64(sect.Vaddr), int64(sect.Length))
+	sect := pstate.ld.Segtext.Sections[0]
+	ctxt.Out.SeekSet(pstate.ld, int64(sect.Vaddr-pstate.ld.Segtext.Vaddr+pstate.ld.Segtext.Fileoff))
+	pstate.ld.Codeblk(ctxt, int64(sect.Vaddr), int64(sect.Length))
+	for _, sect = range pstate.ld.Segtext.Sections[1:] {
+		ctxt.Out.SeekSet(pstate.ld, int64(sect.Vaddr-pstate.ld.Segtext.Vaddr+pstate.ld.Segtext.Fileoff))
+		pstate.ld.Datblk(ctxt, int64(sect.Vaddr), int64(sect.Length))
 	}
 
-	if ld.Segrodata.Filelen > 0 {
+	if pstate.ld.Segrodata.Filelen > 0 {
 		if ctxt.Debugvlog != 0 {
-			ctxt.Logf("%5.2f rodatblk\n", ld.Cputime())
+			ctxt.Logf("%5.2f rodatblk\n", pstate.ld.Cputime())
 		}
 
-		ctxt.Out.SeekSet(int64(ld.Segrodata.Fileoff))
-		ld.Datblk(ctxt, int64(ld.Segrodata.Vaddr), int64(ld.Segrodata.Filelen))
+		ctxt.Out.SeekSet(pstate.ld, int64(pstate.ld.Segrodata.Fileoff))
+		pstate.ld.Datblk(ctxt, int64(pstate.ld.Segrodata.Vaddr), int64(pstate.ld.Segrodata.Filelen))
 	}
 
 	if ctxt.Debugvlog != 0 {
-		ctxt.Logf("%5.2f datblk\n", ld.Cputime())
+		ctxt.Logf("%5.2f datblk\n", pstate.ld.Cputime())
 	}
 
-	ctxt.Out.SeekSet(int64(ld.Segdata.Fileoff))
-	ld.Datblk(ctxt, int64(ld.Segdata.Vaddr), int64(ld.Segdata.Filelen))
+	ctxt.Out.SeekSet(pstate.ld, int64(pstate.ld.Segdata.Fileoff))
+	pstate.ld.Datblk(ctxt, int64(pstate.ld.Segdata.Vaddr), int64(pstate.ld.Segdata.Filelen))
 
-	ctxt.Out.SeekSet(int64(ld.Segdwarf.Fileoff))
-	ld.Dwarfblk(ctxt, int64(ld.Segdwarf.Vaddr), int64(ld.Segdwarf.Filelen))
+	ctxt.Out.SeekSet(pstate.ld, int64(pstate.ld.Segdwarf.Fileoff))
+	pstate.ld.Dwarfblk(ctxt, int64(pstate.ld.Segdwarf.Vaddr), int64(pstate.ld.Segdwarf.Filelen))
 
 	/* output symbol table */
-	ld.Symsize = 0
+	pstate.ld.Symsize = 0
 
-	ld.Lcsize = 0
+	pstate.ld.Lcsize = 0
 	symo := uint32(0)
-	if !*ld.FlagS {
+	if !*pstate.ld.FlagS {
 		if !ctxt.IsELF {
-			ld.Errorf(nil, "unsupported executable format")
+			pstate.ld.Errorf(nil, "unsupported executable format")
 		}
 		if ctxt.Debugvlog != 0 {
-			ctxt.Logf("%5.2f sym\n", ld.Cputime())
+			ctxt.Logf("%5.2f sym\n", pstate.ld.Cputime())
 		}
-		symo = uint32(ld.Segdwarf.Fileoff + ld.Segdwarf.Filelen)
-		symo = uint32(ld.Rnd(int64(symo), int64(*ld.FlagRound)))
+		symo = uint32(pstate.ld.Segdwarf.Fileoff + pstate.ld.Segdwarf.Filelen)
+		symo = uint32(ld.Rnd(int64(symo), int64(*pstate.ld.FlagRound)))
 
-		ctxt.Out.SeekSet(int64(symo))
+		ctxt.Out.SeekSet(pstate.ld, int64(symo))
 		if ctxt.Debugvlog != 0 {
-			ctxt.Logf("%5.2f elfsym\n", ld.Cputime())
+			ctxt.Logf("%5.2f elfsym\n", pstate.ld.Cputime())
 		}
-		ld.Asmelfsym(ctxt)
-		ctxt.Out.Flush()
-		ctxt.Out.Write(ld.Elfstrdat)
+		pstate.ld.Asmelfsym(ctxt)
+		ctxt.Out.Flush(pstate.ld)
+		ctxt.Out.Write(pstate.ld.Elfstrdat)
 
 		if ctxt.Debugvlog != 0 {
-			ctxt.Logf("%5.2f dwarf\n", ld.Cputime())
+			ctxt.Logf("%5.2f dwarf\n", pstate.ld.Cputime())
 		}
 
 		if ctxt.LinkMode == ld.LinkExternal {
-			ld.Elfemitreloc(ctxt)
+			pstate.ld.Elfemitreloc(ctxt)
 		}
 	}
 
 	if ctxt.Debugvlog != 0 {
-		ctxt.Logf("%5.2f header\n", ld.Cputime())
+		ctxt.Logf("%5.2f header\n", pstate.ld.Cputime())
 	}
 
-	ctxt.Out.SeekSet(0)
+	ctxt.Out.SeekSet(pstate.ld, 0)
 	switch ctxt.HeadType {
 	default:
-		ld.Errorf(nil, "unsupported operating system")
+		pstate.ld.Errorf(nil, "unsupported operating system")
 	case objabi.Hlinux:
-		ld.Asmbelf(ctxt, int64(symo))
+		pstate.ld.Asmbelf(ctxt, int64(symo))
 	}
 
-	ctxt.Out.Flush()
-	if *ld.FlagC {
-		fmt.Printf("textsize=%d\n", ld.Segtext.Filelen)
-		fmt.Printf("datsize=%d\n", ld.Segdata.Filelen)
-		fmt.Printf("bsssize=%d\n", ld.Segdata.Length-ld.Segdata.Filelen)
-		fmt.Printf("symsize=%d\n", ld.Symsize)
-		fmt.Printf("lcsize=%d\n", ld.Lcsize)
-		fmt.Printf("total=%d\n", ld.Segtext.Filelen+ld.Segdata.Length+uint64(ld.Symsize)+uint64(ld.Lcsize))
+	ctxt.Out.Flush(pstate.ld)
+	if *pstate.ld.FlagC {
+		fmt.Printf("textsize=%d\n", pstate.ld.Segtext.Filelen)
+		fmt.Printf("datsize=%d\n", pstate.ld.Segdata.Filelen)
+		fmt.Printf("bsssize=%d\n", pstate.ld.Segdata.Length-pstate.ld.Segdata.Filelen)
+		fmt.Printf("symsize=%d\n", pstate.ld.Symsize)
+		fmt.Printf("lcsize=%d\n", pstate.ld.Lcsize)
+		fmt.Printf("total=%d\n", pstate.ld.Segtext.Filelen+pstate.ld.Segdata.Length+uint64(pstate.ld.Symsize)+uint64(pstate.ld.Lcsize))
 	}
 }

@@ -5,24 +5,24 @@
 package ppc64
 
 import (
-	"cmd/compile/internal/gc"
-	"cmd/internal/obj/ppc64"
-	"cmd/internal/objabi"
+	"github.com/dave/golib/src/cmd/compile/internal/gc"
+	"github.com/dave/golib/src/cmd/internal/obj/ppc64"
+	"github.com/dave/golib/src/cmd/internal/objabi"
 )
 
-func Init(arch *gc.Arch) {
-	arch.LinkArch = &ppc64.Linkppc64
-	if objabi.GOARCH == "ppc64le" {
-		arch.LinkArch = &ppc64.Linkppc64le
+func (pstate *PackageState) Init(arch *gc.Arch) {
+	arch.LinkArch = &pstate.ppc64.Linkppc64
+	if pstate.objabi.GOARCH == "ppc64le" {
+		arch.LinkArch = &pstate.ppc64.Linkppc64le
 	}
 	arch.REGSP = ppc64.REGSP
 	arch.MAXWIDTH = 1 << 50
 
-	arch.ZeroRange = zerorange
-	arch.ZeroAuto = zeroAuto
-	arch.Ginsnop = ginsnop2
+	arch.ZeroRange = pstate.zerorange
+	arch.ZeroAuto = pstate.zeroAuto
+	arch.Ginsnop = pstate.ginsnop2
 
 	arch.SSAMarkMoves = ssaMarkMoves
-	arch.SSAGenValue = ssaGenValue
-	arch.SSAGenBlock = ssaGenBlock
+	arch.SSAGenValue = pstate.ssaGenValue
+	arch.SSAGenBlock = pstate.ssaGenBlock
 }

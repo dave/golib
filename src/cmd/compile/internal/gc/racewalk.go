@@ -5,39 +5,15 @@
 package gc
 
 import (
-	"cmd/compile/internal/types"
-	"cmd/internal/src"
-	"cmd/internal/sys"
+	"github.com/dave/golib/src/cmd/compile/internal/types"
+	"github.com/dave/golib/src/cmd/internal/src"
+	"github.com/dave/golib/src/cmd/internal/sys"
 )
 
-// The racewalk pass is currently handled in two parts.
-//
-// First, for flag_race, it inserts calls to racefuncenter and
-// racefuncexit at the start and end (respectively) of each
-// function. This is handled below.
-//
-// Second, during buildssa, it inserts appropriate instrumentation
-// calls immediately before each memory load or store. This is handled
-// by the (*state).instrument method in ssa.go, so here we just set
-// the Func.InstrumentBody flag as needed. For background on why this
-// is done during SSA construction rather than a separate SSA pass,
-// see issue #19054.
-
-// TODO(dvyukov): do not instrument initialization as writes:
-// a := make([]int, 10)
-
-// Do not instrument the following packages at all,
-// at best instrumentation would cause infinite recursion.
-var omit_pkgs = []string{"runtime/internal/atomic", "runtime/internal/sys", "runtime", "runtime/race", "runtime/msan", "internal/cpu"}
-
-// Only insert racefuncenterfp/racefuncexit into the following packages.
-// Memory accesses in the packages are either uninteresting or will cause false positives.
-var norace_inst_pkgs = []string{"sync", "sync/atomic"}
-
-func ispkgin(pkgs []string) bool {
-	if myimportpath != "" {
+func (pstate *PackageState) ispkgin(pkgs []string) bool {
+	if pstate.myimportpath != "" {
 		for _, p := range pkgs {
-			if myimportpath == p {
+			if pstate.myimportpath == p {
 				return true
 			}
 		}
@@ -46,22 +22,22 @@ func ispkgin(pkgs []string) bool {
 	return false
 }
 
-func instrument(fn *Node) {
+func (pstate *PackageState) instrument(fn *Node) {
 	if fn.Func.Pragma&Norace != 0 {
 		return
 	}
 
-	if !flag_race || !ispkgin(norace_inst_pkgs) {
+	if !pstate.flag_race || !pstate.ispkgin(pstate.norace_inst_pkgs) {
 		fn.Func.SetInstrumentBody(true)
 	}
 
-	if flag_race {
-		lno := lineno
-		lineno = src.NoXPos
+	if pstate.flag_race {
+		lno := pstate.lineno
+		pstate.lineno = pstate.src.NoXPos
 
-		if thearch.LinkArch.Arch == sys.ArchPPC64LE {
-			fn.Func.Enter.Prepend(mkcall("racefuncenterfp", nil, nil))
-			fn.Func.Exit.Append(mkcall("racefuncexit", nil, nil))
+		if pstate.thearch.LinkArch.Arch == pstate.sys.ArchPPC64LE {
+			fn.Func.Enter.Prepend(pstate.mkcall("racefuncenterfp", nil, nil))
+			fn.Func.Exit.Append(pstate.mkcall("racefuncexit", nil, nil))
 		} else {
 
 			// nodpc is the PC of the caller as extracted by
@@ -69,13 +45,13 @@ func instrument(fn *Node) {
 			// BUG: This only works for amd64. This will not
 			// work on arm or others that might support
 			// race in the future.
-			nodpc := nodfp.copy()
-			nodpc.Type = types.Types[TUINTPTR]
-			nodpc.Xoffset = int64(-Widthptr)
+			nodpc := pstate.nodfp.copy()
+			nodpc.Type = pstate.types.Types[TUINTPTR]
+			nodpc.Xoffset = int64(-pstate.Widthptr)
 			fn.Func.Dcl = append(fn.Func.Dcl, nodpc)
-			fn.Func.Enter.Prepend(mkcall("racefuncenter", nil, nil, nodpc))
-			fn.Func.Exit.Append(mkcall("racefuncexit", nil, nil))
+			fn.Func.Enter.Prepend(pstate.mkcall("racefuncenter", nil, nil, nodpc))
+			fn.Func.Exit.Append(pstate.mkcall("racefuncexit", nil, nil))
 		}
-		lineno = lno
+		pstate.lineno = lno
 	}
 }

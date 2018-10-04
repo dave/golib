@@ -32,9 +32,9 @@ package ld
 
 import (
 	"bufio"
-	"cmd/internal/objabi"
-	"cmd/internal/sys"
 	"flag"
+	"github.com/dave/golib/src/cmd/internal/objabi"
+	"github.com/dave/golib/src/cmd/internal/sys"
 	"log"
 	"os"
 	"runtime"
@@ -42,63 +42,14 @@ import (
 	"strings"
 )
 
-var (
-	pkglistfornote []byte
-	windowsgui     bool // writes a "GUI binary" instead of a "console binary"
-)
-
-func init() {
-	flag.Var(&rpath, "r", "set the ELF dynamic linker search `path` to dir1:dir2:...")
+func (pstate *PackageState) init() {
+	flag.Var(&pstate.rpath, "r", "set the ELF dynamic linker search `path` to dir1:dir2:...")
 }
 
-// Flags used by the linker. The exported flags are used by the architecture-specific packages.
-var (
-	flagBuildid = flag.String("buildid", "", "record `id` as Go toolchain build id")
-
-	flagOutfile    = flag.String("o", "", "write output to `file`")
-	flagPluginPath = flag.String("pluginpath", "", "full path name for plugin")
-
-	flagInstallSuffix = flag.String("installsuffix", "", "set package directory `suffix`")
-	flagDumpDep       = flag.Bool("dumpdep", false, "dump symbol dependency graph")
-	flagRace          = flag.Bool("race", false, "enable race detector")
-	flagMsan          = flag.Bool("msan", false, "enable MSan interface")
-
-	flagFieldTrack = flag.String("k", "", "set field tracking `symbol`")
-	flagLibGCC     = flag.String("libgcc", "", "compiler support lib for internal linking; use \"none\" to disable")
-	flagTmpdir     = flag.String("tmpdir", "", "use `directory` for temporary files")
-
-	flagExtld      = flag.String("extld", "", "use `linker` when linking in external mode")
-	flagExtldflags = flag.String("extldflags", "", "pass `flags` to external linker")
-	flagExtar      = flag.String("extar", "", "archive program for buildmode=c-archive")
-
-	flagA           = flag.Bool("a", false, "disassemble output")
-	FlagC           = flag.Bool("c", false, "dump call graph")
-	FlagD           = flag.Bool("d", false, "disable dynamic executable")
-	flagF           = flag.Bool("f", false, "ignore version mismatch")
-	flagG           = flag.Bool("g", false, "disable go package data checks")
-	flagH           = flag.Bool("h", false, "halt on error")
-	flagN           = flag.Bool("n", false, "dump symbol table")
-	FlagS           = flag.Bool("s", false, "disable symbol table")
-	flagU           = flag.Bool("u", false, "reject unsafe packages")
-	FlagW           = flag.Bool("w", false, "disable DWARF generation")
-	Flag8           bool // use 64-bit addresses in symbol table
-	flagInterpreter = flag.String("I", "", "use `linker` as ELF dynamic linker")
-	FlagDebugTramp  = flag.Int("debugtramp", 0, "debug trampolines")
-
-	FlagRound       = flag.Int("R", -1, "set address rounding `quantum`")
-	FlagTextAddr    = flag.Int64("T", -1, "set text segment `address`")
-	FlagDataAddr    = flag.Int64("D", -1, "set data segment `address`")
-	flagEntrySymbol = flag.String("E", "", "set `entry` symbol name")
-
-	cpuprofile     = flag.String("cpuprofile", "", "write cpu profile to `file`")
-	memprofile     = flag.String("memprofile", "", "write memory profile to `file`")
-	memprofilerate = flag.Int64("memprofilerate", 0, "set runtime.MemProfileRate to `rate`")
-)
-
 // Main is the main entry point for the linker code.
-func Main(arch *sys.Arch, theArch Arch) {
-	thearch = theArch
-	ctxt := linknew(arch)
+func (pstate *PackageState) Main(arch *sys.Arch, theArch Arch) {
+	pstate.thearch = theArch
+	ctxt := pstate.linknew(arch)
 	ctxt.Bso = bufio.NewWriter(os.Stdout)
 
 	// For testing behavior of go command when tools crash silently.
@@ -110,72 +61,72 @@ func Main(arch *sys.Arch, theArch Arch) {
 		}
 	}
 
-	final := gorootFinal()
-	addstrdata1(ctxt, "runtime/internal/sys.DefaultGoroot="+final)
-	addstrdata1(ctxt, "cmd/internal/objabi.defaultGOROOT="+final)
+	final := pstate.gorootFinal()
+	pstate.addstrdata1(ctxt, "runtime/internal/sys.DefaultGoroot="+final)
+	pstate.addstrdata1(ctxt, "github.com/dave/golib/src/cmd/internal/objabi.defaultGOROOT="+final)
 
 	// TODO(matloob): define these above and then check flag values here
-	if ctxt.Arch.Family == sys.AMD64 && objabi.GOOS == "plan9" {
-		flag.BoolVar(&Flag8, "8", false, "use 64-bit addresses in symbol table")
+	if ctxt.Arch.Family == sys.AMD64 && pstate.objabi.GOOS == "plan9" {
+		flag.BoolVar(&pstate.Flag8, "8", false, "use 64-bit addresses in symbol table")
 	}
 	flagHeadType := flag.String("H", "", "set header `type`")
 	flag.BoolVar(&ctxt.linkShared, "linkshared", false, "link against installed Go shared libraries")
 	flag.Var(&ctxt.LinkMode, "linkmode", "set link `mode`")
 	flag.Var(&ctxt.BuildMode, "buildmode", "set build `mode`")
-	objabi.Flagfn1("B", "add an ELF NT_GNU_BUILD_ID `note` when using ELF", addbuildinfo)
+	objabi.Flagfn1("B", "add an ELF NT_GNU_BUILD_ID `note` when using ELF", pstate.addbuildinfo)
 	objabi.Flagfn1("L", "add specified `directory` to library path", func(a string) { Lflag(ctxt, a) })
 	objabi.AddVersionFlag() // -V
-	objabi.Flagfn1("X", "add string value `definition` of the form importpath.name=value", func(s string) { addstrdata1(ctxt, s) })
+	objabi.Flagfn1("X", "add string value `definition` of the form importpath.name=value", func(s string) { pstate.addstrdata1(ctxt, s) })
 	objabi.Flagcount("v", "print link trace", &ctxt.Debugvlog)
 	objabi.Flagfn1("importcfg", "read import configuration from `file`", ctxt.readImportCfg)
 
-	objabi.Flagparse(usage)
+	objabi.Flagparse(pstate.usage)
 
 	switch *flagHeadType {
 	case "":
 	case "windowsgui":
 		ctxt.HeadType = objabi.Hwindows
-		windowsgui = true
+		pstate.windowsgui = true
 	default:
 		if err := ctxt.HeadType.Set(*flagHeadType); err != nil {
-			Errorf(nil, "%v", err)
-			usage()
+			pstate.Errorf(nil, "%v", err)
+			pstate.usage()
 		}
 	}
 
-	startProfile()
+	pstate.startProfile()
 	if ctxt.BuildMode == BuildModeUnset {
 		ctxt.BuildMode = BuildModeExe
 	}
 
 	if ctxt.BuildMode != BuildModeShared && flag.NArg() != 1 {
-		usage()
+		pstate.usage()
 	}
 
-	if *flagOutfile == "" {
-		*flagOutfile = "a.out"
+	if *pstate.flagOutfile == "" {
+		*pstate.flagOutfile = "a.out"
 		if ctxt.HeadType == objabi.Hwindows {
-			*flagOutfile += ".exe"
+			*pstate.flagOutfile += ".exe"
 		}
 	}
 
-	interpreter = *flagInterpreter
+	pstate.interpreter = *pstate.flagInterpreter
 
-	libinit(ctxt) // creates outfile
+	pstate.libinit(ctxt) // creates outfile
 
 	if ctxt.HeadType == objabi.Hunknown {
-		ctxt.HeadType.Set(objabi.GOOS)
+		ctxt.HeadType.Set(pstate.objabi.GOOS)
 	}
 
-	ctxt.computeTLSOffset()
-	thearch.Archinit(ctxt)
+	ctxt.computeTLSOffset(pstate)
+	pstate.thearch.Archinit(ctxt)
 
 	if ctxt.linkShared && !ctxt.IsELF {
-		Exitf("-linkshared can only be used on elf systems")
+		pstate.Exitf("-linkshared can only be used on elf systems")
 	}
 
 	if ctxt.Debugvlog != 0 {
-		ctxt.Logf("HEADER = -H%d -T0x%x -D0x%x -R0x%x\n", ctxt.HeadType, uint64(*FlagTextAddr), uint64(*FlagDataAddr), uint32(*FlagRound))
+		ctxt.Logf("HEADER = -H%d -T0x%x -D0x%x -R0x%x\n", ctxt.HeadType, uint64(*pstate.FlagTextAddr), uint64(*pstate.FlagDataAddr), uint32(*pstate.FlagRound))
 	}
 
 	switch ctxt.BuildMode {
@@ -189,58 +140,58 @@ func Main(arch *sys.Arch, theArch Arch) {
 			} else {
 				pkgpath, file = parts[0], parts[1]
 			}
-			pkglistfornote = append(pkglistfornote, pkgpath...)
-			pkglistfornote = append(pkglistfornote, '\n')
-			addlibpath(ctxt, "command line", "command line", file, pkgpath, "")
+			pstate.pkglistfornote = append(pstate.pkglistfornote, pkgpath...)
+			pstate.pkglistfornote = append(pstate.pkglistfornote, '\n')
+			pstate.addlibpath(ctxt, "command line", "command line", file, pkgpath, "")
 		}
 	case BuildModePlugin:
-		addlibpath(ctxt, "command line", "command line", flag.Arg(0), *flagPluginPath, "")
+		pstate.addlibpath(ctxt, "command line", "command line", flag.Arg(0), *pstate.flagPluginPath, "")
 	default:
-		addlibpath(ctxt, "command line", "command line", flag.Arg(0), "main", "")
+		pstate.addlibpath(ctxt, "command line", "command line", flag.Arg(0), "main", "")
 	}
-	ctxt.loadlib()
+	ctxt.loadlib(pstate)
 
-	ctxt.dostrdata()
-	deadcode(ctxt)
-	if objabi.Fieldtrack_enabled != 0 {
-		fieldtrack(ctxt)
+	ctxt.dostrdata(pstate)
+	pstate.deadcode(ctxt)
+	if pstate.objabi.Fieldtrack_enabled != 0 {
+		pstate.fieldtrack(ctxt)
 	}
-	ctxt.callgraph()
+	ctxt.callgraph(pstate)
 
-	ctxt.doelf()
+	ctxt.doelf(pstate)
 	if ctxt.HeadType == objabi.Hdarwin {
-		ctxt.domacho()
+		ctxt.domacho(pstate)
 	}
-	ctxt.dostkcheck()
+	ctxt.dostkcheck(pstate)
 	if ctxt.HeadType == objabi.Hwindows {
-		ctxt.dope()
+		ctxt.dope(pstate)
 	}
-	ctxt.addexport()
-	thearch.Gentext(ctxt) // trampolines, call stubs, etc.
-	ctxt.textbuildid()
-	ctxt.textaddress()
-	ctxt.pclntab()
-	ctxt.findfunctab()
+	ctxt.addexport(pstate)
+	pstate.thearch.Gentext(ctxt) // trampolines, call stubs, etc.
+	ctxt.textbuildid(pstate)
+	ctxt.textaddress(pstate)
+	ctxt.pclntab(pstate)
+	ctxt.findfunctab(pstate)
 	ctxt.typelink()
-	ctxt.symtab()
-	ctxt.dodata()
-	order := ctxt.address()
-	ctxt.reloc()
-	dwarfcompress(ctxt)
-	ctxt.layout(order)
-	thearch.Asmb(ctxt)
-	ctxt.undef()
-	ctxt.hostlink()
-	ctxt.archive()
+	ctxt.symtab(pstate)
+	ctxt.dodata(pstate)
+	order := ctxt.address(pstate)
+	ctxt.reloc(pstate)
+	pstate.dwarfcompress(ctxt)
+	ctxt.layout(pstate, order)
+	pstate.thearch.Asmb(ctxt)
+	ctxt.undef(pstate)
+	ctxt.hostlink(pstate)
+	ctxt.archive(pstate)
 	if ctxt.Debugvlog != 0 {
-		ctxt.Logf("%5.2f cpu time\n", Cputime())
+		ctxt.Logf("%5.2f cpu time\n", pstate.Cputime())
 		ctxt.Logf("%d symbols\n", len(ctxt.Syms.Allsym))
-		ctxt.Logf("%d liveness data\n", liveness)
+		ctxt.Logf("%d liveness data\n", pstate.liveness)
 	}
 
 	ctxt.Bso.Flush()
 
-	errorexit()
+	pstate.errorexit()
 }
 
 type Rpath struct {
@@ -258,26 +209,26 @@ func (r *Rpath) String() string {
 	return r.val
 }
 
-func startProfile() {
-	if *cpuprofile != "" {
-		f, err := os.Create(*cpuprofile)
+func (pstate *PackageState) startProfile() {
+	if *pstate.cpuprofile != "" {
+		f, err := os.Create(*pstate.cpuprofile)
 		if err != nil {
 			log.Fatalf("%v", err)
 		}
 		if err := pprof.StartCPUProfile(f); err != nil {
 			log.Fatalf("%v", err)
 		}
-		AtExit(pprof.StopCPUProfile)
+		pstate.AtExit(pprof.StopCPUProfile)
 	}
-	if *memprofile != "" {
-		if *memprofilerate != 0 {
-			runtime.MemProfileRate = int(*memprofilerate)
+	if *pstate.memprofile != "" {
+		if *pstate.memprofilerate != 0 {
+			runtime.MemProfileRate = int(*pstate.memprofilerate)
 		}
-		f, err := os.Create(*memprofile)
+		f, err := os.Create(*pstate.memprofile)
 		if err != nil {
 			log.Fatalf("%v", err)
 		}
-		AtExit(func() {
+		pstate.AtExit(func() {
 			runtime.GC() // profile all outstanding allocations
 			if err := pprof.WriteHeapProfile(f); err != nil {
 				log.Fatalf("%v", err)

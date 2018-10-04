@@ -4,7 +4,7 @@
 
 package ssa
 
-import "cmd/internal/src"
+import "github.com/dave/golib/src/cmd/internal/src"
 
 // from https://research.swtch.com/sparse
 // in turn, from Briggs and Torczon
@@ -61,7 +61,7 @@ func (s *sparseMap) set(k ID, v int32, a src.XPos) {
 }
 
 // setBit sets the v'th bit of k's value, where 0 <= v < 32
-func (s *sparseMap) setBit(k ID, v uint) {
+func (s *sparseMap) setBit(pstate *PackageState, k ID, v uint) {
 	if v >= 32 {
 		panic("bit index too large.")
 	}
@@ -70,7 +70,7 @@ func (s *sparseMap) setBit(k ID, v uint) {
 		s.dense[i].val |= 1 << v
 		return
 	}
-	s.dense = append(s.dense, sparseEntry{k, 1 << v, src.NoXPos})
+	s.dense = append(s.dense, sparseEntry{k, 1 << v, pstate.src.NoXPos})
 	s.sparse[k] = int32(len(s.dense)) - 1
 }
 

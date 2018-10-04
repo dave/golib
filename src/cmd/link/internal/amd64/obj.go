@@ -31,16 +31,16 @@
 package amd64
 
 import (
-	"cmd/internal/objabi"
-	"cmd/internal/sys"
-	"cmd/link/internal/ld"
 	"fmt"
+	"github.com/dave/golib/src/cmd/internal/objabi"
+	"github.com/dave/golib/src/cmd/internal/sys"
+	"github.com/dave/golib/src/cmd/link/internal/ld"
 )
 
-func Init() (*sys.Arch, ld.Arch) {
-	arch := sys.ArchAMD64
-	if objabi.GOARCH == "amd64p32" {
-		arch = sys.ArchAMD64P32
+func (pstate *PackageState) Init() (*sys.Arch, ld.Arch) {
+	arch := pstate.sys.ArchAMD64
+	if pstate.objabi.GOARCH == "amd64p32" {
+		arch = pstate.sys.ArchAMD64P32
 	}
 
 	theArch := ld.Arch{
@@ -50,16 +50,16 @@ func Init() (*sys.Arch, ld.Arch) {
 		Dwarfregsp: dwarfRegSP,
 		Dwarfreglr: dwarfRegLR,
 
-		Adddynrel:        adddynrel,
-		Archinit:         archinit,
+		Adddynrel:        pstate.adddynrel,
+		Archinit:         pstate.archinit,
 		Archreloc:        archreloc,
 		Archrelocvariant: archrelocvariant,
-		Asmb:             asmb,
+		Asmb:             pstate.asmb,
 		Elfreloc1:        elfreloc1,
 		Elfsetupplt:      elfsetupplt,
 		Gentext:          gentext,
-		Machoreloc1:      machoreloc1,
-		PEreloc1:         pereloc1,
+		Machoreloc1:      pstate.machoreloc1,
+		PEreloc1:         pstate.pereloc1,
 		TLSIEtoLE:        tlsIEtoLE,
 
 		Linuxdynld:     "/lib64/ld-linux-x86-64.so.2",
@@ -73,34 +73,34 @@ func Init() (*sys.Arch, ld.Arch) {
 	return arch, theArch
 }
 
-func archinit(ctxt *ld.Link) {
+func (pstate *PackageState) archinit(ctxt *ld.Link) {
 	switch ctxt.HeadType {
 	default:
-		ld.Exitf("unknown -H option: %v", ctxt.HeadType)
+		pstate.ld.Exitf("unknown -H option: %v", ctxt.HeadType)
 
 	case objabi.Hplan9: /* plan 9 */
-		ld.HEADR = 32 + 8
+		pstate.ld.HEADR = 32 + 8
 
-		if *ld.FlagTextAddr == -1 {
-			*ld.FlagTextAddr = 0x200000 + int64(ld.HEADR)
+		if *pstate.ld.FlagTextAddr == -1 {
+			*pstate.ld.FlagTextAddr = 0x200000 + int64(pstate.ld.HEADR)
 		}
-		if *ld.FlagDataAddr == -1 {
-			*ld.FlagDataAddr = 0
+		if *pstate.ld.FlagDataAddr == -1 {
+			*pstate.ld.FlagDataAddr = 0
 		}
-		if *ld.FlagRound == -1 {
-			*ld.FlagRound = 0x200000
+		if *pstate.ld.FlagRound == -1 {
+			*pstate.ld.FlagRound = 0x200000
 		}
 
 	case objabi.Hdarwin: /* apple MACH */
-		ld.HEADR = ld.INITIAL_MACHO_HEADR
-		if *ld.FlagRound == -1 {
-			*ld.FlagRound = 4096
+		pstate.ld.HEADR = ld.INITIAL_MACHO_HEADR
+		if *pstate.ld.FlagRound == -1 {
+			*pstate.ld.FlagRound = 4096
 		}
-		if *ld.FlagTextAddr == -1 {
-			*ld.FlagTextAddr = 0x1000000 + int64(ld.HEADR)
+		if *pstate.ld.FlagTextAddr == -1 {
+			*pstate.ld.FlagTextAddr = 0x1000000 + int64(pstate.ld.HEADR)
 		}
-		if *ld.FlagDataAddr == -1 {
-			*ld.FlagDataAddr = 0
+		if *pstate.ld.FlagDataAddr == -1 {
+			*pstate.ld.FlagDataAddr = 0
 		}
 
 	case objabi.Hlinux, /* elf64 executable */
@@ -109,32 +109,32 @@ func archinit(ctxt *ld.Link) {
 		objabi.Hopenbsd,   /* openbsd */
 		objabi.Hdragonfly, /* dragonfly */
 		objabi.Hsolaris:   /* solaris */
-		ld.Elfinit(ctxt)
+		pstate.ld.Elfinit(ctxt)
 
-		ld.HEADR = ld.ELFRESERVE
-		if *ld.FlagTextAddr == -1 {
-			*ld.FlagTextAddr = (1 << 22) + int64(ld.HEADR)
+		pstate.ld.HEADR = ld.ELFRESERVE
+		if *pstate.ld.FlagTextAddr == -1 {
+			*pstate.ld.FlagTextAddr = (1 << 22) + int64(pstate.ld.HEADR)
 		}
-		if *ld.FlagDataAddr == -1 {
-			*ld.FlagDataAddr = 0
+		if *pstate.ld.FlagDataAddr == -1 {
+			*pstate.ld.FlagDataAddr = 0
 		}
-		if *ld.FlagRound == -1 {
-			*ld.FlagRound = 4096
+		if *pstate.ld.FlagRound == -1 {
+			*pstate.ld.FlagRound = 4096
 		}
 
 	case objabi.Hnacl:
-		ld.Elfinit(ctxt)
-		*ld.FlagW = true // disable dwarf, which gets confused and is useless anyway
-		ld.HEADR = 0x10000
-		ld.Funcalign = 32
-		if *ld.FlagTextAddr == -1 {
-			*ld.FlagTextAddr = 0x20000
+		pstate.ld.Elfinit(ctxt)
+		*pstate.ld.FlagW = true // disable dwarf, which gets confused and is useless anyway
+		pstate.ld.HEADR = 0x10000
+		pstate.ld.Funcalign = 32
+		if *pstate.ld.FlagTextAddr == -1 {
+			*pstate.ld.FlagTextAddr = 0x20000
 		}
-		if *ld.FlagDataAddr == -1 {
-			*ld.FlagDataAddr = 0
+		if *pstate.ld.FlagDataAddr == -1 {
+			*pstate.ld.FlagDataAddr = 0
 		}
-		if *ld.FlagRound == -1 {
-			*ld.FlagRound = 0x10000
+		if *pstate.ld.FlagRound == -1 {
+			*pstate.ld.FlagRound = 0x10000
 		}
 
 	case objabi.Hwindows: /* PE executable */
@@ -142,7 +142,7 @@ func archinit(ctxt *ld.Link) {
 		return
 	}
 
-	if *ld.FlagDataAddr != 0 && *ld.FlagRound != 0 {
-		fmt.Printf("warning: -D0x%x is ignored because of -R0x%x\n", uint64(*ld.FlagDataAddr), uint32(*ld.FlagRound))
+	if *pstate.ld.FlagDataAddr != 0 && *pstate.ld.FlagRound != 0 {
+		fmt.Printf("warning: -D0x%x is ignored because of -R0x%x\n", uint64(*pstate.ld.FlagDataAddr), uint32(*pstate.ld.FlagRound))
 	}
 }

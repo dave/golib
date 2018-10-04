@@ -31,14 +31,14 @@
 package s390x
 
 import (
-	"cmd/internal/objabi"
-	"cmd/internal/sys"
-	"cmd/link/internal/ld"
 	"fmt"
+	"github.com/dave/golib/src/cmd/internal/objabi"
+	"github.com/dave/golib/src/cmd/internal/sys"
+	"github.com/dave/golib/src/cmd/link/internal/ld"
 )
 
-func Init() (*sys.Arch, ld.Arch) {
-	arch := sys.ArchS390X
+func (pstate *PackageState) Init() (*sys.Arch, ld.Arch) {
+	arch := pstate.sys.ArchS390X
 
 	theArch := ld.Arch{
 		Funcalign:  funcAlign,
@@ -47,11 +47,11 @@ func Init() (*sys.Arch, ld.Arch) {
 		Dwarfregsp: dwarfRegSP,
 		Dwarfreglr: dwarfRegLR,
 
-		Adddynrel:        adddynrel,
-		Archinit:         archinit,
-		Archreloc:        archreloc,
-		Archrelocvariant: archrelocvariant,
-		Asmb:             asmb, // in asm.go
+		Adddynrel:        pstate.adddynrel,
+		Archinit:         pstate.archinit,
+		Archreloc:        pstate.archreloc,
+		Archrelocvariant: pstate.archrelocvariant,
+		Asmb:             pstate.asmb, // in asm.go
 		Elfreloc1:        elfreloc1,
 		Elfsetupplt:      elfsetupplt,
 		Gentext:          gentext,
@@ -70,26 +70,26 @@ func Init() (*sys.Arch, ld.Arch) {
 	return arch, theArch
 }
 
-func archinit(ctxt *ld.Link) {
+func (pstate *PackageState) archinit(ctxt *ld.Link) {
 	switch ctxt.HeadType {
 	default:
-		ld.Exitf("unknown -H option: %v", ctxt.HeadType)
+		pstate.ld.Exitf("unknown -H option: %v", ctxt.HeadType)
 
 	case objabi.Hlinux: // s390x ELF
-		ld.Elfinit(ctxt)
-		ld.HEADR = ld.ELFRESERVE
-		if *ld.FlagTextAddr == -1 {
-			*ld.FlagTextAddr = 0x10000 + int64(ld.HEADR)
+		pstate.ld.Elfinit(ctxt)
+		pstate.ld.HEADR = ld.ELFRESERVE
+		if *pstate.ld.FlagTextAddr == -1 {
+			*pstate.ld.FlagTextAddr = 0x10000 + int64(pstate.ld.HEADR)
 		}
-		if *ld.FlagDataAddr == -1 {
-			*ld.FlagDataAddr = 0
+		if *pstate.ld.FlagDataAddr == -1 {
+			*pstate.ld.FlagDataAddr = 0
 		}
-		if *ld.FlagRound == -1 {
-			*ld.FlagRound = 0x10000
+		if *pstate.ld.FlagRound == -1 {
+			*pstate.ld.FlagRound = 0x10000
 		}
 	}
 
-	if *ld.FlagDataAddr != 0 && *ld.FlagRound != 0 {
-		fmt.Printf("warning: -D0x%x is ignored because of -R0x%x\n", uint64(*ld.FlagDataAddr), uint32(*ld.FlagRound))
+	if *pstate.ld.FlagDataAddr != 0 && *pstate.ld.FlagRound != 0 {
+		fmt.Printf("warning: -D0x%x is ignored because of -R0x%x\n", uint64(*pstate.ld.FlagDataAddr), uint32(*pstate.ld.FlagRound))
 	}
 }

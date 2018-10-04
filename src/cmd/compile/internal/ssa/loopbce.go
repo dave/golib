@@ -6,7 +6,7 @@ type indVarFlags uint8
 
 const (
 	indVarMinExc indVarFlags = 1 << iota // minimum value is exclusive (default: inclusive)
-	indVarMaxInc                         // maximum value is inclusive (default: exclusive)
+	indVarMaxInc // maximum value is inclusive (default: exclusive)
 )
 
 type indVar struct {

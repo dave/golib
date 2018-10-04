@@ -5,11 +5,11 @@
 package gc
 
 import (
-	"cmd/compile/internal/ssa"
-	"cmd/compile/internal/types"
-	"cmd/internal/src"
 	"container/heap"
 	"fmt"
+	"github.com/dave/golib/src/cmd/compile/internal/ssa"
+	"github.com/dave/golib/src/cmd/compile/internal/types"
+	"github.com/dave/golib/src/cmd/internal/src"
 )
 
 // This file contains the algorithm to place phi nodes in a function.
@@ -29,14 +29,14 @@ const debugPhi = false
 // Phi values are inserted, and all FwdRefs are changed to a Copy
 // of the appropriate phi or definition.
 // TODO: make this part of cmd/compile/internal/ssa somehow?
-func (s *state) insertPhis() {
+func (s *state) insertPhis(pstate *PackageState) {
 	if len(s.f.Blocks) <= smallBlocks {
 		sps := simplePhiState{s: s, f: s.f, defvars: s.defvars}
 		sps.insertPhis()
 		return
 	}
 	ps := phiState{s: s, f: s.f, defvars: s.defvars}
-	ps.insertPhis()
+	ps.insertPhis(pstate)
 }
 
 type phiState struct {
@@ -62,9 +62,9 @@ type phiState struct {
 	placeholder *ssa.Value // dummy value to use as a "not set yet" placeholder.
 }
 
-func (s *phiState) insertPhis() {
+func (s *phiState) insertPhis(pstate *PackageState) {
 	if debugPhi {
-		fmt.Println(s.f.String())
+		fmt.Println(s.f.String(pstate.ssa))
 	}
 
 	// Find all the variables for which we need to match up reads & writes.
@@ -163,7 +163,7 @@ levels:
 	s.queued = newSparseSet(s.f.NumBlocks())
 	s.hasPhi = newSparseSet(s.f.NumBlocks())
 	s.hasDef = newSparseSet(s.f.NumBlocks())
-	s.placeholder = s.s.entryNewValue0(ssa.OpUnknown, types.TypeInvalid)
+	s.placeholder = s.s.entryNewValue0(pstate, ssa.OpUnknown, pstate.types.TypeInvalid)
 
 	// Generate phi ops for each variable.
 	for n := range vartypes {

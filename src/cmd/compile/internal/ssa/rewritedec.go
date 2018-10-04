@@ -4,16 +4,16 @@
 package ssa
 
 import "math"
-import "cmd/internal/obj"
-import "cmd/internal/objabi"
-import "cmd/compile/internal/types"
+import "github.com/dave/golib/src/cmd/internal/obj"
+import "github.com/dave/golib/src/cmd/internal/objabi"
+import "github.com/dave/golib/src/cmd/compile/internal/types"
 
-var _ = math.MinInt8  // in case not otherwise used
-var _ = obj.ANOP      // in case not otherwise used
-var _ = objabi.GOROOT // in case not otherwise used
-var _ = types.TypeMem // in case not otherwise used
+var _ = math.MinInt8         // in case not otherwise used
+var _ = obj.ANOP             // in case not otherwise used
+var _ = pstate.objabi.GOROOT // in case not otherwise used
+var _ = pstate.types.TypeMem // in case not otherwise used
 
-func rewriteValuedec(v *Value) bool {
+func (pstate *PackageState) rewriteValuedec(v *Value) bool {
 	switch v.Op {
 	case OpComplexImag:
 		return rewriteValuedec_OpComplexImag_0(v)
@@ -24,7 +24,7 @@ func rewriteValuedec(v *Value) bool {
 	case OpITab:
 		return rewriteValuedec_OpITab_0(v)
 	case OpLoad:
-		return rewriteValuedec_OpLoad_0(v)
+		return pstate.rewriteValuedec_OpLoad_0(v)
 	case OpSliceCap:
 		return rewriteValuedec_OpSliceCap_0(v)
 	case OpSliceLen:
@@ -32,7 +32,7 @@ func rewriteValuedec(v *Value) bool {
 	case OpSlicePtr:
 		return rewriteValuedec_OpSlicePtr_0(v)
 	case OpStore:
-		return rewriteValuedec_OpStore_0(v)
+		return pstate.rewriteValuedec_OpStore_0(v)
 	case OpStringLen:
 		return rewriteValuedec_OpStringLen_0(v)
 	case OpStringPtr:
@@ -114,7 +114,7 @@ func rewriteValuedec_OpITab_0(v *Value) bool {
 	}
 	return false
 }
-func rewriteValuedec_OpLoad_0(v *Value) bool {
+func (pstate *PackageState) rewriteValuedec_OpLoad_0(v *Value) bool {
 	b := v.Block
 	_ = b
 	config := b.Func.Config
@@ -129,7 +129,7 @@ func rewriteValuedec_OpLoad_0(v *Value) bool {
 		_ = v.Args[1]
 		ptr := v.Args[0]
 		mem := v.Args[1]
-		if !(t.IsComplex() && t.Size() == 8) {
+		if !(t.IsComplex() && t.Size(pstate.types) == 8) {
 			break
 		}
 		v.reset(OpComplexMake)
@@ -154,7 +154,7 @@ func rewriteValuedec_OpLoad_0(v *Value) bool {
 		_ = v.Args[1]
 		ptr := v.Args[0]
 		mem := v.Args[1]
-		if !(t.IsComplex() && t.Size() == 16) {
+		if !(t.IsComplex() && t.Size(pstate.types) == 16) {
 			break
 		}
 		v.reset(OpComplexMake)
@@ -208,7 +208,7 @@ func rewriteValuedec_OpLoad_0(v *Value) bool {
 			break
 		}
 		v.reset(OpSliceMake)
-		v0 := b.NewValue0(v.Pos, OpLoad, t.Elem().PtrTo())
+		v0 := b.NewValue0(v.Pos, OpLoad, t.Elem(pstate.types).PtrTo(pstate.types))
 		v0.AddArg(ptr)
 		v0.AddArg(mem)
 		v.AddArg(v0)
@@ -309,7 +309,7 @@ func rewriteValuedec_OpSlicePtr_0(v *Value) bool {
 	}
 	return false
 }
-func rewriteValuedec_OpStore_0(v *Value) bool {
+func (pstate *PackageState) rewriteValuedec_OpStore_0(v *Value) bool {
 	b := v.Block
 	_ = b
 	config := b.Func.Config
@@ -331,7 +331,7 @@ func rewriteValuedec_OpStore_0(v *Value) bool {
 		real := v_1.Args[0]
 		imag := v_1.Args[1]
 		mem := v.Args[2]
-		if !(t.(*types.Type).Size() == 8) {
+		if !(t.(*types.Type).Size(pstate.types) == 8) {
 			break
 		}
 		v.reset(OpStore)
@@ -341,7 +341,7 @@ func rewriteValuedec_OpStore_0(v *Value) bool {
 		v0.AddArg(dst)
 		v.AddArg(v0)
 		v.AddArg(imag)
-		v1 := b.NewValue0(v.Pos, OpStore, types.TypeMem)
+		v1 := b.NewValue0(v.Pos, OpStore, pstate.types.TypeMem)
 		v1.Aux = typ.Float32
 		v1.AddArg(dst)
 		v1.AddArg(real)
@@ -364,7 +364,7 @@ func rewriteValuedec_OpStore_0(v *Value) bool {
 		real := v_1.Args[0]
 		imag := v_1.Args[1]
 		mem := v.Args[2]
-		if !(t.(*types.Type).Size() == 16) {
+		if !(t.(*types.Type).Size(pstate.types) == 16) {
 			break
 		}
 		v.reset(OpStore)
@@ -374,7 +374,7 @@ func rewriteValuedec_OpStore_0(v *Value) bool {
 		v0.AddArg(dst)
 		v.AddArg(v0)
 		v.AddArg(imag)
-		v1 := b.NewValue0(v.Pos, OpStore, types.TypeMem)
+		v1 := b.NewValue0(v.Pos, OpStore, pstate.types.TypeMem)
 		v1.Aux = typ.Float64
 		v1.AddArg(dst)
 		v1.AddArg(real)
@@ -403,7 +403,7 @@ func rewriteValuedec_OpStore_0(v *Value) bool {
 		v0.AddArg(dst)
 		v.AddArg(v0)
 		v.AddArg(len)
-		v1 := b.NewValue0(v.Pos, OpStore, types.TypeMem)
+		v1 := b.NewValue0(v.Pos, OpStore, pstate.types.TypeMem)
 		v1.Aux = typ.BytePtr
 		v1.AddArg(dst)
 		v1.AddArg(ptr)
@@ -433,14 +433,14 @@ func rewriteValuedec_OpStore_0(v *Value) bool {
 		v0.AddArg(dst)
 		v.AddArg(v0)
 		v.AddArg(cap)
-		v1 := b.NewValue0(v.Pos, OpStore, types.TypeMem)
+		v1 := b.NewValue0(v.Pos, OpStore, pstate.types.TypeMem)
 		v1.Aux = typ.Int
 		v2 := b.NewValue0(v.Pos, OpOffPtr, typ.IntPtr)
 		v2.AuxInt = config.PtrSize
 		v2.AddArg(dst)
 		v1.AddArg(v2)
 		v1.AddArg(len)
-		v3 := b.NewValue0(v.Pos, OpStore, types.TypeMem)
+		v3 := b.NewValue0(v.Pos, OpStore, pstate.types.TypeMem)
 		v3.Aux = typ.BytePtr
 		v3.AddArg(dst)
 		v3.AddArg(ptr)
@@ -470,7 +470,7 @@ func rewriteValuedec_OpStore_0(v *Value) bool {
 		v0.AddArg(dst)
 		v.AddArg(v0)
 		v.AddArg(data)
-		v1 := b.NewValue0(v.Pos, OpStore, types.TypeMem)
+		v1 := b.NewValue0(v.Pos, OpStore, pstate.types.TypeMem)
 		v1.Aux = typ.Uintptr
 		v1.AddArg(dst)
 		v1.AddArg(itab)

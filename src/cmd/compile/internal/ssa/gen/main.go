@@ -101,7 +101,7 @@ func genOp() {
 	fmt.Fprintln(w, "package ssa")
 
 	fmt.Fprintln(w, "import (")
-	fmt.Fprintln(w, "\"cmd/internal/obj\"")
+	fmt.Fprintln(w, "\"github.com/dave/golib/src/cmd/internal/obj\"")
 	for _, a := range archs {
 		if a.pkg != "" {
 			fmt.Fprintf(w, "%q\n", a.pkg)
@@ -303,7 +303,7 @@ func genOp() {
 		fmt.Fprintf(w, "var registers%s = [...]Register {\n", a.name)
 		var gcRegN int
 		for i, r := range a.regnames {
-			pkg := a.pkg[len("cmd/internal/obj/"):]
+			pkg := a.pkg[len("github.com/dave/golib/src/cmd/internal/obj/"):]
 			var objname string // name in cmd/internal/obj/$ARCH
 			switch r {
 			case "SB":

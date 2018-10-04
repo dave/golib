@@ -5,6 +5,6 @@
 package ssa
 
 // machine-independent optimization
-func opt(f *Func) {
-	applyRewrite(f, rewriteBlockgeneric, rewriteValuegeneric)
+func (pstate *PackageState) opt(f *Func) {
+	pstate.applyRewrite(f, rewriteBlockgeneric, pstate.rewriteValuegeneric)
 }

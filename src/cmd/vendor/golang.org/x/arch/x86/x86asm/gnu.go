@@ -280,7 +280,7 @@ SuffixLoop:
 		case CMPXCHG8B, FLDCW, FNSTCW, FNSTSW, LDMXCSR, LLDT, LMSW, LTR, PCLMULQDQ,
 			SETA, SETAE, SETB, SETBE, SETE, SETG, SETGE, SETL, SETLE, SETNE, SETNO, SETNP, SETNS, SETO, SETP, SETS,
 			SLDT, SMSW, STMXCSR, STR, VERR, VERW:
-			// For various reasons, libopcodes emits no suffix for these instructions.
+		// For various reasons, libopcodes emits no suffix for these instructions.
 
 		case CRC32:
 			op += byteSizeSuffix(argBytes(&inst, inst.Args[1]))
@@ -414,7 +414,7 @@ SuffixLoop:
 	// A few instructions inhibit this behavior.
 	switch inst.Op {
 	case BOUND, LCALL, ENTER, LJMP:
-		// no reverse
+	// no reverse
 	default:
 		// reverse args
 		for i, j := 0, len(args)-1; i < j; i, j = i+1, j-1 {
@@ -564,7 +564,7 @@ func gnuArg(inst *Inst, pc uint64, symname SymLookup, x Arg, usedPrefixes *bool)
 		}
 		switch inst.Op {
 		case INSB, INSW, INSD, STOSB, STOSW, STOSD, STOSQ, SCASB, SCASW, SCASD, SCASQ:
-			// These do not accept segment prefixes, at least in the GNU rendering.
+		// These do not accept segment prefixes, at least in the GNU rendering.
 		default:
 			if *usedPrefixes {
 				break

@@ -31,22 +31,11 @@
 package arm64
 
 import (
-	"cmd/internal/obj"
-	"cmd/internal/objabi"
-	"cmd/internal/sys"
+	"github.com/dave/golib/src/cmd/internal/obj"
+	"github.com/dave/golib/src/cmd/internal/objabi"
+	"github.com/dave/golib/src/cmd/internal/sys"
 	"math"
 )
-
-var complements = []obj.As{
-	AADD:  ASUB,
-	AADDW: ASUBW,
-	ASUB:  AADD,
-	ASUBW: AADDW,
-	ACMP:  ACMN,
-	ACMPW: ACMNW,
-	ACMN:  ACMP,
-	ACMNW: ACMPW,
-}
 
 func (c *ctxt7) stacksplit(p *obj.Prog, framesize int32) *obj.Prog {
 	// MOV	g_stackguard(g), R1
@@ -218,7 +207,7 @@ func (c *ctxt7) stacksplit(p *obj.Prog, framesize int32) *obj.Prog {
 	return bls
 }
 
-func progedit(ctxt *obj.Link, p *obj.Prog, newprog obj.ProgAlloc) {
+func (pstate *PackageState) progedit(ctxt *obj.Link, p *obj.Prog, newprog obj.ProgAlloc) {
 	c := ctxt7{ctxt: ctxt, newprog: newprog}
 
 	p.From.Class = 0
@@ -289,12 +278,12 @@ func progedit(ctxt *obj.Link, p *obj.Prog, newprog obj.ProgAlloc) {
 	case AADD, ASUB, ACMP, ACMN:
 		if p.From.Type == obj.TYPE_CONST && p.From.Offset < 0 && p.From.Offset != -1<<63 {
 			p.From.Offset = -p.From.Offset
-			p.As = complements[p.As]
+			p.As = pstate.complements[p.As]
 		}
 	case AADDW, ASUBW, ACMPW, ACMNW:
 		if p.From.Type == obj.TYPE_CONST && p.From.Offset < 0 && int32(p.From.Offset) != -1<<31 {
 			p.From.Offset = -p.From.Offset
-			p.As = complements[p.As]
+			p.As = pstate.complements[p.As]
 		}
 	}
 
@@ -836,22 +825,4 @@ func nocache(p *obj.Prog) {
 	p.Optab = 0
 	p.From.Class = 0
 	p.To.Class = 0
-}
-
-var unaryDst = map[obj.As]bool{
-	AWORD:  true,
-	ADWORD: true,
-	ABL:    true,
-	AB:     true,
-	ACLREX: true,
-}
-
-var Linkarm64 = obj.LinkArch{
-	Arch:           sys.ArchARM64,
-	Init:           buildop,
-	Preprocess:     preprocess,
-	Assemble:       span7,
-	Progedit:       progedit,
-	UnaryDst:       unaryDst,
-	DWARFRegisters: ARM64DWARFRegisters,
 }

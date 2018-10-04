@@ -15,14 +15,14 @@ import "fmt"
 //    - bad labeled breaks and continues
 //    - invalid, unused, duplicate, and missing labels
 //    - gotos jumping over variable declarations and into blocks
-func checkBranches(body *BlockStmt, errh ErrorHandler) {
+func (pstate *PackageState) checkBranches(body *BlockStmt, errh ErrorHandler) {
 	if body == nil {
 		return
 	}
 
 	// scope of all labels in this body
 	ls := &labelScope{errh: errh}
-	fwdGotos := ls.blockBranches(nil, targets{}, nil, body.Pos(), body.List)
+	fwdGotos := ls.blockBranches(pstate, nil, targets{}, nil, body.Pos(), body.List)
 
 	// If there are any forward gotos left, no matching label was
 	// found for them. Either those labels were never defined, or
@@ -100,12 +100,10 @@ func (ls *labelScope) gotoTarget(b *block, name string) *LabeledStmt {
 	return nil
 }
 
-var invalid = new(LabeledStmt) // singleton to signal invalid enclosing target
-
 // enclosingTarget returns the innermost enclosing labeled statement matching
 // the given name. The result is nil if the label is not defined, and invalid
 // if the label is defined but doesn't label a valid labeled statement.
-func (ls *labelScope) enclosingTarget(b *block, name string) *LabeledStmt {
+func (ls *labelScope) enclosingTarget(pstate *PackageState, b *block, name string) *LabeledStmt {
 	if l := ls.labels[name]; l != nil {
 		l.used = true // even if it's not a valid target (see e.g., test/fixedbugs/bug136.go)
 		for ; b != nil; b = b.parent {
@@ -113,7 +111,7 @@ func (ls *labelScope) enclosingTarget(b *block, name string) *LabeledStmt {
 				return l.lstmt
 			}
 		}
-		return invalid
+		return pstate.invalid
 	}
 	return nil
 }
@@ -129,7 +127,7 @@ type targets struct {
 // list of unresolved (forward) gotos. parent is the immediately enclosing
 // block (or nil), ctxt provides information about the enclosing statements,
 // and lstmt is the labeled statement associated with this block, or nil.
-func (ls *labelScope) blockBranches(parent *block, ctxt targets, lstmt *LabeledStmt, start Pos, body []Stmt) []*BranchStmt {
+func (ls *labelScope) blockBranches(pstate *PackageState, parent *block, ctxt targets, lstmt *LabeledStmt, start Pos, body []Stmt) []*BranchStmt {
 	b := &block{parent: parent, start: start, lstmt: lstmt}
 
 	var varPos Pos
@@ -160,7 +158,7 @@ func (ls *labelScope) blockBranches(parent *block, ctxt targets, lstmt *LabeledS
 	innerBlock := func(ctxt targets, start Pos, body []Stmt) {
 		// Unresolved forward gotos from the inner block
 		// become forward gotos for the current block.
-		fwdGotos = append(fwdGotos, ls.blockBranches(b, ctxt, lstmt, start, body)...)
+		fwdGotos = append(fwdGotos, ls.blockBranches(pstate, b, ctxt, lstmt, start, body)...)
 	}
 
 	for _, stmt := range body {
@@ -189,7 +187,7 @@ func (ls *labelScope) blockBranches(parent *block, ctxt targets, lstmt *LabeledS
 							ls.err(
 								fwd.Label.Pos(),
 								"goto %s jumps over declaration of %s at %s",
-								name, String(varName), varPos,
+								name, pstate.String(varName), varPos,
 							)
 						}
 					} else {
@@ -222,7 +220,7 @@ func (ls *labelScope) blockBranches(parent *block, ctxt targets, lstmt *LabeledS
 						ls.err(s.Pos(), "continue is not in a loop")
 					}
 				case _Fallthrough:
-					// nothing to do
+				// nothing to do
 				case _Goto:
 					fallthrough // should always have a label
 				default:
@@ -238,7 +236,7 @@ func (ls *labelScope) blockBranches(parent *block, ctxt targets, lstmt *LabeledS
 				// spec: "If there is a label, it must be that of an enclosing
 				// "for", "switch", or "select" statement, and that is the one
 				// whose execution terminates."
-				if t := ls.enclosingTarget(b, name); t != nil {
+				if t := ls.enclosingTarget(pstate, b, name); t != nil {
 					switch t := t.Stmt.(type) {
 					case *SwitchStmt, *SelectStmt, *ForStmt:
 						s.Target = t
@@ -252,7 +250,7 @@ func (ls *labelScope) blockBranches(parent *block, ctxt targets, lstmt *LabeledS
 			case _Continue:
 				// spec: "If there is a label, it must be that of an enclosing
 				// "for" statement, and that is the one whose execution advances."
-				if t := ls.enclosingTarget(b, name); t != nil {
+				if t := ls.enclosingTarget(pstate, b, name); t != nil {
 					if t, ok := t.Stmt.(*ForStmt); ok {
 						s.Target = t
 					} else {

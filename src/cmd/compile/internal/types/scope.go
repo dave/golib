@@ -4,12 +4,7 @@
 
 package types
 
-import "cmd/internal/src"
-
-// Declaration stack & operations
-
-var blockgen int32 = 1 // max block number
-var Block int32        // current block number
+import "github.com/dave/golib/src/cmd/internal/src"
 
 // A dsym stores a symbol's shadowed declaration so that it can be
 // restored once the block scope ends.
@@ -20,14 +15,10 @@ type dsym struct {
 	lastlineno src.XPos // last declaration for diagnostic
 }
 
-// dclstack maintains a stack of shadowed symbol declarations so that
-// Popdcl can restore their declarations when a block scope ends.
-var dclstack []dsym
-
 // Pushdcl pushes the current declaration for symbol s (if any) so that
 // it can be shadowed by a new declaration within a nested block scope.
-func Pushdcl(s *Sym) {
-	dclstack = append(dclstack, dsym{
+func (pstate *PackageState) Pushdcl(s *Sym) {
+	pstate.dclstack = append(pstate.dclstack, dsym{
 		sym:        s,
 		def:        s.Def,
 		block:      s.Block,
@@ -37,14 +28,14 @@ func Pushdcl(s *Sym) {
 
 // Popdcl pops the innermost block scope and restores all symbol declarations
 // to their previous state.
-func Popdcl() {
-	for i := len(dclstack); i > 0; i-- {
-		d := &dclstack[i-1]
+func (pstate *PackageState) Popdcl() {
+	for i := len(pstate.dclstack); i > 0; i-- {
+		d := &pstate.dclstack[i-1]
 		s := d.sym
 		if s == nil {
 			// pop stack mark
-			Block = d.block
-			dclstack = dclstack[:i-1]
+			pstate.Block = d.block
+			pstate.dclstack = pstate.dclstack[:i-1]
 			return
 		}
 
@@ -56,21 +47,21 @@ func Popdcl() {
 		d.sym = nil
 		d.def = nil
 	}
-	Fatalf("popdcl: no stack mark")
+	pstate.Fatalf("popdcl: no stack mark")
 }
 
 // Markdcl records the start of a new block scope for declarations.
-func Markdcl() {
-	dclstack = append(dclstack, dsym{
+func (pstate *PackageState) Markdcl() {
+	pstate.dclstack = append(pstate.dclstack, dsym{
 		sym:   nil, // stack mark
-		block: Block,
+		block: pstate.Block,
 	})
-	blockgen++
-	Block = blockgen
+	pstate.blockgen++
+	pstate.Block = pstate.blockgen
 }
 
-func IsDclstackValid() bool {
-	for _, d := range dclstack {
+func (pstate *PackageState) IsDclstackValid() bool {
+	for _, d := range pstate.dclstack {
 		if d.sym == nil {
 			return false
 		}
@@ -79,10 +70,10 @@ func IsDclstackValid() bool {
 }
 
 // PkgDef returns the definition associated with s at package scope.
-func (s *Sym) PkgDef() *Node {
+func (s *Sym) PkgDef(pstate *PackageState) *Node {
 	// Look for outermost saved declaration, which must be the
 	// package scope definition, if present.
-	for _, d := range dclstack {
+	for _, d := range pstate.dclstack {
 		if s == d.sym {
 			return d.def
 		}

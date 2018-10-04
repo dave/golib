@@ -31,37 +31,37 @@
 package ld
 
 import (
-	"cmd/internal/objabi"
-	"cmd/internal/sys"
-	"cmd/link/internal/sym"
 	"fmt"
+	"github.com/dave/golib/src/cmd/internal/objabi"
+	"github.com/dave/golib/src/cmd/internal/sys"
+	"github.com/dave/golib/src/cmd/link/internal/sym"
 	"path/filepath"
 	"strings"
 )
 
 // Symbol table.
 
-func putelfstr(s string) int {
-	if len(Elfstrdat) == 0 && s != "" {
+func (pstate *PackageState) putelfstr(s string) int {
+	if len(pstate.Elfstrdat) == 0 && s != "" {
 		// first entry must be empty string
-		putelfstr("")
+		pstate.putelfstr("")
 	}
 
-	off := len(Elfstrdat)
-	Elfstrdat = append(Elfstrdat, s...)
-	Elfstrdat = append(Elfstrdat, 0)
+	off := len(pstate.Elfstrdat)
+	pstate.Elfstrdat = append(pstate.Elfstrdat, s...)
+	pstate.Elfstrdat = append(pstate.Elfstrdat, 0)
 	return off
 }
 
-func putelfsyment(out *OutBuf, off int, addr int64, size int64, info int, shndx int, other int) {
-	if elf64 {
+func (pstate *PackageState) putelfsyment(out *OutBuf, off int, addr int64, size int64, info int, shndx int, other int) {
+	if pstate.elf64 {
 		out.Write32(uint32(off))
 		out.Write8(uint8(info))
 		out.Write8(uint8(other))
 		out.Write16(uint16(shndx))
 		out.Write64(uint64(addr))
 		out.Write64(uint64(size))
-		Symsize += ELF64SYMSIZE
+		pstate.Symsize += ELF64SYMSIZE
 	} else {
 		out.Write32(uint32(off))
 		out.Write32(uint32(addr))
@@ -69,15 +69,11 @@ func putelfsyment(out *OutBuf, off int, addr int64, size int64, info int, shndx 
 		out.Write8(uint8(info))
 		out.Write8(uint8(other))
 		out.Write16(uint16(shndx))
-		Symsize += ELF32SYMSIZE
+		pstate.Symsize += ELF32SYMSIZE
 	}
 }
 
-var numelfsym = 1 // 0 is reserved
-
-var elfbind int
-
-func putelfsym(ctxt *Link, x *sym.Symbol, s string, t SymbolType, addr int64, go_ *sym.Symbol) {
+func (pstate *PackageState) putelfsym(ctxt *Link, x *sym.Symbol, s string, t SymbolType, addr int64, go_ *sym.Symbol) {
 	var typ int
 
 	switch t {
@@ -114,11 +110,11 @@ func putelfsym(ctxt *Link, x *sym.Symbol, s string, t SymbolType, addr int64, go
 		elfshnum = SHN_UNDEF
 	} else {
 		if xo.Sect == nil {
-			Errorf(x, "missing section in putelfsym")
+			pstate.Errorf(x, "missing section in putelfsym")
 			return
 		}
 		if xo.Sect.Elfsect == nil {
-			Errorf(x, "missing ELF section in putelfsym")
+			pstate.Errorf(x, "missing ELF section in putelfsym")
 			return
 		}
 		elfshnum = xo.Sect.Elfsect.(*ElfShdr).shnum
@@ -171,7 +167,7 @@ func putelfsym(ctxt *Link, x *sym.Symbol, s string, t SymbolType, addr int64, go
 		s = strings.Replace(s, "·", ".", -1)
 	}
 
-	if ctxt.DynlinkingGo() && bind == STB_GLOBAL && elfbind == STB_LOCAL && x.Type == sym.STEXT {
+	if ctxt.DynlinkingGo() && bind == STB_GLOBAL && pstate.elfbind == STB_LOCAL && x.Type == sym.STEXT {
 		// When dynamically linking, we want references to functions defined
 		// in this module to always be to the function object, not to the
 		// PLT. We force this by writing an additional local symbol for every
@@ -180,47 +176,47 @@ func putelfsym(ctxt *Link, x *sym.Symbol, s string, t SymbolType, addr int64, go
 		// (*sym.Symbol).ElfsymForReloc). This is approximately equivalent to the
 		// ELF linker -Bsymbolic-functions option, but that is buggy on
 		// several platforms.
-		putelfsyment(ctxt.Out, putelfstr("local."+s), addr, size, STB_LOCAL<<4|typ&0xf, elfshnum, other)
-		x.LocalElfsym = int32(numelfsym)
-		numelfsym++
+		pstate.putelfsyment(ctxt.Out, pstate.putelfstr("local."+s), addr, size, STB_LOCAL<<4|typ&0xf, elfshnum, other)
+		x.LocalElfsym = int32(pstate.numelfsym)
+		pstate.numelfsym++
 		return
-	} else if bind != elfbind {
+	} else if bind != pstate.elfbind {
 		return
 	}
 
-	putelfsyment(ctxt.Out, putelfstr(s), addr, size, bind<<4|typ&0xf, elfshnum, other)
-	x.Elfsym = int32(numelfsym)
-	numelfsym++
+	pstate.putelfsyment(ctxt.Out, pstate.putelfstr(s), addr, size, bind<<4|typ&0xf, elfshnum, other)
+	x.Elfsym = int32(pstate.numelfsym)
+	pstate.numelfsym++
 }
 
-func putelfsectionsym(out *OutBuf, s *sym.Symbol, shndx int) {
-	putelfsyment(out, 0, 0, 0, STB_LOCAL<<4|STT_SECTION, shndx, 0)
-	s.Elfsym = int32(numelfsym)
-	numelfsym++
+func (pstate *PackageState) putelfsectionsym(out *OutBuf, s *sym.Symbol, shndx int) {
+	pstate.putelfsyment(out, 0, 0, 0, STB_LOCAL<<4|STT_SECTION, shndx, 0)
+	s.Elfsym = int32(pstate.numelfsym)
+	pstate.numelfsym++
 }
 
-func Asmelfsym(ctxt *Link) {
+func (pstate *PackageState) Asmelfsym(ctxt *Link) {
 	// the first symbol entry is reserved
-	putelfsyment(ctxt.Out, 0, 0, 0, STB_LOCAL<<4|STT_NOTYPE, 0, 0)
+	pstate.putelfsyment(ctxt.Out, 0, 0, 0, STB_LOCAL<<4|STT_NOTYPE, 0, 0)
 
-	dwarfaddelfsectionsyms(ctxt)
+	pstate.dwarfaddelfsectionsyms(ctxt)
 
 	// Some linkers will add a FILE sym if one is not present.
 	// Avoid having the working directory inserted into the symbol table.
 	// It is added with a name to avoid problems with external linking
 	// encountered on some versions of Solaris. See issue #14957.
-	putelfsyment(ctxt.Out, putelfstr("go.go"), 0, 0, STB_LOCAL<<4|STT_FILE, SHN_ABS, 0)
-	numelfsym++
+	pstate.putelfsyment(ctxt.Out, pstate.putelfstr("go.go"), 0, 0, STB_LOCAL<<4|STT_FILE, SHN_ABS, 0)
+	pstate.numelfsym++
 
-	elfbind = STB_LOCAL
-	genasmsym(ctxt, putelfsym)
+	pstate.elfbind = STB_LOCAL
+	pstate.genasmsym(ctxt, pstate.putelfsym)
 
-	elfbind = STB_GLOBAL
-	elfglobalsymndx = numelfsym
-	genasmsym(ctxt, putelfsym)
+	pstate.elfbind = STB_GLOBAL
+	pstate.elfglobalsymndx = pstate.numelfsym
+	pstate.genasmsym(ctxt, pstate.putelfsym)
 }
 
-func putplan9sym(ctxt *Link, x *sym.Symbol, s string, typ SymbolType, addr int64, go_ *sym.Symbol) {
+func (pstate *PackageState) putplan9sym(ctxt *Link, x *sym.Symbol, s string, typ SymbolType, addr int64, go_ *sym.Symbol) {
 	t := int(typ)
 	switch typ {
 	case TextSym, DataSym, BSSSym:
@@ -231,7 +227,7 @@ func putplan9sym(ctxt *Link, x *sym.Symbol, s string, typ SymbolType, addr int64
 
 	case AutoSym, ParamSym, FrameSym:
 		l := 4
-		if ctxt.HeadType == objabi.Hplan9 && ctxt.Arch.Family == sys.AMD64 && !Flag8 {
+		if ctxt.HeadType == objabi.Hplan9 && ctxt.Arch.Family == sys.AMD64 && !pstate.Flag8 {
 			ctxt.Out.Write32b(uint32(addr >> 32))
 			l = 8
 		}
@@ -242,18 +238,16 @@ func putplan9sym(ctxt *Link, x *sym.Symbol, s string, typ SymbolType, addr int64
 		ctxt.Out.WriteString(s)
 		ctxt.Out.Write8(0)
 
-		Symsize += int32(l) + 1 + int32(len(s)) + 1
+		pstate.Symsize += int32(l) + 1 + int32(len(s)) + 1
 
 	default:
 		return
 	}
 }
 
-func Asmplan9sym(ctxt *Link) {
-	genasmsym(ctxt, putplan9sym)
+func (pstate *PackageState) Asmplan9sym(ctxt *Link) {
+	pstate.genasmsym(ctxt, pstate.putplan9sym)
 }
-
-var symt *sym.Symbol
 
 type byPkg []*sym.Library
 
@@ -271,14 +265,14 @@ func (libs byPkg) Swap(a, b int) {
 
 // Create a table with information on the text sections.
 
-func textsectionmap(ctxt *Link) uint32 {
+func (pstate *PackageState) textsectionmap(ctxt *Link) uint32 {
 
 	t := ctxt.Syms.Lookup("runtime.textsectionmap", 0)
 	t.Type = sym.SRODATA
 	t.Attr |= sym.AttrReachable
 	nsections := int64(0)
 
-	for _, sect := range Segtext.Sections {
+	for _, sect := range pstate.Segtext.Sections {
 		if sect.Name == ".text" {
 			nsections++
 		} else {
@@ -299,8 +293,8 @@ func textsectionmap(ctxt *Link) uint32 {
 	// order of creation starting with 1. These symbols provide the section's
 	// address after relocation by the linker.
 
-	textbase := Segtext.Sections[0].Vaddr
-	for _, sect := range Segtext.Sections {
+	textbase := pstate.Segtext.Sections[0].Vaddr
+	for _, sect := range pstate.Segtext.Sections {
 		if sect.Name != ".text" {
 			break
 		}
@@ -309,14 +303,14 @@ func textsectionmap(ctxt *Link) uint32 {
 		if n == 0 {
 			s := ctxt.Syms.ROLookup("runtime.text", 0)
 			if s == nil {
-				Errorf(nil, "Unable to find symbol runtime.text\n")
+				pstate.Errorf(nil, "Unable to find symbol runtime.text\n")
 			}
 			off = t.SetAddr(ctxt.Arch, off, s)
 
 		} else {
 			s := ctxt.Syms.Lookup(fmt.Sprintf("runtime.text.%d", n), 0)
 			if s == nil {
-				Errorf(nil, "Unable to find symbol runtime.text.%d\n", n)
+				pstate.Errorf(nil, "Unable to find symbol runtime.text.%d\n", n)
 			}
 			off = t.SetAddr(ctxt.Arch, off, s)
 		}
@@ -325,8 +319,8 @@ func textsectionmap(ctxt *Link) uint32 {
 	return uint32(n)
 }
 
-func (ctxt *Link) symtab() {
-	dosymtype(ctxt)
+func (ctxt *Link) symtab(pstate *PackageState) {
+	pstate.dosymtype(ctxt)
 
 	// Define these so that they'll get put into the symbol table.
 	// data.c:/^address will provide the actual values.
@@ -417,11 +411,11 @@ func (ctxt *Link) symtab() {
 	symitablink := ctxt.Syms.Lookup("runtime.itablink", 0)
 	symitablink.Type = sym.SITABLINK
 
-	symt = ctxt.Syms.Lookup("runtime.symtab", 0)
-	symt.Attr |= sym.AttrLocal
-	symt.Type = sym.SSYMTAB
-	symt.Size = 0
-	symt.Attr |= sym.AttrReachable
+	pstate.symt = ctxt.Syms.Lookup("runtime.symtab", 0)
+	pstate.symt.Attr |= sym.AttrLocal
+	pstate.symt.Type = sym.SSYMTAB
+	pstate.symt.Size = 0
+	pstate.symt.Attr |= sym.AttrReachable
 
 	nitablinks := 0
 
@@ -488,12 +482,12 @@ func (ctxt *Link) symtab() {
 			s.Attr |= sym.AttrNotInSymbolTable
 			s.Outer = symgofunc
 			s.Align = 4
-			liveness += (s.Size + int64(s.Align) - 1) &^ (int64(s.Align) - 1)
+			pstate.liveness += (s.Size + int64(s.Align) - 1) &^ (int64(s.Align) - 1)
 		}
 	}
 
 	if ctxt.BuildMode == BuildModeShared {
-		abihashgostr := ctxt.Syms.Lookup("go.link.abihash."+filepath.Base(*flagOutfile), 0)
+		abihashgostr := ctxt.Syms.Lookup("go.link.abihash."+filepath.Base(*pstate.flagOutfile), 0)
 		abihashgostr.Attr |= sym.AttrReachable
 		abihashgostr.Type = sym.SRODATA
 		hashsym := ctxt.Syms.Lookup("go.link.abihashbytes", 0)
@@ -515,7 +509,7 @@ func (ctxt *Link) symtab() {
 		}
 	}
 
-	nsections := textsectionmap(ctxt)
+	nsections := pstate.textsectionmap(ctxt)
 
 	// Information about the layout of the executable image for the
 	// runtime to use. Any changes here must be matched by changes to
@@ -527,18 +521,18 @@ func (ctxt *Link) symtab() {
 	moduledata.AddUint(ctxt.Arch, uint64(ctxt.Syms.Lookup("runtime.pclntab", 0).Size))
 	moduledata.AddUint(ctxt.Arch, uint64(ctxt.Syms.Lookup("runtime.pclntab", 0).Size))
 	// The ftab slice
-	moduledata.AddAddrPlus(ctxt.Arch, ctxt.Syms.Lookup("runtime.pclntab", 0), int64(pclntabPclntabOffset))
-	moduledata.AddUint(ctxt.Arch, uint64(pclntabNfunc+1))
-	moduledata.AddUint(ctxt.Arch, uint64(pclntabNfunc+1))
+	moduledata.AddAddrPlus(ctxt.Arch, ctxt.Syms.Lookup("runtime.pclntab", 0), int64(pstate.pclntabPclntabOffset))
+	moduledata.AddUint(ctxt.Arch, uint64(pstate.pclntabNfunc+1))
+	moduledata.AddUint(ctxt.Arch, uint64(pstate.pclntabNfunc+1))
 	// The filetab slice
-	moduledata.AddAddrPlus(ctxt.Arch, ctxt.Syms.Lookup("runtime.pclntab", 0), int64(pclntabFiletabOffset))
+	moduledata.AddAddrPlus(ctxt.Arch, ctxt.Syms.Lookup("runtime.pclntab", 0), int64(pstate.pclntabFiletabOffset))
 	moduledata.AddUint(ctxt.Arch, uint64(len(ctxt.Filesyms))+1)
 	moduledata.AddUint(ctxt.Arch, uint64(len(ctxt.Filesyms))+1)
 	// findfunctab
 	moduledata.AddAddr(ctxt.Arch, ctxt.Syms.Lookup("runtime.findfunctab", 0))
 	// minpc, maxpc
-	moduledata.AddAddr(ctxt.Arch, pclntabFirstFunc)
-	moduledata.AddAddrPlus(ctxt.Arch, pclntabLastFunc, pclntabLastFunc.Size)
+	moduledata.AddAddr(ctxt.Arch, pstate.pclntabFirstFunc)
+	moduledata.AddAddrPlus(ctxt.Arch, pstate.pclntabLastFunc, pstate.pclntabLastFunc.Size)
 	// pointers to specific parts of the module
 	moduledata.AddAddr(ctxt.Arch, ctxt.Syms.Lookup("runtime.text", 0))
 	moduledata.AddAddr(ctxt.Arch, ctxt.Syms.Lookup("runtime.etext", 0))
@@ -586,7 +580,7 @@ func (ctxt *Link) symtab() {
 		moduledata.AddUint(ctxt.Arch, 0)
 	}
 	if ctxt.BuildMode == BuildModePlugin {
-		addgostring(ctxt, moduledata, "go.link.thispluginpath", objabi.PathToPrefix(*flagPluginPath))
+		pstate.addgostring(ctxt, moduledata, "go.link.thispluginpath", objabi.PathToPrefix(*pstate.flagPluginPath))
 
 		pkghashes := ctxt.Syms.Lookup("go.link.pkghashes", 0)
 		pkghashes.Attr |= sym.AttrReachable
@@ -595,9 +589,9 @@ func (ctxt *Link) symtab() {
 
 		for i, l := range ctxt.Library {
 			// pkghashes[i].name
-			addgostring(ctxt, pkghashes, fmt.Sprintf("go.link.pkgname.%d", i), l.Pkg)
+			pstate.addgostring(ctxt, pkghashes, fmt.Sprintf("go.link.pkgname.%d", i), l.Pkg)
 			// pkghashes[i].linktimehash
-			addgostring(ctxt, pkghashes, fmt.Sprintf("go.link.pkglinkhash.%d", i), l.Hash)
+			pstate.addgostring(ctxt, pkghashes, fmt.Sprintf("go.link.pkglinkhash.%d", i), l.Hash)
 			// pkghashes[i].runtimehash
 			hash := ctxt.Syms.ROLookup("go.link.pkghash."+l.Pkg, 0)
 			pkghashes.AddAddr(ctxt.Arch, hash)
@@ -613,14 +607,14 @@ func (ctxt *Link) symtab() {
 		moduledata.AddUint(ctxt.Arch, 0)
 	}
 	if len(ctxt.Shlibs) > 0 {
-		thismodulename := filepath.Base(*flagOutfile)
+		thismodulename := filepath.Base(*pstate.flagOutfile)
 		switch ctxt.BuildMode {
 		case BuildModeExe, BuildModePIE:
 			// When linking an executable, outfile is just "a.out". Make
 			// it something slightly more comprehensible.
 			thismodulename = "the executable"
 		}
-		addgostring(ctxt, moduledata, "go.link.thismodulename", thismodulename)
+		pstate.addgostring(ctxt, moduledata, "go.link.thismodulename", thismodulename)
 
 		modulehashes := ctxt.Syms.Lookup("go.link.abihashes", 0)
 		modulehashes.Attr |= sym.AttrReachable
@@ -630,10 +624,10 @@ func (ctxt *Link) symtab() {
 		for i, shlib := range ctxt.Shlibs {
 			// modulehashes[i].modulename
 			modulename := filepath.Base(shlib.Path)
-			addgostring(ctxt, modulehashes, fmt.Sprintf("go.link.libname.%d", i), modulename)
+			pstate.addgostring(ctxt, modulehashes, fmt.Sprintf("go.link.libname.%d", i), modulename)
 
 			// modulehashes[i].linktimehash
-			addgostring(ctxt, modulehashes, fmt.Sprintf("go.link.linkhash.%d", i), string(shlib.Hash))
+			pstate.addgostring(ctxt, modulehashes, fmt.Sprintf("go.link.linkhash.%d", i), string(shlib.Hash))
 
 			// modulehashes[i].runtimehash
 			abihash := ctxt.Syms.Lookup("go.link.abihash."+modulename, 0)
@@ -664,7 +658,7 @@ func (ctxt *Link) symtab() {
 	// creating the moduledata from scratch and it does not have a
 	// compiler-provided size, so read it from the type data.
 	moduledatatype := ctxt.Syms.ROLookup("type.runtime.moduledata", 0)
-	moduledata.Size = decodetypeSize(ctxt.Arch, moduledatatype)
+	moduledata.Size = pstate.decodetypeSize(ctxt.Arch, moduledatatype)
 	moduledata.Grow(moduledata.Size)
 
 	lastmoduledatap := ctxt.Syms.Lookup("runtime.lastmoduledatap", 0)

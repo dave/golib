@@ -6,7 +6,7 @@ package gc_test
 
 import (
 	"bytes"
-	"internal/testenv"
+	"github.com/dave/golib/src/internal/testenv"
 	"io/ioutil"
 	"os"
 	"os/exec"

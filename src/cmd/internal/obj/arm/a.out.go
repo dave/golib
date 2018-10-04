@@ -30,7 +30,7 @@
 
 package arm
 
-import "cmd/internal/obj"
+import "github.com/dave/golib/src/cmd/internal/obj"
 
 //go:generate go run ../stringer.go -i $GOFILE -o anames.go -p arm
 
@@ -109,14 +109,11 @@ const (
 	FREGTMP = REG_F15
 )
 
-// http://infocenter.arm.com/help/topic/com.arm.doc.ihi0040b/IHI0040B_aadwarf.pdf
-var ARMDWARFRegisters = map[int16]int16{}
-
-func init() {
+func (pstate *PackageState) init() {
 	// f assigns dwarfregisters[from:to] = (base):(step*(to-from)+base)
 	f := func(from, to, base, step int16) {
 		for r := int16(from); r <= to; r++ {
-			ARMDWARFRegisters[r] = step*(r-from) + base
+			pstate.ARMDWARFRegisters[r] = step*(r-from) + base
 		}
 	}
 	f(REG_R0, REG_R15, 0, 1)

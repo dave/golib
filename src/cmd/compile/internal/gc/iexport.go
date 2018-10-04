@@ -201,11 +201,11 @@ package gc
 import (
 	"bufio"
 	"bytes"
-	"cmd/compile/internal/types"
-	"cmd/internal/obj"
-	"cmd/internal/src"
 	"encoding/binary"
 	"fmt"
+	"github.com/dave/golib/src/cmd/compile/internal/types"
+	"github.com/dave/golib/src/cmd/internal/obj"
+	"github.com/dave/golib/src/cmd/internal/src"
 	"go/ast"
 	"io"
 	"math/big"
@@ -237,15 +237,15 @@ const (
 	interfaceType
 )
 
-func iexport(out *bufio.Writer) {
+func (pstate *PackageState) iexport(out *bufio.Writer) {
 	// Mark inline bodies that are reachable through exported types.
 	// (Phase 0 of bexport.go.)
 	{
 		// TODO(mdempsky): Separate from bexport logic.
 		p := &exporter{marked: make(map[*types.Type]bool)}
-		for _, n := range exportlist {
+		for _, n := range pstate.exportlist {
 			sym := n.Sym
-			p.markType(asNode(sym.Def).Type)
+			p.markType(pstate, asNode(sym.Def).Type)
 		}
 	}
 
@@ -257,30 +257,30 @@ func iexport(out *bufio.Writer) {
 		typIndex:    map[*types.Type]uint64{},
 	}
 
-	for i, pt := range predeclared() {
+	for i, pt := range pstate.predeclared() {
 		p.typIndex[pt] = uint64(i)
 	}
 	if len(p.typIndex) > predeclReserved {
-		Fatalf("too many predeclared types: %d > %d", len(p.typIndex), predeclReserved)
+		pstate.Fatalf("too many predeclared types: %d > %d", len(p.typIndex), predeclReserved)
 	}
 
 	// Initialize work queue with exported declarations.
-	for _, n := range exportlist {
-		p.pushDecl(n)
+	for _, n := range pstate.exportlist {
+		p.pushDecl(pstate, n)
 	}
 
 	// Loop until no more work. We use a queue because while
 	// writing out inline bodies, we may discover additional
 	// declarations that are needed.
 	for !p.declTodo.empty() {
-		p.doDecl(p.declTodo.popLeft())
+		p.doDecl(pstate, p.declTodo.popLeft())
 	}
 
 	// Append indices to data0 section.
 	dataLen := uint64(p.data0.Len())
 	w := p.newWriter()
-	w.writeIndex(p.declIndex, true)
-	w.writeIndex(p.inlineIndex, false)
+	w.writeIndex(pstate, p.declIndex, true)
+	w.writeIndex(pstate, p.inlineIndex, false)
 	w.flush()
 
 	// Assemble header.
@@ -300,7 +300,7 @@ func iexport(out *bufio.Writer) {
 // we're writing out the main index, which is also read by
 // non-compiler tools and includes a complete package description
 // (i.e., name and height).
-func (w *exportWriter) writeIndex(index map[*Node]uint64, mainIndex bool) {
+func (w *exportWriter) writeIndex(pstate *PackageState, index map[*Node]uint64, mainIndex bool) {
 	// Build a map from packages to objects from that package.
 	pkgObjs := map[*types.Pkg][]*Node{}
 
@@ -308,7 +308,7 @@ func (w *exportWriter) writeIndex(index map[*Node]uint64, mainIndex bool) {
 	// we reference, even if we're not exporting (or reexporting)
 	// any symbols from it.
 	if mainIndex {
-		pkgObjs[localpkg] = nil
+		pkgObjs[pstate.localpkg] = nil
 		for pkg := range w.p.allPkgs {
 			pkgObjs[pkg] = nil
 		}
@@ -380,13 +380,13 @@ func (p *iexporter) stringOff(s string) uint64 {
 }
 
 // pushDecl adds n to the declaration work queue, if not already present.
-func (p *iexporter) pushDecl(n *Node) {
+func (p *iexporter) pushDecl(pstate *PackageState, n *Node) {
 	if n.Sym == nil || asNode(n.Sym.Def) != n && n.Op != OTYPE {
-		Fatalf("weird Sym: %v, %v", n, n.Sym)
+		pstate.Fatalf("weird Sym: %v, %v", n, n.Sym)
 	}
 
 	// Don't export predeclared declarations.
-	if n.Sym.Pkg == builtinpkg || n.Sym.Pkg == unsafepkg {
+	if n.Sym.Pkg == pstate.builtinpkg || n.Sym.Pkg == pstate.unsafepkg {
 		return
 	}
 
@@ -408,9 +408,9 @@ type exportWriter struct {
 	prevLine int64
 }
 
-func (p *iexporter) doDecl(n *Node) {
+func (p *iexporter) doDecl(pstate *PackageState, n *Node) {
 	w := p.newWriter()
-	w.setPkg(n.Sym.Pkg, false)
+	w.setPkg(pstate, n.Sym.Pkg, false)
 
 	switch n.Op {
 	case ONAME:
@@ -418,56 +418,56 @@ func (p *iexporter) doDecl(n *Node) {
 		case PEXTERN:
 			// Variable.
 			w.tag('V')
-			w.pos(n.Pos)
-			w.typ(n.Type)
+			w.pos(pstate, n.Pos)
+			w.typ(pstate, n.Type)
 			w.varExt(n)
 
 		case PFUNC:
-			if n.IsMethod() {
-				Fatalf("unexpected method: %v", n)
+			if n.IsMethod(pstate) {
+				pstate.Fatalf("unexpected method: %v", n)
 			}
 
 			// Function.
 			w.tag('F')
-			w.pos(n.Pos)
-			w.signature(n.Type)
-			w.funcExt(n)
+			w.pos(pstate, n.Pos)
+			w.signature(pstate, n.Type)
+			w.funcExt(pstate, n)
 
 		default:
-			Fatalf("unexpected class: %v, %v", n, n.Class())
+			pstate.Fatalf("unexpected class: %v, %v", n, n.Class())
 		}
 
 	case OLITERAL:
 		// Constant.
-		n = typecheck(n, Erv)
+		n = pstate.typecheck(n, Erv)
 		w.tag('C')
-		w.pos(n.Pos)
-		w.value(n.Type, n.Val())
+		w.pos(pstate, n.Pos)
+		w.value(pstate, n.Type, n.Val())
 
 	case OTYPE:
 		if IsAlias(n.Sym) {
 			// Alias.
 			w.tag('A')
-			w.pos(n.Pos)
-			w.typ(n.Type)
+			w.pos(pstate, n.Pos)
+			w.typ(pstate, n.Type)
 			break
 		}
 
 		// Defined type.
 		w.tag('T')
-		w.pos(n.Pos)
+		w.pos(pstate, n.Pos)
 
 		underlying := n.Type.Orig
-		if underlying == types.Errortype.Orig {
+		if underlying == pstate.types.Errortype.Orig {
 			// For "type T error", use error as the
 			// underlying type instead of error's own
 			// underlying anonymous interface. This
 			// ensures consistency with how importers may
 			// declare error (e.g., go/types uses nil Pkg
 			// for predeclared objects).
-			underlying = types.Errortype
+			underlying = pstate.types.Errortype
 		}
-		w.typ(underlying)
+		w.typ(pstate, underlying)
 
 		t := n.Type
 		if t.IsInterface() {
@@ -477,18 +477,18 @@ func (p *iexporter) doDecl(n *Node) {
 		ms := t.Methods()
 		w.uint64(uint64(ms.Len()))
 		for _, m := range ms.Slice() {
-			w.pos(m.Pos)
-			w.selector(m.Sym)
-			w.param(m.Type.Recv())
-			w.signature(m.Type)
+			w.pos(pstate, m.Pos)
+			w.selector(pstate, m.Sym)
+			w.param(pstate, m.Type.Recv(pstate.types))
+			w.signature(pstate, m.Type)
 		}
 
 		for _, m := range ms.Slice() {
-			w.methExt(m)
+			w.methExt(pstate, m)
 		}
 
 	default:
-		Fatalf("unexpected node: %v", n)
+		pstate.Fatalf("unexpected node: %v", n)
 	}
 
 	p.declIndex[n] = w.flush()
@@ -498,19 +498,19 @@ func (w *exportWriter) tag(tag byte) {
 	w.data.WriteByte(tag)
 }
 
-func (p *iexporter) doInline(f *Node) {
+func (p *iexporter) doInline(pstate *PackageState, f *Node) {
 	w := p.newWriter()
-	w.setPkg(fnpkg(f), false)
+	w.setPkg(pstate, pstate.fnpkg(f), false)
 
-	w.stmtList(asNodes(f.Func.Inl.Body))
+	w.stmtList(pstate, asNodes(f.Func.Inl.Body))
 
 	p.inlineIndex[f] = w.flush()
 }
 
-func (w *exportWriter) pos(pos src.XPos) {
-	p := Ctxt.PosTable.Pos(pos)
+func (w *exportWriter) pos(pstate *PackageState, pos src.XPos) {
+	p := pstate.Ctxt.PosTable.Pos(pos)
 	file := p.Base().AbsFilename()
-	line := int64(p.RelLine())
+	line := int64(p.RelLine(pstate.src))
 
 	// When file is the same as the last position (common case),
 	// we can save a few bytes by delta encoding just the line
@@ -543,18 +543,18 @@ func (w *exportWriter) pkg(pkg *types.Pkg) {
 	w.string(pkg.Path)
 }
 
-func (w *exportWriter) qualifiedIdent(n *Node) {
+func (w *exportWriter) qualifiedIdent(pstate *PackageState, n *Node) {
 	// Ensure any referenced declarations are written out too.
-	w.p.pushDecl(n)
+	w.p.pushDecl(pstate, n)
 
 	s := n.Sym
 	w.string(s.Name)
 	w.pkg(s.Pkg)
 }
 
-func (w *exportWriter) selector(s *types.Sym) {
+func (w *exportWriter) selector(pstate *PackageState, s *types.Sym) {
 	if w.currPkg == nil {
-		Fatalf("missing currPkg")
+		pstate.Fatalf("missing currPkg")
 	}
 
 	// Method selectors are rewritten into method symbols (of the
@@ -566,18 +566,18 @@ func (w *exportWriter) selector(s *types.Sym) {
 	} else {
 		pkg := w.currPkg
 		if types.IsExported(name) {
-			pkg = localpkg
+			pkg = pstate.localpkg
 		}
 		if s.Pkg != pkg {
-			Fatalf("package mismatch in selector: %v in package %q, but want %q", s, s.Pkg.Path, pkg.Path)
+			pstate.Fatalf("package mismatch in selector: %v in package %q, but want %q", s, s.Pkg.Path, pkg.Path)
 		}
 	}
 
 	w.string(name)
 }
 
-func (w *exportWriter) typ(t *types.Type) {
-	w.data.uint64(w.p.typOff(t))
+func (w *exportWriter) typ(pstate *PackageState, t *types.Type) {
+	w.data.uint64(w.p.typOff(pstate, t))
 }
 
 func (p *iexporter) newWriter() *exportWriter {
@@ -590,11 +590,11 @@ func (w *exportWriter) flush() uint64 {
 	return off
 }
 
-func (p *iexporter) typOff(t *types.Type) uint64 {
+func (p *iexporter) typOff(pstate *PackageState, t *types.Type) uint64 {
 	off, ok := p.typIndex[t]
 	if !ok {
 		w := p.newWriter()
-		w.doTyp(t)
+		w.doTyp(pstate, t)
 		off = predeclReserved + uint64(w.flush())
 		p.typIndex[t] = off
 	}
@@ -605,55 +605,55 @@ func (w *exportWriter) startType(k itag) {
 	w.data.uint64(uint64(k))
 }
 
-func (w *exportWriter) doTyp(t *types.Type) {
+func (w *exportWriter) doTyp(pstate *PackageState, t *types.Type) {
 	if t.Sym != nil {
-		if t.Sym.Pkg == builtinpkg || t.Sym.Pkg == unsafepkg {
-			Fatalf("builtin type missing from typIndex: %v", t)
+		if t.Sym.Pkg == pstate.builtinpkg || t.Sym.Pkg == pstate.unsafepkg {
+			pstate.Fatalf("builtin type missing from typIndex: %v", t)
 		}
 
 		w.startType(definedType)
-		w.qualifiedIdent(typenod(t))
+		w.qualifiedIdent(pstate, pstate.typenod(t))
 		return
 	}
 
 	switch t.Etype {
 	case TPTR32, TPTR64:
 		w.startType(pointerType)
-		w.typ(t.Elem())
+		w.typ(pstate, t.Elem(pstate.types))
 
 	case TSLICE:
 		w.startType(sliceType)
-		w.typ(t.Elem())
+		w.typ(pstate, t.Elem(pstate.types))
 
 	case TARRAY:
 		w.startType(arrayType)
-		w.uint64(uint64(t.NumElem()))
-		w.typ(t.Elem())
+		w.uint64(uint64(t.NumElem(pstate.types)))
+		w.typ(pstate, t.Elem(pstate.types))
 
 	case TCHAN:
 		w.startType(chanType)
-		w.uint64(uint64(t.ChanDir()))
-		w.typ(t.Elem())
+		w.uint64(uint64(t.ChanDir(pstate.types)))
+		w.typ(pstate, t.Elem(pstate.types))
 
 	case TMAP:
 		w.startType(mapType)
-		w.typ(t.Key())
-		w.typ(t.Elem())
+		w.typ(pstate, t.Key(pstate.types))
+		w.typ(pstate, t.Elem(pstate.types))
 
 	case TFUNC:
 		w.startType(signatureType)
-		w.setPkg(t.Pkg(), true)
-		w.signature(t)
+		w.setPkg(pstate, t.Pkg(pstate.types), true)
+		w.signature(pstate, t)
 
 	case TSTRUCT:
 		w.startType(structType)
-		w.setPkg(t.Pkg(), true)
+		w.setPkg(pstate, t.Pkg(pstate.types), true)
 
-		w.uint64(uint64(t.NumFields()))
-		for _, f := range t.FieldSlice() {
-			w.pos(f.Pos)
-			w.selector(f.Sym)
-			w.typ(f.Type)
+		w.uint64(uint64(t.NumFields(pstate.types)))
+		for _, f := range t.FieldSlice(pstate.types) {
+			w.pos(pstate, f.Pos)
+			w.selector(pstate, f.Sym)
+			w.typ(pstate, f.Type)
 			w.bool(f.Embedded != 0)
 			w.string(f.Note)
 		}
@@ -669,31 +669,31 @@ func (w *exportWriter) doTyp(t *types.Type) {
 		}
 
 		w.startType(interfaceType)
-		w.setPkg(t.Pkg(), true)
+		w.setPkg(pstate, t.Pkg(pstate.types), true)
 
 		w.uint64(uint64(len(embeddeds)))
 		for _, f := range embeddeds {
-			w.pos(f.Pos)
-			w.typ(f.Type)
+			w.pos(pstate, f.Pos)
+			w.typ(pstate, f.Type)
 		}
 
 		w.uint64(uint64(len(methods)))
 		for _, f := range methods {
-			w.pos(f.Pos)
-			w.selector(f.Sym)
-			w.signature(f.Type)
+			w.pos(pstate, f.Pos)
+			w.selector(pstate, f.Sym)
+			w.signature(pstate, f.Type)
 		}
 
 	default:
-		Fatalf("unexpected type: %v", t)
+		pstate.Fatalf("unexpected type: %v", t)
 	}
 }
 
-func (w *exportWriter) setPkg(pkg *types.Pkg, write bool) {
+func (w *exportWriter) setPkg(pstate *PackageState, pkg *types.Pkg, write bool) {
 	if pkg == nil {
 		// TODO(mdempsky): Proactively set Pkg for types and
 		// remove this fallback logic.
-		pkg = localpkg
+		pkg = pstate.localpkg
 	}
 
 	if write {
@@ -703,34 +703,34 @@ func (w *exportWriter) setPkg(pkg *types.Pkg, write bool) {
 	w.currPkg = pkg
 }
 
-func (w *exportWriter) signature(t *types.Type) {
-	w.paramList(t.Params().FieldSlice())
-	w.paramList(t.Results().FieldSlice())
-	if n := t.Params().NumFields(); n > 0 {
-		w.bool(t.Params().Field(n - 1).Isddd())
+func (w *exportWriter) signature(pstate *PackageState, t *types.Type) {
+	w.paramList(pstate, t.Params(pstate.types).FieldSlice(pstate.types))
+	w.paramList(pstate, t.Results(pstate.types).FieldSlice(pstate.types))
+	if n := t.Params(pstate.types).NumFields(pstate.types); n > 0 {
+		w.bool(t.Params(pstate.types).Field(pstate.types, n-1).Isddd())
 	}
 }
 
-func (w *exportWriter) paramList(fs []*types.Field) {
+func (w *exportWriter) paramList(pstate *PackageState, fs []*types.Field) {
 	w.uint64(uint64(len(fs)))
 	for _, f := range fs {
-		w.param(f)
+		w.param(pstate, f)
 	}
 }
 
-func (w *exportWriter) param(f *types.Field) {
-	w.pos(f.Pos)
-	w.localIdent(origSym(f.Sym), 0)
-	w.typ(f.Type)
+func (w *exportWriter) param(pstate *PackageState, f *types.Field) {
+	w.pos(pstate, f.Pos)
+	w.localIdent(pstate, pstate.origSym(f.Sym), 0)
+	w.typ(pstate, f.Type)
 }
 
-func constTypeOf(typ *types.Type) Ctype {
+func (pstate *PackageState) constTypeOf(typ *types.Type) Ctype {
 	switch typ {
-	case types.Idealint, types.Idealrune:
+	case pstate.types.Idealint, pstate.types.Idealrune:
 		return CTINT
-	case types.Idealfloat:
+	case pstate.types.Idealfloat:
 		return CTFLT
-	case types.Idealcomplex:
+	case pstate.types.Idealcomplex:
 		return CTCPLX
 	}
 
@@ -751,22 +751,22 @@ func constTypeOf(typ *types.Type) Ctype {
 		return CTCPLX
 	}
 
-	Fatalf("unexpected constant type: %v", typ)
+	pstate.Fatalf("unexpected constant type: %v", typ)
 	return 0
 }
 
-func (w *exportWriter) value(typ *types.Type, v Val) {
-	if typ.IsUntyped() {
-		typ = untype(v.Ctype())
+func (w *exportWriter) value(pstate *PackageState, typ *types.Type, v Val) {
+	if typ.IsUntyped(pstate.types) {
+		typ = pstate.untype(v.Ctype(pstate))
 	}
-	w.typ(typ)
+	w.typ(pstate, typ)
 
 	// Each type has only one admissible constant representation,
 	// so we could type switch directly on v.U here. However,
 	// switching on the type increases symmetry with import logic
 	// and provides a useful consistency check.
 
-	switch constTypeOf(typ) {
+	switch pstate.constTypeOf(typ) {
 	case CTNIL:
 		// Only one value; nothing to encode.
 		_ = v.U.(*NilVal)
@@ -775,18 +775,18 @@ func (w *exportWriter) value(typ *types.Type, v Val) {
 	case CTSTR:
 		w.string(v.U.(string))
 	case CTINT:
-		w.mpint(&v.U.(*Mpint).Val, typ)
+		w.mpint(pstate, &v.U.(*Mpint).Val, typ)
 	case CTFLT:
-		w.mpfloat(&v.U.(*Mpflt).Val, typ)
+		w.mpfloat(pstate, &v.U.(*Mpflt).Val, typ)
 	case CTCPLX:
 		x := v.U.(*Mpcplx)
-		w.mpfloat(&x.Real.Val, typ)
-		w.mpfloat(&x.Imag.Val, typ)
+		w.mpfloat(pstate, &x.Real.Val, typ)
+		w.mpfloat(pstate, &x.Imag.Val, typ)
 	}
 }
 
-func intSize(typ *types.Type) (signed bool, maxBytes uint) {
-	if typ.IsUntyped() {
+func (pstate *PackageState) intSize(typ *types.Type) (signed bool, maxBytes uint) {
+	if typ.IsUntyped(pstate.types) {
 		return true, Mpprec / 8
 	}
 
@@ -798,7 +798,7 @@ func intSize(typ *types.Type) (signed bool, maxBytes uint) {
 	}
 
 	signed = typ.IsSigned()
-	maxBytes = uint(typ.Size())
+	maxBytes = uint(typ.Size(pstate.types))
 
 	// The go/types API doesn't expose sizes to importers, so they
 	// don't know how big these types are.
@@ -830,20 +830,20 @@ func intSize(typ *types.Type) (signed bool, maxBytes uint) {
 // single byte.
 //
 // TODO(mdempsky): Is this level of complexity really worthwhile?
-func (w *exportWriter) mpint(x *big.Int, typ *types.Type) {
-	signed, maxBytes := intSize(typ)
+func (w *exportWriter) mpint(pstate *PackageState, x *big.Int, typ *types.Type) {
+	signed, maxBytes := pstate.intSize(typ)
 
 	negative := x.Sign() < 0
 	if !signed && negative {
-		Fatalf("negative unsigned integer; type %v, value %v", typ, x)
+		pstate.Fatalf("negative unsigned integer; type %v, value %v", typ, x)
 	}
 
 	b := x.Bytes()
 	if len(b) > 0 && b[0] == 0 {
-		Fatalf("leading zeros")
+		pstate.Fatalf("leading zeros")
 	}
 	if uint(len(b)) > maxBytes {
-		Fatalf("bad mpint length: %d > %d (type %v, value %v)", len(b), maxBytes, typ, x)
+		pstate.Fatalf("bad mpint length: %d > %d (type %v, value %v)", len(b), maxBytes, typ, x)
 	}
 
 	maxSmall := 256 - maxBytes
@@ -880,7 +880,7 @@ func (w *exportWriter) mpint(x *big.Int, typ *types.Type) {
 		}
 	}
 	if n < maxSmall || n >= 256 {
-		Fatalf("encoding mistake: %d, %v, %v => %d", len(b), signed, negative, n)
+		pstate.Fatalf("encoding mistake: %d, %v, %v => %d", len(b), signed, negative, n)
 	}
 
 	w.data.WriteByte(byte(n))
@@ -893,9 +893,9 @@ func (w *exportWriter) mpint(x *big.Int, typ *types.Type) {
 // mantissa is an integer. The value is written out as mantissa (as a
 // multi-precision integer) and then the exponent, except exponent is
 // omitted if mantissa is zero.
-func (w *exportWriter) mpfloat(f *big.Float, typ *types.Type) {
+func (w *exportWriter) mpfloat(pstate *PackageState, f *big.Float, typ *types.Type) {
 	if f.IsInf() {
-		Fatalf("infinite constant")
+		pstate.Fatalf("infinite constant")
 	}
 
 	// Break into f = mant × 2**exp, with 0.5 <= mant < 1.
@@ -909,9 +909,9 @@ func (w *exportWriter) mpfloat(f *big.Float, typ *types.Type) {
 
 	manti, acc := mant.Int(nil)
 	if acc != big.Exact {
-		Fatalf("exporter: internal error")
+		pstate.Fatalf("exporter: internal error")
 	}
-	w.mpint(manti, typ)
+	w.mpint(pstate, manti, typ)
 	if manti.Sign() != 0 {
 		w.int64(exp)
 	}
@@ -936,12 +936,12 @@ func (w *exportWriter) varExt(n *Node) {
 	w.linkname(n.Sym)
 }
 
-func (w *exportWriter) funcExt(n *Node) {
+func (w *exportWriter) funcExt(pstate *PackageState, n *Node) {
 	w.linkname(n.Sym)
 
 	// Escape analysis.
-	for _, fs := range types.RecvsParams {
-		for _, f := range fs(n.Type).FieldSlice() {
+	for _, fs := range pstate.types.RecvsParams {
+		for _, f := range fs(n.Type).FieldSlice(pstate.types) {
 			w.string(f.Note)
 		}
 	}
@@ -950,16 +950,16 @@ func (w *exportWriter) funcExt(n *Node) {
 	if n.Func.Inl != nil {
 		w.uint64(1 + uint64(n.Func.Inl.Cost))
 		if n.Func.ExportInline() {
-			w.p.doInline(n)
+			w.p.doInline(pstate, n)
 		}
 	} else {
 		w.uint64(0)
 	}
 }
 
-func (w *exportWriter) methExt(m *types.Field) {
+func (w *exportWriter) methExt(pstate *PackageState, m *types.Field) {
 	w.bool(m.Nointerface())
-	w.funcExt(asNode(m.Type.Nname()))
+	w.funcExt(pstate, asNode(m.Type.Nname(pstate.types)))
 }
 
 func (w *exportWriter) linkname(s *types.Sym) {
@@ -968,37 +968,37 @@ func (w *exportWriter) linkname(s *types.Sym) {
 
 // Inline bodies.
 
-func (w *exportWriter) stmtList(list Nodes) {
+func (w *exportWriter) stmtList(pstate *PackageState, list Nodes) {
 	for _, n := range list.Slice() {
-		w.node(n)
+		w.node(pstate, n)
 	}
 	w.op(OEND)
 }
 
-func (w *exportWriter) node(n *Node) {
-	if opprec[n.Op] < 0 {
-		w.stmt(n)
+func (w *exportWriter) node(pstate *PackageState, n *Node) {
+	if pstate.opprec[n.Op] < 0 {
+		w.stmt(pstate, n)
 	} else {
-		w.expr(n)
+		w.expr(pstate, n)
 	}
 }
 
 // Caution: stmt will emit more than one node for statement nodes n that have a non-empty
 // n.Ninit and where n cannot have a natural init section (such as in "if", "for", etc.).
-func (w *exportWriter) stmt(n *Node) {
+func (w *exportWriter) stmt(pstate *PackageState, n *Node) {
 	if n.Ninit.Len() > 0 && !stmtwithinit(n.Op) {
 		// can't use stmtList here since we don't want the final OEND
 		for _, n := range n.Ninit.Slice() {
-			w.stmt(n)
+			w.stmt(pstate, n)
 		}
 	}
 
 	switch op := n.Op; op {
 	case ODCL:
 		w.op(ODCL)
-		w.pos(n.Left.Pos)
-		w.localName(n.Left)
-		w.typ(n.Left.Type)
+		w.pos(pstate, n.Left.Pos)
+		w.localName(pstate, n.Left)
+		w.typ(pstate, n.Left.Type)
 
 	// case ODCLFIELD:
 	//	unimplemented - handled by default case
@@ -1009,104 +1009,104 @@ func (w *exportWriter) stmt(n *Node) {
 		// the "v = <N>" again.
 		if n.Right != nil {
 			w.op(OAS)
-			w.pos(n.Pos)
-			w.expr(n.Left)
-			w.expr(n.Right)
+			w.pos(pstate, n.Pos)
+			w.expr(pstate, n.Left)
+			w.expr(pstate, n.Right)
 		}
 
 	case OASOP:
 		w.op(OASOP)
-		w.pos(n.Pos)
-		w.op(n.SubOp())
-		w.expr(n.Left)
+		w.pos(pstate, n.Pos)
+		w.op(n.SubOp(pstate))
+		w.expr(pstate, n.Left)
 		if w.bool(!n.Implicit()) {
-			w.expr(n.Right)
+			w.expr(pstate, n.Right)
 		}
 
 	case OAS2, OAS2DOTTYPE, OAS2FUNC, OAS2MAPR, OAS2RECV:
 		w.op(OAS2)
-		w.pos(n.Pos)
-		w.exprList(n.List)
-		w.exprList(n.Rlist)
+		w.pos(pstate, n.Pos)
+		w.exprList(pstate, n.List)
+		w.exprList(pstate, n.Rlist)
 
 	case ORETURN:
 		w.op(ORETURN)
-		w.pos(n.Pos)
-		w.exprList(n.List)
+		w.pos(pstate, n.Pos)
+		w.exprList(pstate, n.List)
 
 	// case ORETJMP:
 	// 	unreachable - generated by compiler for trampolin routines
 
 	case OPROC, ODEFER:
 		w.op(op)
-		w.pos(n.Pos)
-		w.expr(n.Left)
+		w.pos(pstate, n.Pos)
+		w.expr(pstate, n.Left)
 
 	case OIF:
 		w.op(OIF)
-		w.pos(n.Pos)
-		w.stmtList(n.Ninit)
-		w.expr(n.Left)
-		w.stmtList(n.Nbody)
-		w.stmtList(n.Rlist)
+		w.pos(pstate, n.Pos)
+		w.stmtList(pstate, n.Ninit)
+		w.expr(pstate, n.Left)
+		w.stmtList(pstate, n.Nbody)
+		w.stmtList(pstate, n.Rlist)
 
 	case OFOR:
 		w.op(OFOR)
-		w.pos(n.Pos)
-		w.stmtList(n.Ninit)
-		w.exprsOrNil(n.Left, n.Right)
-		w.stmtList(n.Nbody)
+		w.pos(pstate, n.Pos)
+		w.stmtList(pstate, n.Ninit)
+		w.exprsOrNil(pstate, n.Left, n.Right)
+		w.stmtList(pstate, n.Nbody)
 
 	case ORANGE:
 		w.op(ORANGE)
-		w.pos(n.Pos)
-		w.stmtList(n.List)
-		w.expr(n.Right)
-		w.stmtList(n.Nbody)
+		w.pos(pstate, n.Pos)
+		w.stmtList(pstate, n.List)
+		w.expr(pstate, n.Right)
+		w.stmtList(pstate, n.Nbody)
 
 	case OSELECT, OSWITCH:
 		w.op(op)
-		w.pos(n.Pos)
-		w.stmtList(n.Ninit)
-		w.exprsOrNil(n.Left, nil)
-		w.stmtList(n.List)
+		w.pos(pstate, n.Pos)
+		w.stmtList(pstate, n.Ninit)
+		w.exprsOrNil(pstate, n.Left, nil)
+		w.stmtList(pstate, n.List)
 
 	case OCASE, OXCASE:
 		w.op(OXCASE)
-		w.pos(n.Pos)
-		w.stmtList(n.List)
-		w.stmtList(n.Nbody)
+		w.pos(pstate, n.Pos)
+		w.stmtList(pstate, n.List)
+		w.stmtList(pstate, n.Nbody)
 
 	case OFALL:
 		w.op(OFALL)
-		w.pos(n.Pos)
+		w.pos(pstate, n.Pos)
 
 	case OBREAK, OCONTINUE:
 		w.op(op)
-		w.pos(n.Pos)
-		w.exprsOrNil(n.Left, nil)
+		w.pos(pstate, n.Pos)
+		w.exprsOrNil(pstate, n.Left, nil)
 
 	case OEMPTY:
-		// nothing to emit
+	// nothing to emit
 
 	case OGOTO, OLABEL:
 		w.op(op)
-		w.pos(n.Pos)
-		w.expr(n.Left)
+		w.pos(pstate, n.Pos)
+		w.expr(pstate, n.Left)
 
 	default:
-		Fatalf("exporter: CANNOT EXPORT: %v\nPlease notify gri@\n", n.Op)
+		pstate.Fatalf("exporter: CANNOT EXPORT: %v\nPlease notify gri@\n", n.Op)
 	}
 }
 
-func (w *exportWriter) exprList(list Nodes) {
+func (w *exportWriter) exprList(pstate *PackageState, list Nodes) {
 	for _, n := range list.Slice() {
-		w.expr(n)
+		w.expr(pstate, n)
 	}
 	w.op(OEND)
 }
 
-func (w *exportWriter) expr(n *Node) {
+func (w *exportWriter) expr(pstate *PackageState, n *Node) {
 	// from nodefmt (fmt.go)
 	//
 	// nodefmt reverts nodes back to their original - we don't need to do
@@ -1125,13 +1125,13 @@ func (w *exportWriter) expr(n *Node) {
 	// expressions
 	// (somewhat closely following the structure of exprfmt in fmt.go)
 	case OLITERAL:
-		if n.Val().Ctype() == CTNIL && n.Orig != nil && n.Orig != n {
-			w.expr(n.Orig)
+		if n.Val().Ctype(pstate) == CTNIL && n.Orig != nil && n.Orig != n {
+			w.expr(pstate, n.Orig)
 			break
 		}
 		w.op(OLITERAL)
-		w.pos(n.Pos)
-		w.value(n.Type, n.Val())
+		w.pos(pstate, n.Pos)
+		w.value(pstate, n.Type, n.Val())
 
 	case ONAME:
 		// Special case: explicit name of func (*T) method(...) is turned into pkg.(*T).method,
@@ -1139,29 +1139,29 @@ func (w *exportWriter) expr(n *Node) {
 		// These nodes have the special property that they are names with a left OTYPE and a right ONAME.
 		if n.isMethodExpression() {
 			w.op(OXDOT)
-			w.pos(n.Pos)
-			w.expr(n.Left) // n.Left.Op == OTYPE
-			w.selector(n.Right.Sym)
+			w.pos(pstate, n.Pos)
+			w.expr(pstate, n.Left) // n.Left.Op == OTYPE
+			w.selector(pstate, n.Right.Sym)
 			break
 		}
 
 		// Package scope name.
 		if (n.Class() == PEXTERN || n.Class() == PFUNC) && !n.isBlank() {
 			w.op(ONONAME)
-			w.qualifiedIdent(n)
+			w.qualifiedIdent(pstate, n)
 			break
 		}
 
 		// Function scope name.
 		w.op(ONAME)
-		w.localName(n)
+		w.localName(pstate, n)
 
 	// case OPACK, ONONAME:
 	// 	should have been resolved by typechecking - handled by default case
 
 	case OTYPE:
 		w.op(OTYPE)
-		w.typ(n.Type)
+		w.typ(pstate, n.Type)
 
 	// case OTARRAY, OTMAP, OTCHAN, OTSTRUCT, OTINTER, OTFUNC:
 	// 	should have been resolved by typechecking - handled by default case
@@ -1174,26 +1174,26 @@ func (w *exportWriter) expr(n *Node) {
 
 	case OPTRLIT:
 		w.op(OPTRLIT)
-		w.pos(n.Pos)
-		w.expr(n.Left)
+		w.pos(pstate, n.Pos)
+		w.expr(pstate, n.Left)
 		w.bool(n.Implicit())
 
 	case OSTRUCTLIT:
 		w.op(OSTRUCTLIT)
-		w.pos(n.Pos)
-		w.typ(n.Type)
-		w.elemList(n.List) // special handling of field names
+		w.pos(pstate, n.Pos)
+		w.typ(pstate, n.Type)
+		w.elemList(pstate, n.List) // special handling of field names
 
 	case OARRAYLIT, OSLICELIT, OMAPLIT:
 		w.op(OCOMPLIT)
-		w.pos(n.Pos)
-		w.typ(n.Type)
-		w.exprList(n.List)
+		w.pos(pstate, n.Pos)
+		w.typ(pstate, n.Type)
+		w.exprList(pstate, n.List)
 
 	case OKEY:
 		w.op(OKEY)
-		w.pos(n.Pos)
-		w.exprsOrNil(n.Left, n.Right)
+		w.pos(pstate, n.Pos)
+		w.exprsOrNil(pstate, n.Left, n.Right)
 
 	// case OSTRUCTKEY:
 	//	unreachable - handled in case OSTRUCTLIT by elemList
@@ -1203,124 +1203,124 @@ func (w *exportWriter) expr(n *Node) {
 
 	case OXDOT, ODOT, ODOTPTR, ODOTINTER, ODOTMETH:
 		w.op(OXDOT)
-		w.pos(n.Pos)
-		w.expr(n.Left)
-		w.selector(n.Sym)
+		w.pos(pstate, n.Pos)
+		w.expr(pstate, n.Left)
+		w.selector(pstate, n.Sym)
 
 	case ODOTTYPE, ODOTTYPE2:
 		w.op(ODOTTYPE)
-		w.pos(n.Pos)
-		w.expr(n.Left)
-		w.typ(n.Type)
+		w.pos(pstate, n.Pos)
+		w.expr(pstate, n.Left)
+		w.typ(pstate, n.Type)
 
 	case OINDEX, OINDEXMAP:
 		w.op(OINDEX)
-		w.pos(n.Pos)
-		w.expr(n.Left)
-		w.expr(n.Right)
+		w.pos(pstate, n.Pos)
+		w.expr(pstate, n.Left)
+		w.expr(pstate, n.Right)
 
 	case OSLICE, OSLICESTR, OSLICEARR:
 		w.op(OSLICE)
-		w.pos(n.Pos)
-		w.expr(n.Left)
-		low, high, _ := n.SliceBounds()
-		w.exprsOrNil(low, high)
+		w.pos(pstate, n.Pos)
+		w.expr(pstate, n.Left)
+		low, high, _ := n.SliceBounds(pstate)
+		w.exprsOrNil(pstate, low, high)
 
 	case OSLICE3, OSLICE3ARR:
 		w.op(OSLICE3)
-		w.pos(n.Pos)
-		w.expr(n.Left)
-		low, high, max := n.SliceBounds()
-		w.exprsOrNil(low, high)
-		w.expr(max)
+		w.pos(pstate, n.Pos)
+		w.expr(pstate, n.Left)
+		low, high, max := n.SliceBounds(pstate)
+		w.exprsOrNil(pstate, low, high)
+		w.expr(pstate, max)
 
 	case OCOPY, OCOMPLEX:
 		// treated like other builtin calls (see e.g., OREAL)
 		w.op(op)
-		w.pos(n.Pos)
-		w.expr(n.Left)
-		w.expr(n.Right)
+		w.pos(pstate, n.Pos)
+		w.expr(pstate, n.Left)
+		w.expr(pstate, n.Right)
 		w.op(OEND)
 
 	case OCONV, OCONVIFACE, OCONVNOP, OARRAYBYTESTR, OARRAYRUNESTR, OSTRARRAYBYTE, OSTRARRAYRUNE, ORUNESTR:
 		w.op(OCONV)
-		w.pos(n.Pos)
-		w.expr(n.Left)
-		w.typ(n.Type)
+		w.pos(pstate, n.Pos)
+		w.expr(pstate, n.Left)
+		w.typ(pstate, n.Type)
 
 	case OREAL, OIMAG, OAPPEND, OCAP, OCLOSE, ODELETE, OLEN, OMAKE, ONEW, OPANIC, ORECOVER, OPRINT, OPRINTN:
 		w.op(op)
-		w.pos(n.Pos)
+		w.pos(pstate, n.Pos)
 		if n.Left != nil {
-			w.expr(n.Left)
+			w.expr(pstate, n.Left)
 			w.op(OEND)
 		} else {
-			w.exprList(n.List) // emits terminating OEND
+			w.exprList(pstate, n.List) // emits terminating OEND
 		}
 		// only append() calls may contain '...' arguments
 		if op == OAPPEND {
 			w.bool(n.Isddd())
 		} else if n.Isddd() {
-			Fatalf("exporter: unexpected '...' with %v call", op)
+			pstate.Fatalf("exporter: unexpected '...' with %v call", op)
 		}
 
 	case OCALL, OCALLFUNC, OCALLMETH, OCALLINTER, OGETG:
 		w.op(OCALL)
-		w.pos(n.Pos)
-		w.expr(n.Left)
-		w.exprList(n.List)
+		w.pos(pstate, n.Pos)
+		w.expr(pstate, n.Left)
+		w.exprList(pstate, n.List)
 		w.bool(n.Isddd())
 
 	case OMAKEMAP, OMAKECHAN, OMAKESLICE:
 		w.op(op) // must keep separate from OMAKE for importer
-		w.pos(n.Pos)
-		w.typ(n.Type)
+		w.pos(pstate, n.Pos)
+		w.typ(pstate, n.Type)
 		switch {
 		default:
 			// empty list
 			w.op(OEND)
 		case n.List.Len() != 0: // pre-typecheck
-			w.exprList(n.List) // emits terminating OEND
+			w.exprList(pstate, n.List) // emits terminating OEND
 		case n.Right != nil:
-			w.expr(n.Left)
-			w.expr(n.Right)
+			w.expr(pstate, n.Left)
+			w.expr(pstate, n.Right)
 			w.op(OEND)
-		case n.Left != nil && (n.Op == OMAKESLICE || !n.Left.Type.IsUntyped()):
-			w.expr(n.Left)
+		case n.Left != nil && (n.Op == OMAKESLICE || !n.Left.Type.IsUntyped(pstate.types)):
+			w.expr(pstate, n.Left)
 			w.op(OEND)
 		}
 
 	// unary expressions
 	case OPLUS, OMINUS, OADDR, OCOM, OIND, ONOT, ORECV:
 		w.op(op)
-		w.pos(n.Pos)
-		w.expr(n.Left)
+		w.pos(pstate, n.Pos)
+		w.expr(pstate, n.Left)
 
 	// binary expressions
 	case OADD, OAND, OANDAND, OANDNOT, ODIV, OEQ, OGE, OGT, OLE, OLT,
 		OLSH, OMOD, OMUL, ONE, OOR, OOROR, ORSH, OSEND, OSUB, OXOR:
 		w.op(op)
-		w.pos(n.Pos)
-		w.expr(n.Left)
-		w.expr(n.Right)
+		w.pos(pstate, n.Pos)
+		w.expr(pstate, n.Left)
+		w.expr(pstate, n.Right)
 
 	case OADDSTR:
 		w.op(OADDSTR)
-		w.pos(n.Pos)
-		w.exprList(n.List)
+		w.pos(pstate, n.Pos)
+		w.exprList(pstate, n.List)
 
 	case OCMPSTR, OCMPIFACE:
-		w.op(n.SubOp())
-		w.pos(n.Pos)
-		w.expr(n.Left)
-		w.expr(n.Right)
+		w.op(n.SubOp(pstate))
+		w.pos(pstate, n.Pos)
+		w.expr(pstate, n.Left)
+		w.expr(pstate, n.Right)
 
 	case ODCLCONST:
-		// if exporting, DCLCONST should just be removed as its usage
-		// has already been replaced with literals
+	// if exporting, DCLCONST should just be removed as its usage
+	// has already been replaced with literals
 
 	default:
-		Fatalf("cannot export %v (%d) node\n"+
+		pstate.Fatalf("cannot export %v (%d) node\n"+
 			"==> please file an issue and assign to gri@\n", n.Op, int(n.Op))
 	}
 }
@@ -1329,7 +1329,7 @@ func (w *exportWriter) op(op Op) {
 	w.uint64(uint64(op))
 }
 
-func (w *exportWriter) exprsOrNil(a, b *Node) {
+func (w *exportWriter) exprsOrNil(pstate *PackageState, a, b *Node) {
 	ab := 0
 	if a != nil {
 		ab |= 1
@@ -1339,22 +1339,22 @@ func (w *exportWriter) exprsOrNil(a, b *Node) {
 	}
 	w.uint64(uint64(ab))
 	if ab&1 != 0 {
-		w.expr(a)
+		w.expr(pstate, a)
 	}
 	if ab&2 != 0 {
-		w.node(b)
+		w.node(pstate, b)
 	}
 }
 
-func (w *exportWriter) elemList(list Nodes) {
+func (w *exportWriter) elemList(pstate *PackageState, list Nodes) {
 	w.uint64(uint64(list.Len()))
 	for _, n := range list.Slice() {
-		w.selector(n.Sym)
-		w.expr(n.Left)
+		w.selector(pstate, n.Sym)
+		w.expr(pstate, n.Left)
 	}
 }
 
-func (w *exportWriter) localName(n *Node) {
+func (w *exportWriter) localName(pstate *PackageState, n *Node) {
 	// Escape analysis happens after inline bodies are saved, but
 	// we're using the same ONAME nodes, so we might still see
 	// PAUTOHEAP here.
@@ -1367,10 +1367,10 @@ func (w *exportWriter) localName(n *Node) {
 		v = n.Name.Vargen
 	}
 
-	w.localIdent(n.Sym, v)
+	w.localIdent(pstate, n.Sym, v)
 }
 
-func (w *exportWriter) localIdent(s *types.Sym, v int32) {
+func (w *exportWriter) localIdent(pstate *PackageState, s *types.Sym, v int32) {
 	// Anonymous parameters.
 	if s == nil {
 		w.string("")
@@ -1384,18 +1384,18 @@ func (w *exportWriter) localIdent(s *types.Sym, v int32) {
 	}
 
 	if i := strings.LastIndex(name, "."); i >= 0 {
-		Fatalf("unexpected dot in identifier: %v", name)
+		pstate.Fatalf("unexpected dot in identifier: %v", name)
 	}
 
 	if v > 0 {
 		if strings.Contains(name, "·") {
-			Fatalf("exporter: unexpected · in symbol name")
+			pstate.Fatalf("exporter: unexpected · in symbol name")
 		}
 		name = fmt.Sprintf("%s·%d", name, v)
 	}
 
 	if !ast.IsExported(name) && s.Pkg != w.currPkg {
-		Fatalf("weird package in name: %v => %v, not %q", s, name, w.currPkg.Path)
+		pstate.Fatalf("weird package in name: %v => %v, not %q", s, name, w.currPkg.Path)
 	}
 
 	w.string(name)

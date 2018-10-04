@@ -5,7 +5,7 @@
 package ssa
 
 import (
-	"cmd/internal/obj"
+	"github.com/dave/golib/src/cmd/internal/obj"
 	"sort"
 )
 

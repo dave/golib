@@ -30,11 +30,11 @@
 package mips
 
 import (
-	"cmd/internal/obj"
-	"cmd/internal/objabi"
-	"cmd/internal/sys"
 	"encoding/binary"
 	"fmt"
+	"github.com/dave/golib/src/cmd/internal/obj"
+	"github.com/dave/golib/src/cmd/internal/objabi"
+	"github.com/dave/golib/src/cmd/internal/sys"
 	"math"
 )
 
@@ -88,7 +88,7 @@ func progedit(ctxt *obj.Link, p *obj.Prog, newprog obj.ProgAlloc) {
 			p.From.Offset = 0
 		}
 
-		// Put >32-bit constants in memory and load them
+	// Put >32-bit constants in memory and load them
 	case AMOVV:
 		if p.From.Type == obj.TYPE_CONST && p.From.Name == obj.NAME_NONE && p.From.Reg == 0 && int64(int32(p.From.Offset)) != p.From.Offset {
 			p.From.Type = obj.TYPE_MEM
@@ -126,7 +126,7 @@ func progedit(ctxt *obj.Link, p *obj.Prog, newprog obj.ProgAlloc) {
 	}
 }
 
-func preprocess(ctxt *obj.Link, cursym *obj.LSym, newprog obj.ProgAlloc) {
+func (pstate *PackageState) preprocess(ctxt *obj.Link, cursym *obj.LSym, newprog obj.ProgAlloc) {
 	// TODO(minux): add morestack short-cuts with small fixed frame-size.
 	c := ctxt0{ctxt: ctxt, newprog: newprog, cursym: cursym}
 
@@ -611,7 +611,7 @@ func preprocess(ctxt *obj.Link, cursym *obj.LSym, newprog obj.ProgAlloc) {
 		o++
 		if p.Mark&NOSCHED != 0 {
 			if q1 != p {
-				c.sched(q1, q)
+				c.sched(pstate, q1, q)
 			}
 			for ; p != nil; p = p.Link {
 				if p.Mark&NOSCHED == 0 {
@@ -626,18 +626,18 @@ func preprocess(ctxt *obj.Link, cursym *obj.LSym, newprog obj.ProgAlloc) {
 		}
 		if p.Mark&(LABEL|SYNC) != 0 {
 			if q1 != p {
-				c.sched(q1, q)
+				c.sched(pstate, q1, q)
 			}
 			q1 = p
 			o = 1
 		}
 		if p.Mark&(BRANCH|SYNC) != 0 {
-			c.sched(q1, p)
+			c.sched(pstate, q1, p)
 			q1 = p1
 			o = 0
 		}
 		if o >= NSCHED {
-			c.sched(q1, p)
+			c.sched(pstate, q1, p)
 			q1 = p1
 			o = 0
 		}
@@ -859,7 +859,7 @@ type Sch struct {
 	comp    bool
 }
 
-func (c *ctxt0) sched(p0, pe *obj.Prog) {
+func (c *ctxt0) sched(pstate *PackageState, p0, pe *obj.Prog) {
 	var sch [NSCHED]Sch
 
 	/*
@@ -868,7 +868,7 @@ func (c *ctxt0) sched(p0, pe *obj.Prog) {
 	s := sch[:]
 	for p := p0; ; p = p.Link {
 		s[0].p = *p
-		c.markregused(&s[0])
+		c.markregused(pstate, &s[0])
 		if p == pe {
 			break
 		}
@@ -948,9 +948,9 @@ func (c *ctxt0) sched(p0, pe *obj.Prog) {
 	}
 }
 
-func (c *ctxt0) markregused(s *Sch) {
+func (c *ctxt0) markregused(pstate *PackageState, s *Sch) {
 	p := &s.p
-	s.comp = c.compound(p)
+	s.comp = c.compound(pstate, p)
 	s.nop = 0
 	if s.comp {
 		s.set.ireg |= 1 << (REGTMP - REG_R0)
@@ -1415,8 +1415,8 @@ func conflict(sa, sb *Sch) bool {
 	return false
 }
 
-func (c *ctxt0) compound(p *obj.Prog) bool {
-	o := c.oplook(p)
+func (c *ctxt0) compound(pstate *PackageState, p *obj.Prog) bool {
+	o := c.oplook(pstate, p)
 	if o.size != 4 {
 		return true
 	}
@@ -1424,40 +1424,4 @@ func (c *ctxt0) compound(p *obj.Prog) bool {
 		return true
 	}
 	return false
-}
-
-var Linkmips64 = obj.LinkArch{
-	Arch:           sys.ArchMIPS64,
-	Init:           buildop,
-	Preprocess:     preprocess,
-	Assemble:       span0,
-	Progedit:       progedit,
-	DWARFRegisters: MIPSDWARFRegisters,
-}
-
-var Linkmips64le = obj.LinkArch{
-	Arch:           sys.ArchMIPS64LE,
-	Init:           buildop,
-	Preprocess:     preprocess,
-	Assemble:       span0,
-	Progedit:       progedit,
-	DWARFRegisters: MIPSDWARFRegisters,
-}
-
-var Linkmips = obj.LinkArch{
-	Arch:           sys.ArchMIPS,
-	Init:           buildop,
-	Preprocess:     preprocess,
-	Assemble:       span0,
-	Progedit:       progedit,
-	DWARFRegisters: MIPSDWARFRegisters,
-}
-
-var Linkmipsle = obj.LinkArch{
-	Arch:           sys.ArchMIPSLE,
-	Init:           buildop,
-	Preprocess:     preprocess,
-	Assemble:       span0,
-	Progedit:       progedit,
-	DWARFRegisters: MIPSDWARFRegisters,
 }

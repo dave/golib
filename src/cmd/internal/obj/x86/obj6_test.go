@@ -4,7 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
-	"internal/testenv"
+	"github.com/dave/golib/src/internal/testenv"
 	"io/ioutil"
 	"os"
 	"os/exec"
@@ -15,22 +15,7 @@ import (
 	"testing"
 )
 
-const testdata = `
-MOVQ AX, AX -> MOVQ AX, AX
-
-LEAQ name(SB), AX -> MOVQ name@GOT(SB), AX
-LEAQ name+10(SB), AX -> MOVQ name@GOT(SB), AX; LEAQ 10(AX), AX
-MOVQ $name(SB), AX -> MOVQ name@GOT(SB), AX
-MOVQ $name+10(SB), AX -> MOVQ name@GOT(SB), AX; LEAQ 10(AX), AX
-
-MOVQ name(SB), AX -> NOP; MOVQ name@GOT(SB), R15; MOVQ (R15), AX
-MOVQ name+10(SB), AX -> NOP; MOVQ name@GOT(SB), R15; MOVQ 10(R15), AX
-
-CMPQ name(SB), $0 -> NOP; MOVQ name@GOT(SB), R15; CMPQ (R15), $0
-
-MOVQ $1, name(SB) -> NOP; MOVQ name@GOT(SB), R15; MOVQ $1, (R15)
-MOVQ $1, name+10(SB) -> NOP; MOVQ name@GOT(SB), R15; MOVQ $1, 10(R15)
-`
+const testdata = "\nMOVQ AX, AX -> MOVQ AX, AX\n\nLEAQ name(SB), AX -> MOVQ name@GOT(SB), AX\nLEAQ name+10(SB), AX -> MOVQ name@GOT(SB), AX; LEAQ 10(AX), AX\nMOVQ $name(SB), AX -> MOVQ name@GOT(SB), AX\nMOVQ $name+10(SB), AX -> MOVQ name@GOT(SB), AX; LEAQ 10(AX), AX\n\nMOVQ name(SB), AX -> NOP; MOVQ name@GOT(SB), R15; MOVQ (R15), AX\nMOVQ name+10(SB), AX -> NOP; MOVQ name@GOT(SB), R15; MOVQ 10(R15), AX\n\nCMPQ name(SB), $0 -> NOP; MOVQ name@GOT(SB), R15; CMPQ (R15), $0\n\nMOVQ $1, name(SB) -> NOP; MOVQ name@GOT(SB), R15; MOVQ $1, (R15)\nMOVQ $1, name+10(SB) -> NOP; MOVQ name@GOT(SB), R15; MOVQ $1, 10(R15)\n"
 
 type ParsedTestData struct {
 	input              string
@@ -74,7 +59,7 @@ func parseTestData(t *testing.T) *ParsedTestData {
 	return r
 }
 
-var spaces_re *regexp.Regexp = regexp.MustCompile(`\s+`)
+var spaces_re *regexp.Regexp = regexp.MustCompile("\\s+")
 
 func normalize(s string) string {
 	return spaces_re.ReplaceAllLiteralString(strings.TrimSpace(s), " ")
@@ -115,7 +100,7 @@ func asmOutput(t *testing.T, s string) []byte {
 
 func parseOutput(t *testing.T, td *ParsedTestData, asmout []byte) {
 	scanner := bufio.NewScanner(bytes.NewReader(asmout))
-	marker := regexp.MustCompile(`MOVQ \$([0-9]+), AX`)
+	marker := regexp.MustCompile("MOVQ \\$([0-9]+), AX")
 	mark := -1
 	td.marker_to_output = make(map[int][]string)
 	for scanner.Scan() {

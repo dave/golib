@@ -5,8 +5,8 @@
 package ssa
 
 import (
-	"cmd/internal/obj"
-	"cmd/internal/src"
+	"github.com/dave/golib/src/cmd/internal/obj"
+	"github.com/dave/golib/src/cmd/internal/src"
 	"math"
 )
 
@@ -73,7 +73,7 @@ func notStmtBoundary(op Op) bool {
 	return false
 }
 
-func numberLines(f *Func) {
+func (pstate *PackageState) numberLines(f *Func) {
 	po := f.Postorder()
 	endlines := make(map[ID]src.XPos)
 	last := uint(0)              // uint follows type of XPos.Line()
@@ -91,7 +91,7 @@ func numberLines(f *Func) {
 	for j := len(po) - 1; j >= 0; j-- {
 		b := po[j]
 		// Find the first interesting position and check to see if it differs from any predecessor
-		firstPos := src.NoXPos
+		firstPos := pstate.src.NoXPos
 		firstPosIndex := -1
 		if b.Pos.IsStmt() != src.PosNotStmt {
 			note(b.Pos.Line())
@@ -116,15 +116,15 @@ func numberLines(f *Func) {
 				endlines[b.ID] = b.Pos
 				continue
 			}
-			line := src.NoXPos
+			line := pstate.src.NoXPos
 			for _, p := range b.Preds {
 				pbi := p.Block().ID
 				if endlines[pbi] != line {
-					if line == src.NoXPos {
+					if line == pstate.src.NoXPos {
 						line = endlines[pbi]
 						continue
 					} else {
-						line = src.NoXPos
+						line = pstate.src.NoXPos
 						break
 					}
 

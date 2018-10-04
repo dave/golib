@@ -673,7 +673,7 @@ func init() {
 
 	archs = append(archs, arch{
 		name:            "S390X",
-		pkg:             "cmd/internal/obj/s390x",
+		pkg:             "github.com/dave/golib/src/cmd/internal/obj/s390x",
 		genfile:         "../../s390x/ssa.go",
 		ops:             S390Xops,
 		blocks:          S390Xblocks,

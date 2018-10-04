@@ -31,234 +31,30 @@
 package x86
 
 import (
-	"cmd/internal/obj"
 	"fmt"
+	"github.com/dave/golib/src/cmd/internal/obj"
 )
 
-var Register = []string{
-	"AL", // [D_AL]
-	"CL",
-	"DL",
-	"BL",
-	"SPB",
-	"BPB",
-	"SIB",
-	"DIB",
-	"R8B",
-	"R9B",
-	"R10B",
-	"R11B",
-	"R12B",
-	"R13B",
-	"R14B",
-	"R15B",
-	"AX", // [D_AX]
-	"CX",
-	"DX",
-	"BX",
-	"SP",
-	"BP",
-	"SI",
-	"DI",
-	"R8",
-	"R9",
-	"R10",
-	"R11",
-	"R12",
-	"R13",
-	"R14",
-	"R15",
-	"AH",
-	"CH",
-	"DH",
-	"BH",
-	"F0", // [D_F0]
-	"F1",
-	"F2",
-	"F3",
-	"F4",
-	"F5",
-	"F6",
-	"F7",
-	"M0",
-	"M1",
-	"M2",
-	"M3",
-	"M4",
-	"M5",
-	"M6",
-	"M7",
-	"K0",
-	"K1",
-	"K2",
-	"K3",
-	"K4",
-	"K5",
-	"K6",
-	"K7",
-	"X0",
-	"X1",
-	"X2",
-	"X3",
-	"X4",
-	"X5",
-	"X6",
-	"X7",
-	"X8",
-	"X9",
-	"X10",
-	"X11",
-	"X12",
-	"X13",
-	"X14",
-	"X15",
-	"X16",
-	"X17",
-	"X18",
-	"X19",
-	"X20",
-	"X21",
-	"X22",
-	"X23",
-	"X24",
-	"X25",
-	"X26",
-	"X27",
-	"X28",
-	"X29",
-	"X30",
-	"X31",
-	"Y0",
-	"Y1",
-	"Y2",
-	"Y3",
-	"Y4",
-	"Y5",
-	"Y6",
-	"Y7",
-	"Y8",
-	"Y9",
-	"Y10",
-	"Y11",
-	"Y12",
-	"Y13",
-	"Y14",
-	"Y15",
-	"Y16",
-	"Y17",
-	"Y18",
-	"Y19",
-	"Y20",
-	"Y21",
-	"Y22",
-	"Y23",
-	"Y24",
-	"Y25",
-	"Y26",
-	"Y27",
-	"Y28",
-	"Y29",
-	"Y30",
-	"Y31",
-	"Z0",
-	"Z1",
-	"Z2",
-	"Z3",
-	"Z4",
-	"Z5",
-	"Z6",
-	"Z7",
-	"Z8",
-	"Z9",
-	"Z10",
-	"Z11",
-	"Z12",
-	"Z13",
-	"Z14",
-	"Z15",
-	"Z16",
-	"Z17",
-	"Z18",
-	"Z19",
-	"Z20",
-	"Z21",
-	"Z22",
-	"Z23",
-	"Z24",
-	"Z25",
-	"Z26",
-	"Z27",
-	"Z28",
-	"Z29",
-	"Z30",
-	"Z31",
-	"CS", // [D_CS]
-	"SS",
-	"DS",
-	"ES",
-	"FS",
-	"GS",
-	"GDTR", // [D_GDTR]
-	"IDTR", // [D_IDTR]
-	"LDTR", // [D_LDTR]
-	"MSW",  // [D_MSW]
-	"TASK", // [D_TASK]
-	"CR0",  // [D_CR]
-	"CR1",
-	"CR2",
-	"CR3",
-	"CR4",
-	"CR5",
-	"CR6",
-	"CR7",
-	"CR8",
-	"CR9",
-	"CR10",
-	"CR11",
-	"CR12",
-	"CR13",
-	"CR14",
-	"CR15",
-	"DR0", // [D_DR]
-	"DR1",
-	"DR2",
-	"DR3",
-	"DR4",
-	"DR5",
-	"DR6",
-	"DR7",
-	"TR0", // [D_TR]
-	"TR1",
-	"TR2",
-	"TR3",
-	"TR4",
-	"TR5",
-	"TR6",
-	"TR7",
-	"TLS",    // [D_TLS]
-	"MAXREG", // [MAXREG]
+func (pstate *PackageState) init() {
+	pstate.obj.RegisterRegister(REG_AL, REG_AL+len(pstate.Register), pstate.rconv)
+	pstate.obj.RegisterOpcode(obj.ABaseAMD64, pstate.Anames)
+	pstate.obj.RegisterRegisterList(obj.RegListX86Lo, obj.RegListX86Hi, pstate.rlconv)
+	pstate.obj.RegisterOpSuffix("386", pstate.opSuffixString)
+	pstate.obj.RegisterOpSuffix("amd64", pstate.opSuffixString)
 }
 
-func init() {
-	obj.RegisterRegister(REG_AL, REG_AL+len(Register), rconv)
-	obj.RegisterOpcode(obj.ABaseAMD64, Anames)
-	obj.RegisterRegisterList(obj.RegListX86Lo, obj.RegListX86Hi, rlconv)
-	obj.RegisterOpSuffix("386", opSuffixString)
-	obj.RegisterOpSuffix("amd64", opSuffixString)
-}
-
-func rconv(r int) string {
-	if REG_AL <= r && r-REG_AL < len(Register) {
-		return Register[r-REG_AL]
+func (pstate *PackageState) rconv(r int) string {
+	if REG_AL <= r && r-REG_AL < len(pstate.Register) {
+		return pstate.Register[r-REG_AL]
 	}
 	return fmt.Sprintf("Rgok(%d)", r-obj.RBaseAMD64)
 }
 
-func rlconv(bits int64) string {
+func (pstate *PackageState) rlconv(bits int64) string {
 	reg0, reg1 := decodeRegisterRange(bits)
-	return fmt.Sprintf("[%s-%s]", rconv(reg0), rconv(reg1))
+	return fmt.Sprintf("[%s-%s]", pstate.rconv(reg0), pstate.rconv(reg1))
 }
 
-func opSuffixString(s uint8) string {
-	return "." + opSuffix(s).String()
+func (pstate *PackageState) opSuffixString(s uint8) string {
+	return "." + opSuffix(s).String(pstate)
 }

@@ -6,14 +6,14 @@
 package loadpe
 
 import (
-	"cmd/internal/bio"
-	"cmd/internal/objabi"
-	"cmd/internal/sys"
-	"cmd/link/internal/sym"
 	"debug/pe"
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"github.com/dave/golib/src/cmd/internal/bio"
+	"github.com/dave/golib/src/cmd/internal/objabi"
+	"github.com/dave/golib/src/cmd/internal/sys"
+	"github.com/dave/golib/src/cmd/link/internal/sym"
 	"io"
 	"sort"
 	"strings"

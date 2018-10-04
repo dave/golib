@@ -405,7 +405,7 @@ func init() {
 
 	archs = append(archs, arch{
 		name:            "MIPS",
-		pkg:             "cmd/internal/obj/mips",
+		pkg:             "github.com/dave/golib/src/cmd/internal/obj/mips",
 		genfile:         "../../mips/ssa.go",
 		ops:             ops,
 		blocks:          blocks,

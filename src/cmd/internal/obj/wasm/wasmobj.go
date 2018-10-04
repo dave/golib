@@ -6,131 +6,44 @@ package wasm
 
 import (
 	"bytes"
-	"cmd/internal/obj"
-	"cmd/internal/objabi"
-	"cmd/internal/sys"
 	"encoding/binary"
 	"fmt"
+	"github.com/dave/golib/src/cmd/internal/obj"
+	"github.com/dave/golib/src/cmd/internal/objabi"
+	"github.com/dave/golib/src/cmd/internal/sys"
 	"io"
 	"math"
 )
 
-var Register = map[string]int16{
-	"PC_F": REG_PC_F,
-	"PC_B": REG_PC_B,
-	"SP":   REG_SP,
-	"CTXT": REG_CTXT,
-	"g":    REG_g,
-	"RET0": REG_RET0,
-	"RET1": REG_RET1,
-	"RET2": REG_RET2,
-	"RET3": REG_RET3,
-	"RUN":  REG_RUN,
+func (pstate *PackageState) init() {
+	pstate.obj.RegisterRegister(MINREG, MAXREG, pstate.rconv)
+	pstate.obj.RegisterOpcode(obj.ABaseWasm, pstate.Anames)
 
-	"R0":  REG_R0,
-	"R1":  REG_R1,
-	"R2":  REG_R2,
-	"R3":  REG_R3,
-	"R4":  REG_R4,
-	"R5":  REG_R5,
-	"R6":  REG_R6,
-	"R7":  REG_R7,
-	"R8":  REG_R8,
-	"R9":  REG_R9,
-	"R10": REG_R10,
-	"R11": REG_R11,
-	"R12": REG_R12,
-	"R13": REG_R13,
-	"R14": REG_R14,
-	"R15": REG_R15,
-
-	"F0":  REG_F0,
-	"F1":  REG_F1,
-	"F2":  REG_F2,
-	"F3":  REG_F3,
-	"F4":  REG_F4,
-	"F5":  REG_F5,
-	"F6":  REG_F6,
-	"F7":  REG_F7,
-	"F8":  REG_F8,
-	"F9":  REG_F9,
-	"F10": REG_F10,
-	"F11": REG_F11,
-	"F12": REG_F12,
-	"F13": REG_F13,
-	"F14": REG_F14,
-	"F15": REG_F15,
-}
-
-var registerNames []string
-
-func init() {
-	obj.RegisterRegister(MINREG, MAXREG, rconv)
-	obj.RegisterOpcode(obj.ABaseWasm, Anames)
-
-	registerNames = make([]string, MAXREG-MINREG)
-	for name, reg := range Register {
-		registerNames[reg-MINREG] = name
+	pstate.registerNames = make([]string, MAXREG-MINREG)
+	for name, reg := range pstate.Register {
+		pstate.registerNames[reg-MINREG] = name
 	}
 }
 
-func rconv(r int) string {
-	return registerNames[r-MINREG]
+func (pstate *PackageState) rconv(r int) string {
+	return pstate.registerNames[r-MINREG]
 }
-
-var unaryDst = map[obj.As]bool{
-	ASet:          true,
-	ATee:          true,
-	ACall:         true,
-	ACallIndirect: true,
-	ACallImport:   true,
-	ABr:           true,
-	ABrIf:         true,
-	ABrTable:      true,
-	AI32Store:     true,
-	AI64Store:     true,
-	AF32Store:     true,
-	AF64Store:     true,
-	AI32Store8:    true,
-	AI32Store16:   true,
-	AI64Store8:    true,
-	AI64Store16:   true,
-	AI64Store32:   true,
-	ACALLNORESUME: true,
-}
-
-var Linkwasm = obj.LinkArch{
-	Arch:       sys.ArchWasm,
-	Init:       instinit,
-	Preprocess: preprocess,
-	Assemble:   assemble,
-	UnaryDst:   unaryDst,
-}
-
-var (
-	morestack       *obj.LSym
-	morestackNoCtxt *obj.LSym
-	gcWriteBarrier  *obj.LSym
-	sigpanic        *obj.LSym
-	deferreturn     *obj.LSym
-	jmpdefer        *obj.LSym
-)
 
 const (
 	/* mark flags */
 	WasmImport = 1 << 0
 )
 
-func instinit(ctxt *obj.Link) {
-	morestack = ctxt.Lookup("runtime.morestack")
-	morestackNoCtxt = ctxt.Lookup("runtime.morestack_noctxt")
-	gcWriteBarrier = ctxt.Lookup("runtime.gcWriteBarrier")
-	sigpanic = ctxt.Lookup("runtime.sigpanic")
-	deferreturn = ctxt.Lookup("runtime.deferreturn")
-	jmpdefer = ctxt.Lookup(`"".jmpdefer`)
+func (pstate *PackageState) instinit(ctxt *obj.Link) {
+	pstate.morestack = ctxt.Lookup("runtime.morestack")
+	pstate.morestackNoCtxt = ctxt.Lookup("runtime.morestack_noctxt")
+	pstate.gcWriteBarrier = ctxt.Lookup("runtime.gcWriteBarrier")
+	pstate.sigpanic = ctxt.Lookup("runtime.sigpanic")
+	pstate.deferreturn = ctxt.Lookup("runtime.deferreturn")
+	pstate.jmpdefer = ctxt.Lookup("\"\".jmpdefer")
 }
 
-func preprocess(ctxt *obj.Link, s *obj.LSym, newprog obj.ProgAlloc) {
+func (pstate *PackageState) preprocess(ctxt *obj.Link, s *obj.LSym, newprog obj.ProgAlloc) {
 	appendp := func(p *obj.Prog, as obj.As, args ...obj.Addr) *obj.Prog {
 		if p.As != obj.ANOP {
 			p2 := obj.Appendp(p, newprog)
@@ -143,7 +56,7 @@ func preprocess(ctxt *obj.Link, s *obj.LSym, newprog obj.ProgAlloc) {
 			p.From = obj.Addr{}
 			p.To = obj.Addr{}
 		case 1:
-			if unaryDst[as] {
+			if pstate.unaryDst[as] {
 				p.From = obj.Addr{}
 				p.To = args[0]
 			} else {
@@ -324,9 +237,9 @@ func preprocess(ctxt *obj.Link, s *obj.LSym, newprog obj.ProgAlloc) {
 		p = appendp(p, AIf)
 		p = appendp(p, obj.ACALL, constAddr(0))
 		if s.Func.Text.From.Sym.NeedCtxt() {
-			p.To = obj.Addr{Type: obj.TYPE_MEM, Name: obj.NAME_EXTERN, Sym: morestack}
+			p.To = obj.Addr{Type: obj.TYPE_MEM, Name: obj.NAME_EXTERN, Sym: pstate.morestack}
 		} else {
-			p.To = obj.Addr{Type: obj.TYPE_MEM, Name: obj.NAME_EXTERN, Sym: morestackNoCtxt}
+			p.To = obj.Addr{Type: obj.TYPE_MEM, Name: obj.NAME_EXTERN, Sym: pstate.morestackNoCtxt}
 		}
 		p = appendp(p, AEnd)
 	}
@@ -409,13 +322,13 @@ func preprocess(ctxt *obj.Link, s *obj.LSym, newprog obj.ProgAlloc) {
 			p.As = obj.ANOP
 
 			pcAfterCall := call.Link.Pc
-			if call.To.Sym == sigpanic {
+			if call.To.Sym == pstate.sigpanic {
 				pcAfterCall-- // sigpanic expects to be called without advancing the pc
 			}
 
 			// jmpdefer manipulates the return address on the stack so deferreturn gets called repeatedly.
 			// Model this in WebAssembly with a loop.
-			if call.To.Sym == deferreturn {
+			if call.To.Sym == pstate.deferreturn {
 				p = appendp(p, ALoop)
 			}
 
@@ -454,7 +367,7 @@ func preprocess(ctxt *obj.Link, s *obj.LSym, newprog obj.ProgAlloc) {
 			}
 
 			// gcWriteBarrier has no return value, it never unwinds the stack
-			if call.To.Sym == gcWriteBarrier {
+			if call.To.Sym == pstate.gcWriteBarrier {
 				break
 			}
 
@@ -462,14 +375,14 @@ func preprocess(ctxt *obj.Link, s *obj.LSym, newprog obj.ProgAlloc) {
 			// However, its WebAssembly function still returns normally,
 			// so we need to return from deferreturn without removing its
 			// stack frame (no RET), because the frame is already gone.
-			if call.To.Sym == jmpdefer {
+			if call.To.Sym == pstate.jmpdefer {
 				p = appendp(p, AReturn)
 				break
 			}
 
 			// return value of call is on the top of the stack, indicating whether to unwind the WebAssembly stack
 			p = appendp(p, AIf)
-			if call.As == ACALLNORESUME && call.To.Sym != sigpanic { // sigpanic unwinds the stack, but it never resumes
+			if call.As == ACALLNORESUME && call.To.Sym != pstate.sigpanic { // sigpanic unwinds the stack, but it never resumes
 				// trying to unwind WebAssembly stack but call has no resume point, terminate with error
 				p = appendp(p, obj.AUNDEF)
 			} else {
@@ -480,7 +393,7 @@ func preprocess(ctxt *obj.Link, s *obj.LSym, newprog obj.ProgAlloc) {
 			p = appendp(p, AEnd)
 
 			// jump to before the call if jmpdefer has reset the return address to the call's PC
-			if call.To.Sym == deferreturn {
+			if call.To.Sym == pstate.deferreturn {
 				p = appendp(p, AGet, regAddr(REG_PC_B))
 				p = appendp(p, AI32Const, constAddr(call.Pc))
 				p = appendp(p, AI32Eq)

@@ -237,8 +237,8 @@ func Decode(src []byte, mode int) (inst Inst, err error) {
 func decode1(src []byte, mode int, gnuCompat bool) (Inst, error) {
 	switch mode {
 	case 16, 32, 64:
-		// ok
-		// TODO(rsc): 64-bit mode not tested, probably not working.
+	// ok
+	// TODO(rsc): 64-bit mode not tested, probably not working.
 	default:
 		return Inst{}, ErrInvalidMode
 	}
@@ -915,7 +915,7 @@ Decode:
 		// Input.
 
 		case xReadSlashR:
-			// done above
+		// done above
 
 		case xReadIb:
 			if pos >= len(src) {
@@ -1512,7 +1512,7 @@ Decode:
 				CMPSB, CMPSW, CMPSD, CMPSQ,
 				SCASB, SCASW, SCASD, SCASQ,
 				STOSB, STOSW, STOSD, STOSQ:
-				// ok
+			// ok
 			default:
 				inst.Prefix[repIndex] |= PrefixIgnored
 			}

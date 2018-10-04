@@ -32,25 +32,25 @@
 package obj
 
 import (
-	"cmd/internal/objabi"
 	"fmt"
+	"github.com/dave/golib/src/cmd/internal/objabi"
 	"log"
 	"math"
 )
 
-func Linknew(arch *LinkArch) *Link {
+func (pstate *PackageState) Linknew(arch *LinkArch) *Link {
 	ctxt := new(Link)
 	ctxt.hash = make(map[string]*LSym)
 	ctxt.statichash = make(map[string]*LSym)
 	ctxt.Arch = arch
 	ctxt.Pathname = objabi.WorkingDir()
 
-	if err := ctxt.Headtype.Set(objabi.GOOS); err != nil {
-		log.Fatalf("unknown goos %s", objabi.GOOS)
+	if err := ctxt.Headtype.Set(pstate.objabi.GOOS); err != nil {
+		log.Fatalf("unknown goos %s", pstate.objabi.GOOS)
 	}
 
 	ctxt.Flag_optimize = true
-	ctxt.Framepointer_enabled = objabi.Framepointer_enabled(objabi.GOOS, arch.Name)
+	ctxt.Framepointer_enabled = pstate.objabi.Framepointer_enabled(pstate.objabi.GOOS, arch.Name)
 	return ctxt
 }
 

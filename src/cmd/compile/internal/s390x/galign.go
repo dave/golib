@@ -5,20 +5,20 @@
 package s390x
 
 import (
-	"cmd/compile/internal/gc"
-	"cmd/internal/obj/s390x"
+	"github.com/dave/golib/src/cmd/compile/internal/gc"
+	"github.com/dave/golib/src/cmd/internal/obj/s390x"
 )
 
-func Init(arch *gc.Arch) {
-	arch.LinkArch = &s390x.Links390x
+func (pstate *PackageState) Init(arch *gc.Arch) {
+	arch.LinkArch = &pstate.s390x.Links390x
 	arch.REGSP = s390x.REGSP
 	arch.MAXWIDTH = 1 << 50
 
-	arch.ZeroRange = zerorange
-	arch.ZeroAuto = zeroAuto
-	arch.Ginsnop = ginsnop
+	arch.ZeroRange = pstate.zerorange
+	arch.ZeroAuto = pstate.zeroAuto
+	arch.Ginsnop = pstate.ginsnop
 
-	arch.SSAMarkMoves = ssaMarkMoves
-	arch.SSAGenValue = ssaGenValue
-	arch.SSAGenBlock = ssaGenBlock
+	arch.SSAMarkMoves = pstate.ssaMarkMoves
+	arch.SSAGenValue = pstate.ssaGenValue
+	arch.SSAGenBlock = pstate.ssaGenBlock
 }

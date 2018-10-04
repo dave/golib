@@ -30,8 +30,8 @@
 package s390x
 
 import (
-	"cmd/internal/obj"
-	"cmd/internal/objabi"
+	"github.com/dave/golib/src/cmd/internal/obj"
+	"github.com/dave/golib/src/cmd/internal/objabi"
 	"log"
 	"math"
 	"sort"
@@ -64,360 +64,13 @@ type Optab struct {
 	param int16 // REGSP for auto variables
 }
 
-var optab = []Optab{
-	// instruction,  From,   Reg,    From3,  To, type, param
-	Optab{obj.ATEXT, C_ADDR, C_NONE, C_NONE, C_TEXTSIZE, 0, 0},
-	Optab{obj.ATEXT, C_ADDR, C_NONE, C_LCON, C_TEXTSIZE, 0, 0},
-
-	// move register
-	Optab{AMOVD, C_REG, C_NONE, C_NONE, C_REG, 1, 0},
-	Optab{AMOVB, C_REG, C_NONE, C_NONE, C_REG, 1, 0},
-	Optab{AMOVBZ, C_REG, C_NONE, C_NONE, C_REG, 1, 0},
-	Optab{AMOVW, C_REG, C_NONE, C_NONE, C_REG, 1, 0},
-	Optab{AMOVWZ, C_REG, C_NONE, C_NONE, C_REG, 1, 0},
-	Optab{AFMOVD, C_FREG, C_NONE, C_NONE, C_FREG, 1, 0},
-	Optab{AMOVDBR, C_REG, C_NONE, C_NONE, C_REG, 1, 0},
-
-	// load constant
-	Optab{AMOVD, C_LACON, C_NONE, C_NONE, C_REG, 26, REGSP},
-	Optab{AMOVW, C_LACON, C_NONE, C_NONE, C_REG, 26, REGSP},
-	Optab{AMOVWZ, C_LACON, C_NONE, C_NONE, C_REG, 26, REGSP},
-	Optab{AMOVD, C_DCON, C_NONE, C_NONE, C_REG, 3, 0},
-	Optab{AMOVW, C_DCON, C_NONE, C_NONE, C_REG, 3, 0},
-	Optab{AMOVWZ, C_DCON, C_NONE, C_NONE, C_REG, 3, 0},
-	Optab{AMOVB, C_DCON, C_NONE, C_NONE, C_REG, 3, 0},
-	Optab{AMOVBZ, C_DCON, C_NONE, C_NONE, C_REG, 3, 0},
-
-	// store constant
-	Optab{AMOVD, C_SCON, C_NONE, C_NONE, C_LAUTO, 72, REGSP},
-	Optab{AMOVD, C_ADDCON, C_NONE, C_NONE, C_LAUTO, 72, REGSP},
-	Optab{AMOVW, C_SCON, C_NONE, C_NONE, C_LAUTO, 72, REGSP},
-	Optab{AMOVW, C_ADDCON, C_NONE, C_NONE, C_LAUTO, 72, REGSP},
-	Optab{AMOVWZ, C_SCON, C_NONE, C_NONE, C_LAUTO, 72, REGSP},
-	Optab{AMOVWZ, C_ADDCON, C_NONE, C_NONE, C_LAUTO, 72, REGSP},
-	Optab{AMOVB, C_SCON, C_NONE, C_NONE, C_LAUTO, 72, REGSP},
-	Optab{AMOVB, C_ADDCON, C_NONE, C_NONE, C_LAUTO, 72, REGSP},
-	Optab{AMOVBZ, C_SCON, C_NONE, C_NONE, C_LAUTO, 72, REGSP},
-	Optab{AMOVBZ, C_ADDCON, C_NONE, C_NONE, C_LAUTO, 72, REGSP},
-	Optab{AMOVD, C_SCON, C_NONE, C_NONE, C_LOREG, 72, 0},
-	Optab{AMOVD, C_ADDCON, C_NONE, C_NONE, C_LOREG, 72, 0},
-	Optab{AMOVW, C_SCON, C_NONE, C_NONE, C_LOREG, 72, 0},
-	Optab{AMOVW, C_ADDCON, C_NONE, C_NONE, C_LOREG, 72, 0},
-	Optab{AMOVWZ, C_SCON, C_NONE, C_NONE, C_LOREG, 72, 0},
-	Optab{AMOVWZ, C_ADDCON, C_NONE, C_NONE, C_LOREG, 72, 0},
-	Optab{AMOVB, C_SCON, C_NONE, C_NONE, C_LOREG, 72, 0},
-	Optab{AMOVB, C_ADDCON, C_NONE, C_NONE, C_LOREG, 72, 0},
-	Optab{AMOVBZ, C_SCON, C_NONE, C_NONE, C_LOREG, 72, 0},
-	Optab{AMOVBZ, C_ADDCON, C_NONE, C_NONE, C_LOREG, 72, 0},
-
-	// store
-	Optab{AMOVD, C_REG, C_NONE, C_NONE, C_LAUTO, 35, REGSP},
-	Optab{AMOVW, C_REG, C_NONE, C_NONE, C_LAUTO, 35, REGSP},
-	Optab{AMOVWZ, C_REG, C_NONE, C_NONE, C_LAUTO, 35, REGSP},
-	Optab{AMOVBZ, C_REG, C_NONE, C_NONE, C_LAUTO, 35, REGSP},
-	Optab{AMOVB, C_REG, C_NONE, C_NONE, C_LAUTO, 35, REGSP},
-	Optab{AMOVDBR, C_REG, C_NONE, C_NONE, C_LAUTO, 35, REGSP},
-	Optab{AMOVHBR, C_REG, C_NONE, C_NONE, C_LAUTO, 35, REGSP},
-	Optab{AMOVD, C_REG, C_NONE, C_NONE, C_LOREG, 35, 0},
-	Optab{AMOVW, C_REG, C_NONE, C_NONE, C_LOREG, 35, 0},
-	Optab{AMOVWZ, C_REG, C_NONE, C_NONE, C_LOREG, 35, 0},
-	Optab{AMOVBZ, C_REG, C_NONE, C_NONE, C_LOREG, 35, 0},
-	Optab{AMOVB, C_REG, C_NONE, C_NONE, C_LOREG, 35, 0},
-	Optab{AMOVDBR, C_REG, C_NONE, C_NONE, C_LOREG, 35, 0},
-	Optab{AMOVHBR, C_REG, C_NONE, C_NONE, C_LOREG, 35, 0},
-	Optab{AMOVD, C_REG, C_NONE, C_NONE, C_ADDR, 74, 0},
-	Optab{AMOVW, C_REG, C_NONE, C_NONE, C_ADDR, 74, 0},
-	Optab{AMOVWZ, C_REG, C_NONE, C_NONE, C_ADDR, 74, 0},
-	Optab{AMOVBZ, C_REG, C_NONE, C_NONE, C_ADDR, 74, 0},
-	Optab{AMOVB, C_REG, C_NONE, C_NONE, C_ADDR, 74, 0},
-
-	// load
-	Optab{AMOVD, C_LAUTO, C_NONE, C_NONE, C_REG, 36, REGSP},
-	Optab{AMOVW, C_LAUTO, C_NONE, C_NONE, C_REG, 36, REGSP},
-	Optab{AMOVWZ, C_LAUTO, C_NONE, C_NONE, C_REG, 36, REGSP},
-	Optab{AMOVBZ, C_LAUTO, C_NONE, C_NONE, C_REG, 36, REGSP},
-	Optab{AMOVB, C_LAUTO, C_NONE, C_NONE, C_REG, 36, REGSP},
-	Optab{AMOVDBR, C_LAUTO, C_NONE, C_NONE, C_REG, 36, REGSP},
-	Optab{AMOVHBR, C_LAUTO, C_NONE, C_NONE, C_REG, 36, REGSP},
-	Optab{AMOVD, C_LOREG, C_NONE, C_NONE, C_REG, 36, 0},
-	Optab{AMOVW, C_LOREG, C_NONE, C_NONE, C_REG, 36, 0},
-	Optab{AMOVWZ, C_LOREG, C_NONE, C_NONE, C_REG, 36, 0},
-	Optab{AMOVBZ, C_LOREG, C_NONE, C_NONE, C_REG, 36, 0},
-	Optab{AMOVB, C_LOREG, C_NONE, C_NONE, C_REG, 36, 0},
-	Optab{AMOVDBR, C_LOREG, C_NONE, C_NONE, C_REG, 36, 0},
-	Optab{AMOVHBR, C_LOREG, C_NONE, C_NONE, C_REG, 36, 0},
-	Optab{AMOVD, C_ADDR, C_NONE, C_NONE, C_REG, 75, 0},
-	Optab{AMOVW, C_ADDR, C_NONE, C_NONE, C_REG, 75, 0},
-	Optab{AMOVWZ, C_ADDR, C_NONE, C_NONE, C_REG, 75, 0},
-	Optab{AMOVBZ, C_ADDR, C_NONE, C_NONE, C_REG, 75, 0},
-	Optab{AMOVB, C_ADDR, C_NONE, C_NONE, C_REG, 75, 0},
-
-	// interlocked load and op
-	Optab{ALAAG, C_REG, C_REG, C_NONE, C_LOREG, 99, 0},
-
-	// integer arithmetic
-	Optab{AADD, C_REG, C_REG, C_NONE, C_REG, 2, 0},
-	Optab{AADD, C_REG, C_NONE, C_NONE, C_REG, 2, 0},
-	Optab{AADD, C_LCON, C_REG, C_NONE, C_REG, 22, 0},
-	Optab{AADD, C_LCON, C_NONE, C_NONE, C_REG, 22, 0},
-	Optab{AADD, C_LOREG, C_NONE, C_NONE, C_REG, 12, 0},
-	Optab{AADD, C_LAUTO, C_NONE, C_NONE, C_REG, 12, REGSP},
-	Optab{ASUB, C_LCON, C_REG, C_NONE, C_REG, 21, 0},
-	Optab{ASUB, C_LCON, C_NONE, C_NONE, C_REG, 21, 0},
-	Optab{ASUB, C_LOREG, C_NONE, C_NONE, C_REG, 12, 0},
-	Optab{ASUB, C_LAUTO, C_NONE, C_NONE, C_REG, 12, REGSP},
-	Optab{AMULHD, C_REG, C_NONE, C_NONE, C_REG, 4, 0},
-	Optab{AMULHD, C_REG, C_REG, C_NONE, C_REG, 4, 0},
-	Optab{ADIVW, C_REG, C_REG, C_NONE, C_REG, 2, 0},
-	Optab{ADIVW, C_REG, C_NONE, C_NONE, C_REG, 2, 0},
-	Optab{ASUB, C_REG, C_REG, C_NONE, C_REG, 10, 0},
-	Optab{ASUB, C_REG, C_NONE, C_NONE, C_REG, 10, 0},
-	Optab{ANEG, C_REG, C_NONE, C_NONE, C_REG, 47, 0},
-	Optab{ANEG, C_NONE, C_NONE, C_NONE, C_REG, 47, 0},
-
-	// integer logical
-	Optab{AAND, C_REG, C_REG, C_NONE, C_REG, 6, 0},
-	Optab{AAND, C_REG, C_NONE, C_NONE, C_REG, 6, 0},
-	Optab{AAND, C_LCON, C_NONE, C_NONE, C_REG, 23, 0},
-	Optab{AAND, C_LOREG, C_NONE, C_NONE, C_REG, 12, 0},
-	Optab{AAND, C_LAUTO, C_NONE, C_NONE, C_REG, 12, REGSP},
-	Optab{AANDW, C_REG, C_REG, C_NONE, C_REG, 6, 0},
-	Optab{AANDW, C_REG, C_NONE, C_NONE, C_REG, 6, 0},
-	Optab{AANDW, C_LCON, C_NONE, C_NONE, C_REG, 24, 0},
-	Optab{AANDW, C_LOREG, C_NONE, C_NONE, C_REG, 12, 0},
-	Optab{AANDW, C_LAUTO, C_NONE, C_NONE, C_REG, 12, REGSP},
-	Optab{ASLD, C_REG, C_NONE, C_NONE, C_REG, 7, 0},
-	Optab{ASLD, C_REG, C_REG, C_NONE, C_REG, 7, 0},
-	Optab{ASLD, C_SCON, C_REG, C_NONE, C_REG, 7, 0},
-	Optab{ASLD, C_SCON, C_NONE, C_NONE, C_REG, 7, 0},
-
-	// compare and swap
-	Optab{ACSG, C_REG, C_REG, C_NONE, C_SOREG, 79, 0},
-
-	// floating point
-	Optab{AFADD, C_FREG, C_NONE, C_NONE, C_FREG, 32, 0},
-	Optab{AFABS, C_FREG, C_NONE, C_NONE, C_FREG, 33, 0},
-	Optab{AFABS, C_NONE, C_NONE, C_NONE, C_FREG, 33, 0},
-	Optab{AFMADD, C_FREG, C_FREG, C_NONE, C_FREG, 34, 0},
-	Optab{AFMUL, C_FREG, C_NONE, C_NONE, C_FREG, 32, 0},
-	Optab{AFMOVD, C_LAUTO, C_NONE, C_NONE, C_FREG, 36, REGSP},
-	Optab{AFMOVD, C_LOREG, C_NONE, C_NONE, C_FREG, 36, 0},
-	Optab{AFMOVD, C_ADDR, C_NONE, C_NONE, C_FREG, 75, 0},
-	Optab{AFMOVD, C_FREG, C_NONE, C_NONE, C_LAUTO, 35, REGSP},
-	Optab{AFMOVD, C_FREG, C_NONE, C_NONE, C_LOREG, 35, 0},
-	Optab{AFMOVD, C_FREG, C_NONE, C_NONE, C_ADDR, 74, 0},
-	Optab{AFMOVD, C_ZCON, C_NONE, C_NONE, C_FREG, 67, 0},
-	Optab{ALDGR, C_REG, C_NONE, C_NONE, C_FREG, 81, 0},
-	Optab{ALGDR, C_FREG, C_NONE, C_NONE, C_REG, 81, 0},
-	Optab{ACEFBRA, C_REG, C_NONE, C_NONE, C_FREG, 82, 0},
-	Optab{ACFEBRA, C_FREG, C_NONE, C_NONE, C_REG, 83, 0},
-	Optab{AFIEBR, C_SCON, C_FREG, C_NONE, C_FREG, 48, 0},
-	Optab{ACPSDR, C_FREG, C_FREG, C_NONE, C_FREG, 49, 0},
-	Optab{ALTDBR, C_FREG, C_NONE, C_NONE, C_FREG, 50, 0},
-	Optab{ATCDB, C_FREG, C_NONE, C_NONE, C_SCON, 51, 0},
-
-	// load symbol address (plus offset)
-	Optab{AMOVD, C_SYMADDR, C_NONE, C_NONE, C_REG, 19, 0},
-	Optab{AMOVD, C_GOTADDR, C_NONE, C_NONE, C_REG, 93, 0},
-	Optab{AMOVD, C_TLS_LE, C_NONE, C_NONE, C_REG, 94, 0},
-	Optab{AMOVD, C_TLS_IE, C_NONE, C_NONE, C_REG, 95, 0},
-
-	// system call
-	Optab{ASYSCALL, C_NONE, C_NONE, C_NONE, C_NONE, 5, 0},
-	Optab{ASYSCALL, C_SCON, C_NONE, C_NONE, C_NONE, 77, 0},
-
-	// branch
-	Optab{ABEQ, C_NONE, C_NONE, C_NONE, C_SBRA, 16, 0},
-	Optab{ABR, C_NONE, C_NONE, C_NONE, C_LBRA, 11, 0},
-	Optab{ABC, C_SCON, C_REG, C_NONE, C_LBRA, 16, 0},
-	Optab{ABR, C_NONE, C_NONE, C_NONE, C_REG, 18, 0},
-	Optab{ABR, C_REG, C_NONE, C_NONE, C_REG, 18, 0},
-	Optab{ABR, C_NONE, C_NONE, C_NONE, C_ZOREG, 15, 0},
-	Optab{ABC, C_NONE, C_NONE, C_NONE, C_ZOREG, 15, 0},
-	Optab{ACMPBEQ, C_REG, C_REG, C_NONE, C_SBRA, 89, 0},
-	Optab{ACMPBEQ, C_REG, C_NONE, C_ADDCON, C_SBRA, 90, 0},
-	Optab{ACMPBEQ, C_REG, C_NONE, C_SCON, C_SBRA, 90, 0},
-	Optab{ACMPUBEQ, C_REG, C_REG, C_NONE, C_SBRA, 89, 0},
-	Optab{ACMPUBEQ, C_REG, C_NONE, C_ANDCON, C_SBRA, 90, 0},
-
-	// move on condition
-	Optab{AMOVDEQ, C_REG, C_NONE, C_NONE, C_REG, 17, 0},
-
-	// find leftmost one
-	Optab{AFLOGR, C_REG, C_NONE, C_NONE, C_REG, 8, 0},
-
-	// compare
-	Optab{ACMP, C_REG, C_NONE, C_NONE, C_REG, 70, 0},
-	Optab{ACMP, C_REG, C_NONE, C_NONE, C_LCON, 71, 0},
-	Optab{ACMPU, C_REG, C_NONE, C_NONE, C_REG, 70, 0},
-	Optab{ACMPU, C_REG, C_NONE, C_NONE, C_LCON, 71, 0},
-	Optab{AFCMPO, C_FREG, C_NONE, C_NONE, C_FREG, 70, 0},
-	Optab{AFCMPO, C_FREG, C_REG, C_NONE, C_FREG, 70, 0},
-
-	// test under mask
-	Optab{ATMHH, C_REG, C_NONE, C_NONE, C_ANDCON, 91, 0},
-
-	// 32-bit access registers
-	Optab{AMOVW, C_AREG, C_NONE, C_NONE, C_REG, 68, 0},
-	Optab{AMOVWZ, C_AREG, C_NONE, C_NONE, C_REG, 68, 0},
-	Optab{AMOVW, C_REG, C_NONE, C_NONE, C_AREG, 69, 0},
-	Optab{AMOVWZ, C_REG, C_NONE, C_NONE, C_AREG, 69, 0},
-
-	// macros
-	Optab{ACLEAR, C_LCON, C_NONE, C_NONE, C_LOREG, 96, 0},
-	Optab{ACLEAR, C_LCON, C_NONE, C_NONE, C_LAUTO, 96, REGSP},
-
-	// load/store multiple
-	Optab{ASTMG, C_REG, C_REG, C_NONE, C_LOREG, 97, 0},
-	Optab{ASTMG, C_REG, C_REG, C_NONE, C_LAUTO, 97, REGSP},
-	Optab{ALMG, C_LOREG, C_REG, C_NONE, C_REG, 98, 0},
-	Optab{ALMG, C_LAUTO, C_REG, C_NONE, C_REG, 98, REGSP},
-
-	// bytes
-	Optab{ABYTE, C_SCON, C_NONE, C_NONE, C_NONE, 40, 0},
-	Optab{AWORD, C_LCON, C_NONE, C_NONE, C_NONE, 40, 0},
-	Optab{ADWORD, C_LCON, C_NONE, C_NONE, C_NONE, 31, 0},
-	Optab{ADWORD, C_DCON, C_NONE, C_NONE, C_NONE, 31, 0},
-
-	// fast synchronization
-	Optab{ASYNC, C_NONE, C_NONE, C_NONE, C_NONE, 80, 0},
-
-	// store clock
-	Optab{ASTCK, C_NONE, C_NONE, C_NONE, C_SAUTO, 88, REGSP},
-	Optab{ASTCK, C_NONE, C_NONE, C_NONE, C_SOREG, 88, 0},
-
-	// storage and storage
-	Optab{AMVC, C_SCON, C_NONE, C_LOREG, C_LOREG, 84, 0},
-	Optab{AMVC, C_SCON, C_NONE, C_LOREG, C_LAUTO, 84, REGSP},
-	Optab{AMVC, C_SCON, C_NONE, C_LAUTO, C_LAUTO, 84, REGSP},
-
-	// address
-	Optab{ALARL, C_LCON, C_NONE, C_NONE, C_REG, 85, 0},
-	Optab{ALARL, C_SYMADDR, C_NONE, C_NONE, C_REG, 85, 0},
-	Optab{ALA, C_SOREG, C_NONE, C_NONE, C_REG, 86, 0},
-	Optab{ALA, C_SAUTO, C_NONE, C_NONE, C_REG, 86, REGSP},
-	Optab{AEXRL, C_SYMADDR, C_NONE, C_NONE, C_REG, 87, 0},
-
-	// misc
-	Optab{obj.AUNDEF, C_NONE, C_NONE, C_NONE, C_NONE, 78, 0},
-	Optab{obj.APCDATA, C_LCON, C_NONE, C_NONE, C_LCON, 0, 0},
-	Optab{obj.AFUNCDATA, C_SCON, C_NONE, C_NONE, C_ADDR, 0, 0},
-	Optab{obj.ANOP, C_NONE, C_NONE, C_NONE, C_NONE, 0, 0},
-	Optab{obj.ANOP, C_SAUTO, C_NONE, C_NONE, C_NONE, 0, 0},
-
-	// vector instructions
-
-	// VRX store
-	Optab{AVST, C_VREG, C_NONE, C_NONE, C_SOREG, 100, 0},
-	Optab{AVST, C_VREG, C_NONE, C_NONE, C_SAUTO, 100, REGSP},
-	Optab{AVSTEG, C_SCON, C_VREG, C_NONE, C_SOREG, 100, 0},
-	Optab{AVSTEG, C_SCON, C_VREG, C_NONE, C_SAUTO, 100, REGSP},
-
-	// VRX load
-	Optab{AVL, C_SOREG, C_NONE, C_NONE, C_VREG, 101, 0},
-	Optab{AVL, C_SAUTO, C_NONE, C_NONE, C_VREG, 101, REGSP},
-	Optab{AVLEG, C_SCON, C_NONE, C_SOREG, C_VREG, 101, 0},
-	Optab{AVLEG, C_SCON, C_NONE, C_SAUTO, C_VREG, 101, REGSP},
-
-	// VRV scatter
-	Optab{AVSCEG, C_SCON, C_VREG, C_NONE, C_SOREG, 102, 0},
-	Optab{AVSCEG, C_SCON, C_VREG, C_NONE, C_SAUTO, 102, REGSP},
-
-	// VRV gather
-	Optab{AVGEG, C_SCON, C_NONE, C_SOREG, C_VREG, 103, 0},
-	Optab{AVGEG, C_SCON, C_NONE, C_SAUTO, C_VREG, 103, REGSP},
-
-	// VRS element shift/rotate and load gr to/from vr element
-	Optab{AVESLG, C_SCON, C_VREG, C_NONE, C_VREG, 104, 0},
-	Optab{AVESLG, C_REG, C_VREG, C_NONE, C_VREG, 104, 0},
-	Optab{AVESLG, C_SCON, C_NONE, C_NONE, C_VREG, 104, 0},
-	Optab{AVESLG, C_REG, C_NONE, C_NONE, C_VREG, 104, 0},
-	Optab{AVLGVG, C_SCON, C_VREG, C_NONE, C_REG, 104, 0},
-	Optab{AVLGVG, C_REG, C_VREG, C_NONE, C_REG, 104, 0},
-	Optab{AVLVGG, C_SCON, C_REG, C_NONE, C_VREG, 104, 0},
-	Optab{AVLVGG, C_REG, C_REG, C_NONE, C_VREG, 104, 0},
-
-	// VRS store multiple
-	Optab{AVSTM, C_VREG, C_VREG, C_NONE, C_SOREG, 105, 0},
-	Optab{AVSTM, C_VREG, C_VREG, C_NONE, C_SAUTO, 105, REGSP},
-
-	// VRS load multiple
-	Optab{AVLM, C_SOREG, C_VREG, C_NONE, C_VREG, 106, 0},
-	Optab{AVLM, C_SAUTO, C_VREG, C_NONE, C_VREG, 106, REGSP},
-
-	// VRS store with length
-	Optab{AVSTL, C_REG, C_VREG, C_NONE, C_SOREG, 107, 0},
-	Optab{AVSTL, C_REG, C_VREG, C_NONE, C_SAUTO, 107, REGSP},
-
-	// VRS load with length
-	Optab{AVLL, C_REG, C_NONE, C_SOREG, C_VREG, 108, 0},
-	Optab{AVLL, C_REG, C_NONE, C_SAUTO, C_VREG, 108, REGSP},
-
-	// VRI-a
-	Optab{AVGBM, C_ANDCON, C_NONE, C_NONE, C_VREG, 109, 0},
-	Optab{AVZERO, C_NONE, C_NONE, C_NONE, C_VREG, 109, 0},
-	Optab{AVREPIG, C_ADDCON, C_NONE, C_NONE, C_VREG, 109, 0},
-	Optab{AVREPIG, C_SCON, C_NONE, C_NONE, C_VREG, 109, 0},
-	Optab{AVLEIG, C_SCON, C_NONE, C_ADDCON, C_VREG, 109, 0},
-	Optab{AVLEIG, C_SCON, C_NONE, C_SCON, C_VREG, 109, 0},
-
-	// VRI-b generate mask
-	Optab{AVGMG, C_SCON, C_NONE, C_SCON, C_VREG, 110, 0},
-
-	// VRI-c replicate
-	Optab{AVREPG, C_UCON, C_VREG, C_NONE, C_VREG, 111, 0},
-
-	// VRI-d element rotate and insert under mask and
-	// shift left double by byte
-	Optab{AVERIMG, C_SCON, C_VREG, C_VREG, C_VREG, 112, 0},
-	Optab{AVSLDB, C_SCON, C_VREG, C_VREG, C_VREG, 112, 0},
-
-	// VRI-d fp test data class immediate
-	Optab{AVFTCIDB, C_SCON, C_VREG, C_NONE, C_VREG, 113, 0},
-
-	// VRR-a load reg
-	Optab{AVLR, C_VREG, C_NONE, C_NONE, C_VREG, 114, 0},
-
-	// VRR-a compare
-	Optab{AVECG, C_VREG, C_NONE, C_NONE, C_VREG, 115, 0},
-
-	// VRR-b
-	Optab{AVCEQG, C_VREG, C_VREG, C_NONE, C_VREG, 117, 0},
-	Optab{AVFAEF, C_VREG, C_VREG, C_NONE, C_VREG, 117, 0},
-	Optab{AVPKSG, C_VREG, C_VREG, C_NONE, C_VREG, 117, 0},
-
-	// VRR-c
-	Optab{AVAQ, C_VREG, C_VREG, C_NONE, C_VREG, 118, 0},
-	Optab{AVAQ, C_VREG, C_NONE, C_NONE, C_VREG, 118, 0},
-	Optab{AVNOT, C_VREG, C_NONE, C_NONE, C_VREG, 118, 0},
-	Optab{AVPDI, C_SCON, C_VREG, C_VREG, C_VREG, 123, 0},
-
-	// VRR-c shifts
-	Optab{AVERLLVG, C_VREG, C_VREG, C_NONE, C_VREG, 119, 0},
-	Optab{AVERLLVG, C_VREG, C_NONE, C_NONE, C_VREG, 119, 0},
-
-	// VRR-d
-	//             2       3       1       4
-	Optab{AVACQ, C_VREG, C_VREG, C_VREG, C_VREG, 120, 0},
-
-	// VRR-e
-	Optab{AVSEL, C_VREG, C_VREG, C_VREG, C_VREG, 121, 0},
-
-	// VRR-f
-	Optab{AVLVGP, C_REG, C_REG, C_NONE, C_VREG, 122, 0},
-}
-
-var oprange [ALAST & obj.AMask][]Optab
-
-var xcmp [C_NCLASS][C_NCLASS]bool
-
-func spanz(ctxt *obj.Link, cursym *obj.LSym, newprog obj.ProgAlloc) {
+func (pstate *PackageState) spanz(ctxt *obj.Link, cursym *obj.LSym, newprog obj.ProgAlloc) {
 	p := cursym.Func.Text
 	if p == nil || p.Link == nil { // handle external functions and ELF section symbols
 		return
 	}
 
-	if oprange[AORW&obj.AMask] == nil {
+	if pstate.oprange[AORW&obj.AMask] == nil {
 		ctxt.Diag("s390x ops not initialized, call s390x.buildop first")
 	}
 
@@ -441,11 +94,11 @@ func spanz(ctxt *obj.Link, cursym *obj.LSym, newprog obj.ProgAlloc) {
 			}
 			p.Pc = pc
 			c.pc = p.Pc
-			c.asmout(p, &buffer)
+			c.asmout(pstate, p, &buffer)
 			if pc == int64(len(buffer)) {
 				switch p.As {
 				case obj.ANOP, obj.AFUNCDATA, obj.APCDATA, obj.ATEXT:
-					// ok
+				// ok
 				default:
 					c.ctxt.Diag("zero-width instruction\n%v", p)
 				}
@@ -646,10 +299,10 @@ func (c *ctxtz) aclass(a *obj.Addr) int {
 	return C_GOK
 }
 
-func (c *ctxtz) oplook(p *obj.Prog) *Optab {
+func (c *ctxtz) oplook(pstate *PackageState, p *obj.Prog) *Optab {
 	a1 := int(p.Optab)
 	if a1 != 0 {
-		return &optab[a1-1]
+		return &pstate.optab[a1-1]
 	}
 	a1 = int(p.From.Class)
 	if a1 == 0 {
@@ -688,21 +341,21 @@ func (c *ctxtz) oplook(p *obj.Prog) *Optab {
 		}
 	}
 
-	ops := oprange[p.As&obj.AMask]
-	c1 := &xcmp[a1]
-	c2 := &xcmp[a2]
-	c3 := &xcmp[a3]
-	c4 := &xcmp[a4]
+	ops := pstate.oprange[p.As&obj.AMask]
+	c1 := &pstate.xcmp[a1]
+	c2 := &pstate.xcmp[a2]
+	c3 := &pstate.xcmp[a3]
+	c4 := &pstate.xcmp[a4]
 	for i := range ops {
 		op := &ops[i]
 		if (int(op.a2) == a2 || c2[op.a2]) && c4[op.a4] && c1[op.a1] && c3[op.a3] {
-			p.Optab = uint16(cap(optab) - cap(ops) + i + 1)
+			p.Optab = uint16(cap(pstate.optab) - cap(ops) + i + 1)
 			return op
 		}
 	}
 
 	// cannot find a case; abort
-	c.ctxt.Diag("illegal combination %v %v %v %v %v\n", p.As, DRconv(a1), DRconv(a2), DRconv(a3), DRconv(a4))
+	c.ctxt.Diag("illegal combination %v %v %v %v %v\n", p.As, pstate.DRconv(a1), pstate.DRconv(a2), pstate.DRconv(a3), pstate.DRconv(a4))
 	c.ctxt.Diag("prog: %v\n", p)
 	return nil
 }
@@ -809,12 +462,12 @@ func (x ocmp) Less(i, j int) bool {
 	}
 	return false
 }
-func opset(a, b obj.As) {
-	oprange[a&obj.AMask] = oprange[b&obj.AMask]
+func (pstate *PackageState) opset(a, b obj.As) {
+	pstate.oprange[a&obj.AMask] = pstate.oprange[b&obj.AMask]
 }
 
-func buildop(ctxt *obj.Link) {
-	if oprange[AORW&obj.AMask] != nil {
+func (pstate *PackageState) buildop(ctxt *obj.Link) {
+	if pstate.oprange[AORW&obj.AMask] != nil {
 		// Already initialized; stop now.
 		// This happens in the cmd/asm tests,
 		// each of which re-initializes the arch.
@@ -824,564 +477,564 @@ func buildop(ctxt *obj.Link) {
 	for i := 0; i < C_NCLASS; i++ {
 		for n := 0; n < C_NCLASS; n++ {
 			if cmp(n, i) {
-				xcmp[i][n] = true
+				pstate.xcmp[i][n] = true
 			}
 		}
 	}
-	sort.Sort(ocmp(optab))
-	for i := 0; i < len(optab); i++ {
-		r := optab[i].as
+	sort.Sort(ocmp(pstate.optab))
+	for i := 0; i < len(pstate.optab); i++ {
+		r := pstate.optab[i].as
 		start := i
-		for ; i+1 < len(optab); i++ {
-			if optab[i+1].as != r {
+		for ; i+1 < len(pstate.optab); i++ {
+			if pstate.optab[i+1].as != r {
 				break
 			}
 		}
-		oprange[r&obj.AMask] = optab[start : i+1]
+		pstate.oprange[r&obj.AMask] = pstate.optab[start : i+1]
 
 		// opset() aliases optab ranges for similar instructions, to reduce the number of optabs in the array.
 		// oprange[] is used by oplook() to find the Optab entry that applies to a given Prog.
 		switch r {
 		case AADD:
-			opset(AADDC, r)
-			opset(AADDW, r)
-			opset(AMULLD, r)
-			opset(AMULLW, r)
+			pstate.opset(AADDC, r)
+			pstate.opset(AADDW, r)
+			pstate.opset(AMULLD, r)
+			pstate.opset(AMULLW, r)
 		case ADIVW:
-			opset(AADDE, r)
-			opset(ADIVD, r)
-			opset(ADIVDU, r)
-			opset(ADIVWU, r)
-			opset(AMODD, r)
-			opset(AMODDU, r)
-			opset(AMODW, r)
-			opset(AMODWU, r)
+			pstate.opset(AADDE, r)
+			pstate.opset(ADIVD, r)
+			pstate.opset(ADIVDU, r)
+			pstate.opset(ADIVWU, r)
+			pstate.opset(AMODD, r)
+			pstate.opset(AMODDU, r)
+			pstate.opset(AMODW, r)
+			pstate.opset(AMODWU, r)
 		case AMULHD:
-			opset(AMULHDU, r)
+			pstate.opset(AMULHDU, r)
 		case AMOVBZ:
-			opset(AMOVH, r)
-			opset(AMOVHZ, r)
+			pstate.opset(AMOVH, r)
+			pstate.opset(AMOVHZ, r)
 		case ALA:
-			opset(ALAY, r)
+			pstate.opset(ALAY, r)
 		case AMVC:
-			opset(ACLC, r)
-			opset(AXC, r)
-			opset(AOC, r)
-			opset(ANC, r)
+			pstate.opset(ACLC, r)
+			pstate.opset(AXC, r)
+			pstate.opset(AOC, r)
+			pstate.opset(ANC, r)
 		case ASTCK:
-			opset(ASTCKC, r)
-			opset(ASTCKE, r)
-			opset(ASTCKF, r)
+			pstate.opset(ASTCKC, r)
+			pstate.opset(ASTCKE, r)
+			pstate.opset(ASTCKF, r)
 		case ALAAG:
-			opset(ALAA, r)
-			opset(ALAAL, r)
-			opset(ALAALG, r)
-			opset(ALAN, r)
-			opset(ALANG, r)
-			opset(ALAX, r)
-			opset(ALAXG, r)
-			opset(ALAO, r)
-			opset(ALAOG, r)
+			pstate.opset(ALAA, r)
+			pstate.opset(ALAAL, r)
+			pstate.opset(ALAALG, r)
+			pstate.opset(ALAN, r)
+			pstate.opset(ALANG, r)
+			pstate.opset(ALAX, r)
+			pstate.opset(ALAXG, r)
+			pstate.opset(ALAO, r)
+			pstate.opset(ALAOG, r)
 		case ASTMG:
-			opset(ASTMY, r)
+			pstate.opset(ASTMY, r)
 		case ALMG:
-			opset(ALMY, r)
+			pstate.opset(ALMY, r)
 		case ABEQ:
-			opset(ABGE, r)
-			opset(ABGT, r)
-			opset(ABLE, r)
-			opset(ABLT, r)
-			opset(ABNE, r)
-			opset(ABVC, r)
-			opset(ABVS, r)
-			opset(ABLEU, r)
-			opset(ABLTU, r)
+			pstate.opset(ABGE, r)
+			pstate.opset(ABGT, r)
+			pstate.opset(ABLE, r)
+			pstate.opset(ABLT, r)
+			pstate.opset(ABNE, r)
+			pstate.opset(ABVC, r)
+			pstate.opset(ABVS, r)
+			pstate.opset(ABLEU, r)
+			pstate.opset(ABLTU, r)
 		case ABR:
-			opset(ABL, r)
+			pstate.opset(ABL, r)
 		case ABC:
-			opset(ABCL, r)
+			pstate.opset(ABCL, r)
 		case AFABS:
-			opset(AFNABS, r)
-			opset(ALPDFR, r)
-			opset(ALNDFR, r)
-			opset(AFNEG, r)
-			opset(AFNEGS, r)
-			opset(ALEDBR, r)
-			opset(ALDEBR, r)
-			opset(AFSQRT, r)
-			opset(AFSQRTS, r)
+			pstate.opset(AFNABS, r)
+			pstate.opset(ALPDFR, r)
+			pstate.opset(ALNDFR, r)
+			pstate.opset(AFNEG, r)
+			pstate.opset(AFNEGS, r)
+			pstate.opset(ALEDBR, r)
+			pstate.opset(ALDEBR, r)
+			pstate.opset(AFSQRT, r)
+			pstate.opset(AFSQRTS, r)
 		case AFADD:
-			opset(AFADDS, r)
-			opset(AFDIV, r)
-			opset(AFDIVS, r)
-			opset(AFSUB, r)
-			opset(AFSUBS, r)
+			pstate.opset(AFADDS, r)
+			pstate.opset(AFDIV, r)
+			pstate.opset(AFDIVS, r)
+			pstate.opset(AFSUB, r)
+			pstate.opset(AFSUBS, r)
 		case AFMADD:
-			opset(AFMADDS, r)
-			opset(AFMSUB, r)
-			opset(AFMSUBS, r)
+			pstate.opset(AFMADDS, r)
+			pstate.opset(AFMSUB, r)
+			pstate.opset(AFMSUBS, r)
 		case AFMUL:
-			opset(AFMULS, r)
+			pstate.opset(AFMULS, r)
 		case AFCMPO:
-			opset(AFCMPU, r)
-			opset(ACEBR, r)
+			pstate.opset(AFCMPU, r)
+			pstate.opset(ACEBR, r)
 		case AAND:
-			opset(AOR, r)
-			opset(AXOR, r)
+			pstate.opset(AOR, r)
+			pstate.opset(AXOR, r)
 		case AANDW:
-			opset(AORW, r)
-			opset(AXORW, r)
+			pstate.opset(AORW, r)
+			pstate.opset(AXORW, r)
 		case ASLD:
-			opset(ASRD, r)
-			opset(ASLW, r)
-			opset(ASRW, r)
-			opset(ASRAD, r)
-			opset(ASRAW, r)
-			opset(ARLL, r)
-			opset(ARLLG, r)
+			pstate.opset(ASRD, r)
+			pstate.opset(ASLW, r)
+			pstate.opset(ASRW, r)
+			pstate.opset(ASRAD, r)
+			pstate.opset(ASRAW, r)
+			pstate.opset(ARLL, r)
+			pstate.opset(ARLLG, r)
 		case ACSG:
-			opset(ACS, r)
+			pstate.opset(ACS, r)
 		case ASUB:
-			opset(ASUBC, r)
-			opset(ASUBE, r)
-			opset(ASUBW, r)
+			pstate.opset(ASUBC, r)
+			pstate.opset(ASUBE, r)
+			pstate.opset(ASUBW, r)
 		case ANEG:
-			opset(ANEGW, r)
+			pstate.opset(ANEGW, r)
 		case AFMOVD:
-			opset(AFMOVS, r)
+			pstate.opset(AFMOVS, r)
 		case AMOVDBR:
-			opset(AMOVWBR, r)
+			pstate.opset(AMOVWBR, r)
 		case ACMP:
-			opset(ACMPW, r)
+			pstate.opset(ACMPW, r)
 		case ACMPU:
-			opset(ACMPWU, r)
+			pstate.opset(ACMPWU, r)
 		case ATMHH:
-			opset(ATMHL, r)
-			opset(ATMLH, r)
-			opset(ATMLL, r)
+			pstate.opset(ATMHL, r)
+			pstate.opset(ATMLH, r)
+			pstate.opset(ATMLL, r)
 		case ACEFBRA:
-			opset(ACDFBRA, r)
-			opset(ACEGBRA, r)
-			opset(ACDGBRA, r)
-			opset(ACELFBR, r)
-			opset(ACDLFBR, r)
-			opset(ACELGBR, r)
-			opset(ACDLGBR, r)
+			pstate.opset(ACDFBRA, r)
+			pstate.opset(ACEGBRA, r)
+			pstate.opset(ACDGBRA, r)
+			pstate.opset(ACELFBR, r)
+			pstate.opset(ACDLFBR, r)
+			pstate.opset(ACELGBR, r)
+			pstate.opset(ACDLGBR, r)
 		case ACFEBRA:
-			opset(ACFDBRA, r)
-			opset(ACGEBRA, r)
-			opset(ACGDBRA, r)
-			opset(ACLFEBR, r)
-			opset(ACLFDBR, r)
-			opset(ACLGEBR, r)
-			opset(ACLGDBR, r)
+			pstate.opset(ACFDBRA, r)
+			pstate.opset(ACGEBRA, r)
+			pstate.opset(ACGDBRA, r)
+			pstate.opset(ACLFEBR, r)
+			pstate.opset(ACLFDBR, r)
+			pstate.opset(ACLGEBR, r)
+			pstate.opset(ACLGDBR, r)
 		case AFIEBR:
-			opset(AFIDBR, r)
+			pstate.opset(AFIDBR, r)
 		case ACMPBEQ:
-			opset(ACMPBGE, r)
-			opset(ACMPBGT, r)
-			opset(ACMPBLE, r)
-			opset(ACMPBLT, r)
-			opset(ACMPBNE, r)
+			pstate.opset(ACMPBGE, r)
+			pstate.opset(ACMPBGT, r)
+			pstate.opset(ACMPBLE, r)
+			pstate.opset(ACMPBLT, r)
+			pstate.opset(ACMPBNE, r)
 		case ACMPUBEQ:
-			opset(ACMPUBGE, r)
-			opset(ACMPUBGT, r)
-			opset(ACMPUBLE, r)
-			opset(ACMPUBLT, r)
-			opset(ACMPUBNE, r)
+			pstate.opset(ACMPUBGE, r)
+			pstate.opset(ACMPUBGT, r)
+			pstate.opset(ACMPUBLE, r)
+			pstate.opset(ACMPUBLT, r)
+			pstate.opset(ACMPUBNE, r)
 		case AMOVDEQ:
-			opset(AMOVDGE, r)
-			opset(AMOVDGT, r)
-			opset(AMOVDLE, r)
-			opset(AMOVDLT, r)
-			opset(AMOVDNE, r)
+			pstate.opset(AMOVDGE, r)
+			pstate.opset(AMOVDGT, r)
+			pstate.opset(AMOVDLE, r)
+			pstate.opset(AMOVDLT, r)
+			pstate.opset(AMOVDNE, r)
 		case ALTDBR:
-			opset(ALTEBR, r)
+			pstate.opset(ALTEBR, r)
 		case ATCDB:
-			opset(ATCEB, r)
+			pstate.opset(ATCEB, r)
 		case AVL:
-			opset(AVLLEZB, r)
-			opset(AVLLEZH, r)
-			opset(AVLLEZF, r)
-			opset(AVLLEZG, r)
-			opset(AVLREPB, r)
-			opset(AVLREPH, r)
-			opset(AVLREPF, r)
-			opset(AVLREPG, r)
+			pstate.opset(AVLLEZB, r)
+			pstate.opset(AVLLEZH, r)
+			pstate.opset(AVLLEZF, r)
+			pstate.opset(AVLLEZG, r)
+			pstate.opset(AVLREPB, r)
+			pstate.opset(AVLREPH, r)
+			pstate.opset(AVLREPF, r)
+			pstate.opset(AVLREPG, r)
 		case AVLEG:
-			opset(AVLBB, r)
-			opset(AVLEB, r)
-			opset(AVLEH, r)
-			opset(AVLEF, r)
-			opset(AVLEG, r)
-			opset(AVLREP, r)
+			pstate.opset(AVLBB, r)
+			pstate.opset(AVLEB, r)
+			pstate.opset(AVLEH, r)
+			pstate.opset(AVLEF, r)
+			pstate.opset(AVLEG, r)
+			pstate.opset(AVLREP, r)
 		case AVSTEG:
-			opset(AVSTEB, r)
-			opset(AVSTEH, r)
-			opset(AVSTEF, r)
+			pstate.opset(AVSTEB, r)
+			pstate.opset(AVSTEH, r)
+			pstate.opset(AVSTEF, r)
 		case AVSCEG:
-			opset(AVSCEF, r)
+			pstate.opset(AVSCEF, r)
 		case AVGEG:
-			opset(AVGEF, r)
+			pstate.opset(AVGEF, r)
 		case AVESLG:
-			opset(AVESLB, r)
-			opset(AVESLH, r)
-			opset(AVESLF, r)
-			opset(AVERLLB, r)
-			opset(AVERLLH, r)
-			opset(AVERLLF, r)
-			opset(AVERLLG, r)
-			opset(AVESRAB, r)
-			opset(AVESRAH, r)
-			opset(AVESRAF, r)
-			opset(AVESRAG, r)
-			opset(AVESRLB, r)
-			opset(AVESRLH, r)
-			opset(AVESRLF, r)
-			opset(AVESRLG, r)
+			pstate.opset(AVESLB, r)
+			pstate.opset(AVESLH, r)
+			pstate.opset(AVESLF, r)
+			pstate.opset(AVERLLB, r)
+			pstate.opset(AVERLLH, r)
+			pstate.opset(AVERLLF, r)
+			pstate.opset(AVERLLG, r)
+			pstate.opset(AVESRAB, r)
+			pstate.opset(AVESRAH, r)
+			pstate.opset(AVESRAF, r)
+			pstate.opset(AVESRAG, r)
+			pstate.opset(AVESRLB, r)
+			pstate.opset(AVESRLH, r)
+			pstate.opset(AVESRLF, r)
+			pstate.opset(AVESRLG, r)
 		case AVLGVG:
-			opset(AVLGVB, r)
-			opset(AVLGVH, r)
-			opset(AVLGVF, r)
+			pstate.opset(AVLGVB, r)
+			pstate.opset(AVLGVH, r)
+			pstate.opset(AVLGVF, r)
 		case AVLVGG:
-			opset(AVLVGB, r)
-			opset(AVLVGH, r)
-			opset(AVLVGF, r)
+			pstate.opset(AVLVGB, r)
+			pstate.opset(AVLVGH, r)
+			pstate.opset(AVLVGF, r)
 		case AVZERO:
-			opset(AVONE, r)
+			pstate.opset(AVONE, r)
 		case AVREPIG:
-			opset(AVREPIB, r)
-			opset(AVREPIH, r)
-			opset(AVREPIF, r)
+			pstate.opset(AVREPIB, r)
+			pstate.opset(AVREPIH, r)
+			pstate.opset(AVREPIF, r)
 		case AVLEIG:
-			opset(AVLEIB, r)
-			opset(AVLEIH, r)
-			opset(AVLEIF, r)
+			pstate.opset(AVLEIB, r)
+			pstate.opset(AVLEIH, r)
+			pstate.opset(AVLEIF, r)
 		case AVGMG:
-			opset(AVGMB, r)
-			opset(AVGMH, r)
-			opset(AVGMF, r)
+			pstate.opset(AVGMB, r)
+			pstate.opset(AVGMH, r)
+			pstate.opset(AVGMF, r)
 		case AVREPG:
-			opset(AVREPB, r)
-			opset(AVREPH, r)
-			opset(AVREPF, r)
+			pstate.opset(AVREPB, r)
+			pstate.opset(AVREPH, r)
+			pstate.opset(AVREPF, r)
 		case AVERIMG:
-			opset(AVERIMB, r)
-			opset(AVERIMH, r)
-			opset(AVERIMF, r)
+			pstate.opset(AVERIMB, r)
+			pstate.opset(AVERIMH, r)
+			pstate.opset(AVERIMF, r)
 		case AVFTCIDB:
-			opset(AWFTCIDB, r)
+			pstate.opset(AWFTCIDB, r)
 		case AVLR:
-			opset(AVUPHB, r)
-			opset(AVUPHH, r)
-			opset(AVUPHF, r)
-			opset(AVUPLHB, r)
-			opset(AVUPLHH, r)
-			opset(AVUPLHF, r)
-			opset(AVUPLB, r)
-			opset(AVUPLHW, r)
-			opset(AVUPLF, r)
-			opset(AVUPLLB, r)
-			opset(AVUPLLH, r)
-			opset(AVUPLLF, r)
-			opset(AVCLZB, r)
-			opset(AVCLZH, r)
-			opset(AVCLZF, r)
-			opset(AVCLZG, r)
-			opset(AVCTZB, r)
-			opset(AVCTZH, r)
-			opset(AVCTZF, r)
-			opset(AVCTZG, r)
-			opset(AVLDEB, r)
-			opset(AWLDEB, r)
-			opset(AVFLCDB, r)
-			opset(AWFLCDB, r)
-			opset(AVFLNDB, r)
-			opset(AWFLNDB, r)
-			opset(AVFLPDB, r)
-			opset(AWFLPDB, r)
-			opset(AVFSQDB, r)
-			opset(AWFSQDB, r)
-			opset(AVISTRB, r)
-			opset(AVISTRH, r)
-			opset(AVISTRF, r)
-			opset(AVISTRBS, r)
-			opset(AVISTRHS, r)
-			opset(AVISTRFS, r)
-			opset(AVLCB, r)
-			opset(AVLCH, r)
-			opset(AVLCF, r)
-			opset(AVLCG, r)
-			opset(AVLPB, r)
-			opset(AVLPH, r)
-			opset(AVLPF, r)
-			opset(AVLPG, r)
-			opset(AVPOPCT, r)
-			opset(AVSEGB, r)
-			opset(AVSEGH, r)
-			opset(AVSEGF, r)
+			pstate.opset(AVUPHB, r)
+			pstate.opset(AVUPHH, r)
+			pstate.opset(AVUPHF, r)
+			pstate.opset(AVUPLHB, r)
+			pstate.opset(AVUPLHH, r)
+			pstate.opset(AVUPLHF, r)
+			pstate.opset(AVUPLB, r)
+			pstate.opset(AVUPLHW, r)
+			pstate.opset(AVUPLF, r)
+			pstate.opset(AVUPLLB, r)
+			pstate.opset(AVUPLLH, r)
+			pstate.opset(AVUPLLF, r)
+			pstate.opset(AVCLZB, r)
+			pstate.opset(AVCLZH, r)
+			pstate.opset(AVCLZF, r)
+			pstate.opset(AVCLZG, r)
+			pstate.opset(AVCTZB, r)
+			pstate.opset(AVCTZH, r)
+			pstate.opset(AVCTZF, r)
+			pstate.opset(AVCTZG, r)
+			pstate.opset(AVLDEB, r)
+			pstate.opset(AWLDEB, r)
+			pstate.opset(AVFLCDB, r)
+			pstate.opset(AWFLCDB, r)
+			pstate.opset(AVFLNDB, r)
+			pstate.opset(AWFLNDB, r)
+			pstate.opset(AVFLPDB, r)
+			pstate.opset(AWFLPDB, r)
+			pstate.opset(AVFSQDB, r)
+			pstate.opset(AWFSQDB, r)
+			pstate.opset(AVISTRB, r)
+			pstate.opset(AVISTRH, r)
+			pstate.opset(AVISTRF, r)
+			pstate.opset(AVISTRBS, r)
+			pstate.opset(AVISTRHS, r)
+			pstate.opset(AVISTRFS, r)
+			pstate.opset(AVLCB, r)
+			pstate.opset(AVLCH, r)
+			pstate.opset(AVLCF, r)
+			pstate.opset(AVLCG, r)
+			pstate.opset(AVLPB, r)
+			pstate.opset(AVLPH, r)
+			pstate.opset(AVLPF, r)
+			pstate.opset(AVLPG, r)
+			pstate.opset(AVPOPCT, r)
+			pstate.opset(AVSEGB, r)
+			pstate.opset(AVSEGH, r)
+			pstate.opset(AVSEGF, r)
 		case AVECG:
-			opset(AVECB, r)
-			opset(AVECH, r)
-			opset(AVECF, r)
-			opset(AVECLB, r)
-			opset(AVECLH, r)
-			opset(AVECLF, r)
-			opset(AVECLG, r)
-			opset(AWFCDB, r)
-			opset(AWFKDB, r)
+			pstate.opset(AVECB, r)
+			pstate.opset(AVECH, r)
+			pstate.opset(AVECF, r)
+			pstate.opset(AVECLB, r)
+			pstate.opset(AVECLH, r)
+			pstate.opset(AVECLF, r)
+			pstate.opset(AVECLG, r)
+			pstate.opset(AWFCDB, r)
+			pstate.opset(AWFKDB, r)
 		case AVCEQG:
-			opset(AVCEQB, r)
-			opset(AVCEQH, r)
-			opset(AVCEQF, r)
-			opset(AVCEQBS, r)
-			opset(AVCEQHS, r)
-			opset(AVCEQFS, r)
-			opset(AVCEQGS, r)
-			opset(AVCHB, r)
-			opset(AVCHH, r)
-			opset(AVCHF, r)
-			opset(AVCHG, r)
-			opset(AVCHBS, r)
-			opset(AVCHHS, r)
-			opset(AVCHFS, r)
-			opset(AVCHGS, r)
-			opset(AVCHLB, r)
-			opset(AVCHLH, r)
-			opset(AVCHLF, r)
-			opset(AVCHLG, r)
-			opset(AVCHLBS, r)
-			opset(AVCHLHS, r)
-			opset(AVCHLFS, r)
-			opset(AVCHLGS, r)
+			pstate.opset(AVCEQB, r)
+			pstate.opset(AVCEQH, r)
+			pstate.opset(AVCEQF, r)
+			pstate.opset(AVCEQBS, r)
+			pstate.opset(AVCEQHS, r)
+			pstate.opset(AVCEQFS, r)
+			pstate.opset(AVCEQGS, r)
+			pstate.opset(AVCHB, r)
+			pstate.opset(AVCHH, r)
+			pstate.opset(AVCHF, r)
+			pstate.opset(AVCHG, r)
+			pstate.opset(AVCHBS, r)
+			pstate.opset(AVCHHS, r)
+			pstate.opset(AVCHFS, r)
+			pstate.opset(AVCHGS, r)
+			pstate.opset(AVCHLB, r)
+			pstate.opset(AVCHLH, r)
+			pstate.opset(AVCHLF, r)
+			pstate.opset(AVCHLG, r)
+			pstate.opset(AVCHLBS, r)
+			pstate.opset(AVCHLHS, r)
+			pstate.opset(AVCHLFS, r)
+			pstate.opset(AVCHLGS, r)
 		case AVFAEF:
-			opset(AVFAEB, r)
-			opset(AVFAEH, r)
-			opset(AVFAEBS, r)
-			opset(AVFAEHS, r)
-			opset(AVFAEFS, r)
-			opset(AVFAEZB, r)
-			opset(AVFAEZH, r)
-			opset(AVFAEZF, r)
-			opset(AVFAEZBS, r)
-			opset(AVFAEZHS, r)
-			opset(AVFAEZFS, r)
-			opset(AVFEEB, r)
-			opset(AVFEEH, r)
-			opset(AVFEEF, r)
-			opset(AVFEEBS, r)
-			opset(AVFEEHS, r)
-			opset(AVFEEFS, r)
-			opset(AVFEEZB, r)
-			opset(AVFEEZH, r)
-			opset(AVFEEZF, r)
-			opset(AVFEEZBS, r)
-			opset(AVFEEZHS, r)
-			opset(AVFEEZFS, r)
-			opset(AVFENEB, r)
-			opset(AVFENEH, r)
-			opset(AVFENEF, r)
-			opset(AVFENEBS, r)
-			opset(AVFENEHS, r)
-			opset(AVFENEFS, r)
-			opset(AVFENEZB, r)
-			opset(AVFENEZH, r)
-			opset(AVFENEZF, r)
-			opset(AVFENEZBS, r)
-			opset(AVFENEZHS, r)
-			opset(AVFENEZFS, r)
+			pstate.opset(AVFAEB, r)
+			pstate.opset(AVFAEH, r)
+			pstate.opset(AVFAEBS, r)
+			pstate.opset(AVFAEHS, r)
+			pstate.opset(AVFAEFS, r)
+			pstate.opset(AVFAEZB, r)
+			pstate.opset(AVFAEZH, r)
+			pstate.opset(AVFAEZF, r)
+			pstate.opset(AVFAEZBS, r)
+			pstate.opset(AVFAEZHS, r)
+			pstate.opset(AVFAEZFS, r)
+			pstate.opset(AVFEEB, r)
+			pstate.opset(AVFEEH, r)
+			pstate.opset(AVFEEF, r)
+			pstate.opset(AVFEEBS, r)
+			pstate.opset(AVFEEHS, r)
+			pstate.opset(AVFEEFS, r)
+			pstate.opset(AVFEEZB, r)
+			pstate.opset(AVFEEZH, r)
+			pstate.opset(AVFEEZF, r)
+			pstate.opset(AVFEEZBS, r)
+			pstate.opset(AVFEEZHS, r)
+			pstate.opset(AVFEEZFS, r)
+			pstate.opset(AVFENEB, r)
+			pstate.opset(AVFENEH, r)
+			pstate.opset(AVFENEF, r)
+			pstate.opset(AVFENEBS, r)
+			pstate.opset(AVFENEHS, r)
+			pstate.opset(AVFENEFS, r)
+			pstate.opset(AVFENEZB, r)
+			pstate.opset(AVFENEZH, r)
+			pstate.opset(AVFENEZF, r)
+			pstate.opset(AVFENEZBS, r)
+			pstate.opset(AVFENEZHS, r)
+			pstate.opset(AVFENEZFS, r)
 		case AVPKSG:
-			opset(AVPKSH, r)
-			opset(AVPKSF, r)
-			opset(AVPKSHS, r)
-			opset(AVPKSFS, r)
-			opset(AVPKSGS, r)
-			opset(AVPKLSH, r)
-			opset(AVPKLSF, r)
-			opset(AVPKLSG, r)
-			opset(AVPKLSHS, r)
-			opset(AVPKLSFS, r)
-			opset(AVPKLSGS, r)
+			pstate.opset(AVPKSH, r)
+			pstate.opset(AVPKSF, r)
+			pstate.opset(AVPKSHS, r)
+			pstate.opset(AVPKSFS, r)
+			pstate.opset(AVPKSGS, r)
+			pstate.opset(AVPKLSH, r)
+			pstate.opset(AVPKLSF, r)
+			pstate.opset(AVPKLSG, r)
+			pstate.opset(AVPKLSHS, r)
+			pstate.opset(AVPKLSFS, r)
+			pstate.opset(AVPKLSGS, r)
 		case AVAQ:
-			opset(AVAB, r)
-			opset(AVAH, r)
-			opset(AVAF, r)
-			opset(AVAG, r)
-			opset(AVACCB, r)
-			opset(AVACCH, r)
-			opset(AVACCF, r)
-			opset(AVACCG, r)
-			opset(AVACCQ, r)
-			opset(AVN, r)
-			opset(AVNC, r)
-			opset(AVAVGB, r)
-			opset(AVAVGH, r)
-			opset(AVAVGF, r)
-			opset(AVAVGG, r)
-			opset(AVAVGLB, r)
-			opset(AVAVGLH, r)
-			opset(AVAVGLF, r)
-			opset(AVAVGLG, r)
-			opset(AVCKSM, r)
-			opset(AVX, r)
-			opset(AVFADB, r)
-			opset(AWFADB, r)
-			opset(AVFCEDB, r)
-			opset(AVFCEDBS, r)
-			opset(AWFCEDB, r)
-			opset(AWFCEDBS, r)
-			opset(AVFCHDB, r)
-			opset(AVFCHDBS, r)
-			opset(AWFCHDB, r)
-			opset(AWFCHDBS, r)
-			opset(AVFCHEDB, r)
-			opset(AVFCHEDBS, r)
-			opset(AWFCHEDB, r)
-			opset(AWFCHEDBS, r)
-			opset(AVFMDB, r)
-			opset(AWFMDB, r)
-			opset(AVGFMB, r)
-			opset(AVGFMH, r)
-			opset(AVGFMF, r)
-			opset(AVGFMG, r)
-			opset(AVMXB, r)
-			opset(AVMXH, r)
-			opset(AVMXF, r)
-			opset(AVMXG, r)
-			opset(AVMXLB, r)
-			opset(AVMXLH, r)
-			opset(AVMXLF, r)
-			opset(AVMXLG, r)
-			opset(AVMNB, r)
-			opset(AVMNH, r)
-			opset(AVMNF, r)
-			opset(AVMNG, r)
-			opset(AVMNLB, r)
-			opset(AVMNLH, r)
-			opset(AVMNLF, r)
-			opset(AVMNLG, r)
-			opset(AVMRHB, r)
-			opset(AVMRHH, r)
-			opset(AVMRHF, r)
-			opset(AVMRHG, r)
-			opset(AVMRLB, r)
-			opset(AVMRLH, r)
-			opset(AVMRLF, r)
-			opset(AVMRLG, r)
-			opset(AVMEB, r)
-			opset(AVMEH, r)
-			opset(AVMEF, r)
-			opset(AVMLEB, r)
-			opset(AVMLEH, r)
-			opset(AVMLEF, r)
-			opset(AVMOB, r)
-			opset(AVMOH, r)
-			opset(AVMOF, r)
-			opset(AVMLOB, r)
-			opset(AVMLOH, r)
-			opset(AVMLOF, r)
-			opset(AVMHB, r)
-			opset(AVMHH, r)
-			opset(AVMHF, r)
-			opset(AVMLHB, r)
-			opset(AVMLHH, r)
-			opset(AVMLHF, r)
-			opset(AVMLH, r)
-			opset(AVMLHW, r)
-			opset(AVMLF, r)
-			opset(AVNO, r)
-			opset(AVO, r)
-			opset(AVPKH, r)
-			opset(AVPKF, r)
-			opset(AVPKG, r)
-			opset(AVSUMGH, r)
-			opset(AVSUMGF, r)
-			opset(AVSUMQF, r)
-			opset(AVSUMQG, r)
-			opset(AVSUMB, r)
-			opset(AVSUMH, r)
+			pstate.opset(AVAB, r)
+			pstate.opset(AVAH, r)
+			pstate.opset(AVAF, r)
+			pstate.opset(AVAG, r)
+			pstate.opset(AVACCB, r)
+			pstate.opset(AVACCH, r)
+			pstate.opset(AVACCF, r)
+			pstate.opset(AVACCG, r)
+			pstate.opset(AVACCQ, r)
+			pstate.opset(AVN, r)
+			pstate.opset(AVNC, r)
+			pstate.opset(AVAVGB, r)
+			pstate.opset(AVAVGH, r)
+			pstate.opset(AVAVGF, r)
+			pstate.opset(AVAVGG, r)
+			pstate.opset(AVAVGLB, r)
+			pstate.opset(AVAVGLH, r)
+			pstate.opset(AVAVGLF, r)
+			pstate.opset(AVAVGLG, r)
+			pstate.opset(AVCKSM, r)
+			pstate.opset(AVX, r)
+			pstate.opset(AVFADB, r)
+			pstate.opset(AWFADB, r)
+			pstate.opset(AVFCEDB, r)
+			pstate.opset(AVFCEDBS, r)
+			pstate.opset(AWFCEDB, r)
+			pstate.opset(AWFCEDBS, r)
+			pstate.opset(AVFCHDB, r)
+			pstate.opset(AVFCHDBS, r)
+			pstate.opset(AWFCHDB, r)
+			pstate.opset(AWFCHDBS, r)
+			pstate.opset(AVFCHEDB, r)
+			pstate.opset(AVFCHEDBS, r)
+			pstate.opset(AWFCHEDB, r)
+			pstate.opset(AWFCHEDBS, r)
+			pstate.opset(AVFMDB, r)
+			pstate.opset(AWFMDB, r)
+			pstate.opset(AVGFMB, r)
+			pstate.opset(AVGFMH, r)
+			pstate.opset(AVGFMF, r)
+			pstate.opset(AVGFMG, r)
+			pstate.opset(AVMXB, r)
+			pstate.opset(AVMXH, r)
+			pstate.opset(AVMXF, r)
+			pstate.opset(AVMXG, r)
+			pstate.opset(AVMXLB, r)
+			pstate.opset(AVMXLH, r)
+			pstate.opset(AVMXLF, r)
+			pstate.opset(AVMXLG, r)
+			pstate.opset(AVMNB, r)
+			pstate.opset(AVMNH, r)
+			pstate.opset(AVMNF, r)
+			pstate.opset(AVMNG, r)
+			pstate.opset(AVMNLB, r)
+			pstate.opset(AVMNLH, r)
+			pstate.opset(AVMNLF, r)
+			pstate.opset(AVMNLG, r)
+			pstate.opset(AVMRHB, r)
+			pstate.opset(AVMRHH, r)
+			pstate.opset(AVMRHF, r)
+			pstate.opset(AVMRHG, r)
+			pstate.opset(AVMRLB, r)
+			pstate.opset(AVMRLH, r)
+			pstate.opset(AVMRLF, r)
+			pstate.opset(AVMRLG, r)
+			pstate.opset(AVMEB, r)
+			pstate.opset(AVMEH, r)
+			pstate.opset(AVMEF, r)
+			pstate.opset(AVMLEB, r)
+			pstate.opset(AVMLEH, r)
+			pstate.opset(AVMLEF, r)
+			pstate.opset(AVMOB, r)
+			pstate.opset(AVMOH, r)
+			pstate.opset(AVMOF, r)
+			pstate.opset(AVMLOB, r)
+			pstate.opset(AVMLOH, r)
+			pstate.opset(AVMLOF, r)
+			pstate.opset(AVMHB, r)
+			pstate.opset(AVMHH, r)
+			pstate.opset(AVMHF, r)
+			pstate.opset(AVMLHB, r)
+			pstate.opset(AVMLHH, r)
+			pstate.opset(AVMLHF, r)
+			pstate.opset(AVMLH, r)
+			pstate.opset(AVMLHW, r)
+			pstate.opset(AVMLF, r)
+			pstate.opset(AVNO, r)
+			pstate.opset(AVO, r)
+			pstate.opset(AVPKH, r)
+			pstate.opset(AVPKF, r)
+			pstate.opset(AVPKG, r)
+			pstate.opset(AVSUMGH, r)
+			pstate.opset(AVSUMGF, r)
+			pstate.opset(AVSUMQF, r)
+			pstate.opset(AVSUMQG, r)
+			pstate.opset(AVSUMB, r)
+			pstate.opset(AVSUMH, r)
 		case AVERLLVG:
-			opset(AVERLLVB, r)
-			opset(AVERLLVH, r)
-			opset(AVERLLVF, r)
-			opset(AVESLVB, r)
-			opset(AVESLVH, r)
-			opset(AVESLVF, r)
-			opset(AVESLVG, r)
-			opset(AVESRAVB, r)
-			opset(AVESRAVH, r)
-			opset(AVESRAVF, r)
-			opset(AVESRAVG, r)
-			opset(AVESRLVB, r)
-			opset(AVESRLVH, r)
-			opset(AVESRLVF, r)
-			opset(AVESRLVG, r)
-			opset(AVFDDB, r)
-			opset(AWFDDB, r)
-			opset(AVFSDB, r)
-			opset(AWFSDB, r)
-			opset(AVSL, r)
-			opset(AVSLB, r)
-			opset(AVSRA, r)
-			opset(AVSRAB, r)
-			opset(AVSRL, r)
-			opset(AVSRLB, r)
-			opset(AVSF, r)
-			opset(AVSG, r)
-			opset(AVSQ, r)
-			opset(AVSCBIB, r)
-			opset(AVSCBIH, r)
-			opset(AVSCBIF, r)
-			opset(AVSCBIG, r)
-			opset(AVSCBIQ, r)
+			pstate.opset(AVERLLVB, r)
+			pstate.opset(AVERLLVH, r)
+			pstate.opset(AVERLLVF, r)
+			pstate.opset(AVESLVB, r)
+			pstate.opset(AVESLVH, r)
+			pstate.opset(AVESLVF, r)
+			pstate.opset(AVESLVG, r)
+			pstate.opset(AVESRAVB, r)
+			pstate.opset(AVESRAVH, r)
+			pstate.opset(AVESRAVF, r)
+			pstate.opset(AVESRAVG, r)
+			pstate.opset(AVESRLVB, r)
+			pstate.opset(AVESRLVH, r)
+			pstate.opset(AVESRLVF, r)
+			pstate.opset(AVESRLVG, r)
+			pstate.opset(AVFDDB, r)
+			pstate.opset(AWFDDB, r)
+			pstate.opset(AVFSDB, r)
+			pstate.opset(AWFSDB, r)
+			pstate.opset(AVSL, r)
+			pstate.opset(AVSLB, r)
+			pstate.opset(AVSRA, r)
+			pstate.opset(AVSRAB, r)
+			pstate.opset(AVSRL, r)
+			pstate.opset(AVSRLB, r)
+			pstate.opset(AVSF, r)
+			pstate.opset(AVSG, r)
+			pstate.opset(AVSQ, r)
+			pstate.opset(AVSCBIB, r)
+			pstate.opset(AVSCBIH, r)
+			pstate.opset(AVSCBIF, r)
+			pstate.opset(AVSCBIG, r)
+			pstate.opset(AVSCBIQ, r)
 		case AVACQ:
-			opset(AVACCCQ, r)
-			opset(AVGFMAB, r)
-			opset(AVGFMAH, r)
-			opset(AVGFMAF, r)
-			opset(AVGFMAG, r)
-			opset(AVMALB, r)
-			opset(AVMALHW, r)
-			opset(AVMALF, r)
-			opset(AVMAHB, r)
-			opset(AVMAHH, r)
-			opset(AVMAHF, r)
-			opset(AVMALHB, r)
-			opset(AVMALHH, r)
-			opset(AVMALHF, r)
-			opset(AVMAEB, r)
-			opset(AVMAEH, r)
-			opset(AVMAEF, r)
-			opset(AVMALEB, r)
-			opset(AVMALEH, r)
-			opset(AVMALEF, r)
-			opset(AVMAOB, r)
-			opset(AVMAOH, r)
-			opset(AVMAOF, r)
-			opset(AVMALOB, r)
-			opset(AVMALOH, r)
-			opset(AVMALOF, r)
-			opset(AVSTRCB, r)
-			opset(AVSTRCH, r)
-			opset(AVSTRCF, r)
-			opset(AVSTRCBS, r)
-			opset(AVSTRCHS, r)
-			opset(AVSTRCFS, r)
-			opset(AVSTRCZB, r)
-			opset(AVSTRCZH, r)
-			opset(AVSTRCZF, r)
-			opset(AVSTRCZBS, r)
-			opset(AVSTRCZHS, r)
-			opset(AVSTRCZFS, r)
-			opset(AVSBCBIQ, r)
-			opset(AVSBIQ, r)
-			opset(AVMSLG, r)
+			pstate.opset(AVACCCQ, r)
+			pstate.opset(AVGFMAB, r)
+			pstate.opset(AVGFMAH, r)
+			pstate.opset(AVGFMAF, r)
+			pstate.opset(AVGFMAG, r)
+			pstate.opset(AVMALB, r)
+			pstate.opset(AVMALHW, r)
+			pstate.opset(AVMALF, r)
+			pstate.opset(AVMAHB, r)
+			pstate.opset(AVMAHH, r)
+			pstate.opset(AVMAHF, r)
+			pstate.opset(AVMALHB, r)
+			pstate.opset(AVMALHH, r)
+			pstate.opset(AVMALHF, r)
+			pstate.opset(AVMAEB, r)
+			pstate.opset(AVMAEH, r)
+			pstate.opset(AVMAEF, r)
+			pstate.opset(AVMALEB, r)
+			pstate.opset(AVMALEH, r)
+			pstate.opset(AVMALEF, r)
+			pstate.opset(AVMAOB, r)
+			pstate.opset(AVMAOH, r)
+			pstate.opset(AVMAOF, r)
+			pstate.opset(AVMALOB, r)
+			pstate.opset(AVMALOH, r)
+			pstate.opset(AVMALOF, r)
+			pstate.opset(AVSTRCB, r)
+			pstate.opset(AVSTRCH, r)
+			pstate.opset(AVSTRCF, r)
+			pstate.opset(AVSTRCBS, r)
+			pstate.opset(AVSTRCHS, r)
+			pstate.opset(AVSTRCFS, r)
+			pstate.opset(AVSTRCZB, r)
+			pstate.opset(AVSTRCZH, r)
+			pstate.opset(AVSTRCZF, r)
+			pstate.opset(AVSTRCZBS, r)
+			pstate.opset(AVSTRCZHS, r)
+			pstate.opset(AVSTRCZFS, r)
+			pstate.opset(AVSBCBIQ, r)
+			pstate.opset(AVSBIQ, r)
+			pstate.opset(AVMSLG, r)
 		case AVSEL:
-			opset(AVFMADB, r)
-			opset(AWFMADB, r)
-			opset(AVFMSDB, r)
-			opset(AWFMSDB, r)
-			opset(AVPERM, r)
+			pstate.opset(AVFMADB, r)
+			pstate.opset(AWFMADB, r)
+			pstate.opset(AVFMSDB, r)
+			pstate.opset(AWFMSDB, r)
+			pstate.opset(AVPERM, r)
 		}
 	}
 }
@@ -2609,8 +2262,8 @@ func (c *ctxtz) branchMask(p *obj.Prog) uint32 {
 	return 0xF
 }
 
-func (c *ctxtz) asmout(p *obj.Prog, asm *[]byte) {
-	o := c.oplook(p)
+func (c *ctxtz) asmout(pstate *PackageState, p *obj.Prog, asm *[]byte) {
+	o := c.oplook(pstate, p)
 
 	switch o.type_ {
 	default:
@@ -3800,8 +3453,8 @@ func (c *ctxtz) asmout(p *obj.Prog, asm *[]byte) {
 
 		// R_390_TLS_LOAD
 		zRXY(op_LGF, uint32(p.To.Reg), REGTMP, 0, 0, asm)
-		// TODO(mundaym): add R_390_TLS_LOAD relocation here
-		// not strictly required but might allow the linker to optimize
+	// TODO(mundaym): add R_390_TLS_LOAD relocation here
+	// not strictly required but might allow the linker to optimize
 
 	case 96: // clear macro
 		length := c.vregoff(&p.From)

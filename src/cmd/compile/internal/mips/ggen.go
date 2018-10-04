@@ -5,20 +5,20 @@
 package mips
 
 import (
-	"cmd/compile/internal/gc"
-	"cmd/internal/obj"
-	"cmd/internal/obj/mips"
+	"github.com/dave/golib/src/cmd/compile/internal/gc"
+	"github.com/dave/golib/src/cmd/internal/obj"
+	"github.com/dave/golib/src/cmd/internal/obj/mips"
 )
 
 // TODO(mips): implement DUFFZERO
-func zerorange(pp *gc.Progs, p *obj.Prog, off, cnt int64, _ *uint32) *obj.Prog {
+func (pstate *PackageState) zerorange(pp *gc.Progs, p *obj.Prog, off, cnt int64, _ *uint32) *obj.Prog {
 
 	if cnt == 0 {
 		return p
 	}
-	if cnt < int64(4*gc.Widthptr) {
-		for i := int64(0); i < cnt; i += int64(gc.Widthptr) {
-			p = pp.Appendpp(p, mips.AMOVW, obj.TYPE_REG, mips.REGZERO, 0, obj.TYPE_MEM, mips.REGSP, gc.Ctxt.FixedFrameSize()+off+i)
+	if cnt < int64(4*pstate.gc.Widthptr) {
+		for i := int64(0); i < cnt; i += int64(pstate.gc.Widthptr) {
+			p = pp.Appendpp(pstate.gc, p, mips.AMOVW, obj.TYPE_REG, mips.REGZERO, 0, obj.TYPE_MEM, mips.REGSP, pstate.gc.Ctxt.FixedFrameSize()+off+i)
 		}
 	} else {
 		//fmt.Printf("zerorange frame:%v, lo: %v, hi:%v \n", frame ,lo, hi)
@@ -28,27 +28,27 @@ func zerorange(pp *gc.Progs, p *obj.Prog, off, cnt int64, _ *uint32) *obj.Prog {
 		//	MOVW	R0, (Widthptr)r1
 		//	ADD 	$Widthptr, r1
 		//	BNE		r1, r2, loop
-		p = pp.Appendpp(p, mips.AADD, obj.TYPE_CONST, 0, gc.Ctxt.FixedFrameSize()+off-4, obj.TYPE_REG, mips.REGRT1, 0)
+		p = pp.Appendpp(pstate.gc, p, mips.AADD, obj.TYPE_CONST, 0, pstate.gc.Ctxt.FixedFrameSize()+off-4, obj.TYPE_REG, mips.REGRT1, 0)
 		p.Reg = mips.REGSP
-		p = pp.Appendpp(p, mips.AADD, obj.TYPE_CONST, 0, cnt, obj.TYPE_REG, mips.REGRT2, 0)
+		p = pp.Appendpp(pstate.gc, p, mips.AADD, obj.TYPE_CONST, 0, cnt, obj.TYPE_REG, mips.REGRT2, 0)
 		p.Reg = mips.REGRT1
-		p = pp.Appendpp(p, mips.AMOVW, obj.TYPE_REG, mips.REGZERO, 0, obj.TYPE_MEM, mips.REGRT1, int64(gc.Widthptr))
+		p = pp.Appendpp(pstate.gc, p, mips.AMOVW, obj.TYPE_REG, mips.REGZERO, 0, obj.TYPE_MEM, mips.REGRT1, int64(pstate.gc.Widthptr))
 		p1 := p
-		p = pp.Appendpp(p, mips.AADD, obj.TYPE_CONST, 0, int64(gc.Widthptr), obj.TYPE_REG, mips.REGRT1, 0)
-		p = pp.Appendpp(p, mips.ABNE, obj.TYPE_REG, mips.REGRT1, 0, obj.TYPE_BRANCH, 0, 0)
+		p = pp.Appendpp(pstate.gc, p, mips.AADD, obj.TYPE_CONST, 0, int64(pstate.gc.Widthptr), obj.TYPE_REG, mips.REGRT1, 0)
+		p = pp.Appendpp(pstate.gc, p, mips.ABNE, obj.TYPE_REG, mips.REGRT1, 0, obj.TYPE_BRANCH, 0, 0)
 		p.Reg = mips.REGRT2
-		gc.Patch(p, p1)
+		pstate.gc.Patch(p, p1)
 	}
 
 	return p
 }
 
-func zeroAuto(pp *gc.Progs, n *gc.Node) {
+func (pstate *PackageState) zeroAuto(pp *gc.Progs, n *gc.Node) {
 	// Note: this code must not clobber any registers.
-	sym := n.Sym.Linksym()
-	size := n.Type.Size()
+	sym := n.Sym.Linksym(pstate.types)
+	size := n.Type.Size(pstate.types)
 	for i := int64(0); i < size; i += 4 {
-		p := pp.Prog(mips.AMOVW)
+		p := pp.Prog(pstate.gc, mips.AMOVW)
 		p.From.Type = obj.TYPE_REG
 		p.From.Reg = mips.REGZERO
 		p.To.Type = obj.TYPE_MEM
@@ -59,8 +59,8 @@ func zeroAuto(pp *gc.Progs, n *gc.Node) {
 	}
 }
 
-func ginsnop(pp *gc.Progs) {
-	p := pp.Prog(mips.ANOR)
+func (pstate *PackageState) ginsnop(pp *gc.Progs) {
+	p := pp.Prog(pstate.gc, mips.ANOR)
 	p.From.Type = obj.TYPE_REG
 	p.From.Reg = mips.REG_R0
 	p.To.Type = obj.TYPE_REG

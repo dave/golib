@@ -5,7 +5,7 @@
 package ssa
 
 import (
-	"cmd/internal/src"
+	"github.com/dave/golib/src/cmd/internal/src"
 )
 
 // fuse simplifies control flow by joining basic blocks.

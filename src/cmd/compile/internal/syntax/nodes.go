@@ -27,7 +27,7 @@ type node struct {
 }
 
 func (n *node) Pos() Pos { return n.pos }
-func (*node) aNode()     {}
+func (*node) aNode() {}
 
 // ----------------------------------------------------------------------------
 // Files

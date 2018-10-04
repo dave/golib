@@ -261,7 +261,7 @@ func memOpTrans(mem Mem) (string, string) {
 	suffix := ""
 	switch mem.Mode {
 	case AddrOffset, AddrLDM:
-		// no suffix
+	// no suffix
 	case AddrPreIndex, AddrLDM_WB:
 		suffix = ".W"
 	case AddrPostIndex:

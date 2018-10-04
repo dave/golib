@@ -5,10 +5,10 @@
 package ssa
 
 import (
-	"cmd/compile/internal/types"
-	"cmd/internal/obj"
-	"cmd/internal/objabi"
-	"cmd/internal/src"
+	"github.com/dave/golib/src/cmd/compile/internal/types"
+	"github.com/dave/golib/src/cmd/internal/obj"
+	"github.com/dave/golib/src/cmd/internal/objabi"
+	"github.com/dave/golib/src/cmd/internal/src"
 	"os"
 	"strconv"
 )
@@ -77,37 +77,37 @@ type Types struct {
 }
 
 // NewTypes creates and populates a Types.
-func NewTypes() *Types {
+func (pstate *PackageState) NewTypes() *Types {
 	t := new(Types)
-	t.SetTypPtrs()
+	t.SetTypPtrs(pstate)
 	return t
 }
 
 // SetTypPtrs populates t.
-func (t *Types) SetTypPtrs() {
-	t.Bool = types.Types[types.TBOOL]
-	t.Int8 = types.Types[types.TINT8]
-	t.Int16 = types.Types[types.TINT16]
-	t.Int32 = types.Types[types.TINT32]
-	t.Int64 = types.Types[types.TINT64]
-	t.UInt8 = types.Types[types.TUINT8]
-	t.UInt16 = types.Types[types.TUINT16]
-	t.UInt32 = types.Types[types.TUINT32]
-	t.UInt64 = types.Types[types.TUINT64]
-	t.Int = types.Types[types.TINT]
-	t.Float32 = types.Types[types.TFLOAT32]
-	t.Float64 = types.Types[types.TFLOAT64]
-	t.UInt = types.Types[types.TUINT]
-	t.Uintptr = types.Types[types.TUINTPTR]
-	t.String = types.Types[types.TSTRING]
-	t.BytePtr = types.NewPtr(types.Types[types.TUINT8])
-	t.Int32Ptr = types.NewPtr(types.Types[types.TINT32])
-	t.UInt32Ptr = types.NewPtr(types.Types[types.TUINT32])
-	t.IntPtr = types.NewPtr(types.Types[types.TINT])
-	t.UintptrPtr = types.NewPtr(types.Types[types.TUINTPTR])
-	t.Float32Ptr = types.NewPtr(types.Types[types.TFLOAT32])
-	t.Float64Ptr = types.NewPtr(types.Types[types.TFLOAT64])
-	t.BytePtrPtr = types.NewPtr(types.NewPtr(types.Types[types.TUINT8]))
+func (t *Types) SetTypPtrs(pstate *PackageState) {
+	t.Bool = pstate.types.Types[types.TBOOL]
+	t.Int8 = pstate.types.Types[types.TINT8]
+	t.Int16 = pstate.types.Types[types.TINT16]
+	t.Int32 = pstate.types.Types[types.TINT32]
+	t.Int64 = pstate.types.Types[types.TINT64]
+	t.UInt8 = pstate.types.Types[types.TUINT8]
+	t.UInt16 = pstate.types.Types[types.TUINT16]
+	t.UInt32 = pstate.types.Types[types.TUINT32]
+	t.UInt64 = pstate.types.Types[types.TUINT64]
+	t.Int = pstate.types.Types[types.TINT]
+	t.Float32 = pstate.types.Types[types.TFLOAT32]
+	t.Float64 = pstate.types.Types[types.TFLOAT64]
+	t.UInt = pstate.types.Types[types.TUINT]
+	t.Uintptr = pstate.types.Types[types.TUINTPTR]
+	t.String = pstate.types.Types[types.TSTRING]
+	t.BytePtr = pstate.types.NewPtr(pstate.types.Types[types.TUINT8])
+	t.Int32Ptr = pstate.types.NewPtr(pstate.types.Types[types.TINT32])
+	t.UInt32Ptr = pstate.types.NewPtr(pstate.types.Types[types.TUINT32])
+	t.IntPtr = pstate.types.NewPtr(pstate.types.Types[types.TINT])
+	t.UintptrPtr = pstate.types.NewPtr(pstate.types.Types[types.TUINTPTR])
+	t.Float32Ptr = pstate.types.NewPtr(pstate.types.Types[types.TFLOAT32])
+	t.Float64Ptr = pstate.types.NewPtr(pstate.types.Types[types.TFLOAT64])
+	t.BytePtrPtr = pstate.types.NewPtr(pstate.types.NewPtr(pstate.types.Types[types.TUINT8]))
 }
 
 type Logger interface {
@@ -192,7 +192,7 @@ const (
 )
 
 // NewConfig returns a new configuration object for the given architecture.
-func NewConfig(arch string, types Types, ctxt *obj.Link, optimize bool) *Config {
+func (pstate *PackageState) NewConfig(arch string, types Types, ctxt *obj.Link, optimize bool) *Config {
 	c := &Config{arch: arch, Types: types}
 	c.useAvg = true
 	c.useHmul = true
@@ -200,73 +200,73 @@ func NewConfig(arch string, types Types, ctxt *obj.Link, optimize bool) *Config 
 	case "amd64":
 		c.PtrSize = 8
 		c.RegSize = 8
-		c.lowerBlock = rewriteBlockAMD64
-		c.lowerValue = rewriteValueAMD64
-		c.registers = registersAMD64[:]
-		c.gpRegMask = gpRegMaskAMD64
-		c.fpRegMask = fpRegMaskAMD64
-		c.FPReg = framepointerRegAMD64
-		c.LinkReg = linkRegAMD64
+		c.lowerBlock = pstate.rewriteBlockAMD64
+		c.lowerValue = pstate.rewriteValueAMD64
+		c.registers = pstate.registersAMD64[:]
+		c.gpRegMask = pstate.gpRegMaskAMD64
+		c.fpRegMask = pstate.fpRegMaskAMD64
+		c.FPReg = pstate.framepointerRegAMD64
+		c.LinkReg = pstate.linkRegAMD64
 		c.hasGReg = false
 	case "amd64p32":
 		c.PtrSize = 4
 		c.RegSize = 8
-		c.lowerBlock = rewriteBlockAMD64
-		c.lowerValue = rewriteValueAMD64
-		c.registers = registersAMD64[:]
-		c.gpRegMask = gpRegMaskAMD64
-		c.fpRegMask = fpRegMaskAMD64
-		c.FPReg = framepointerRegAMD64
-		c.LinkReg = linkRegAMD64
+		c.lowerBlock = pstate.rewriteBlockAMD64
+		c.lowerValue = pstate.rewriteValueAMD64
+		c.registers = pstate.registersAMD64[:]
+		c.gpRegMask = pstate.gpRegMaskAMD64
+		c.fpRegMask = pstate.fpRegMaskAMD64
+		c.FPReg = pstate.framepointerRegAMD64
+		c.LinkReg = pstate.linkRegAMD64
 		c.hasGReg = false
 		c.noDuffDevice = true
 	case "386":
 		c.PtrSize = 4
 		c.RegSize = 4
-		c.lowerBlock = rewriteBlock386
-		c.lowerValue = rewriteValue386
-		c.registers = registers386[:]
-		c.gpRegMask = gpRegMask386
-		c.fpRegMask = fpRegMask386
-		c.FPReg = framepointerReg386
-		c.LinkReg = linkReg386
+		c.lowerBlock = pstate.rewriteBlock386
+		c.lowerValue = pstate.rewriteValue386
+		c.registers = pstate.registers386[:]
+		c.gpRegMask = pstate.gpRegMask386
+		c.fpRegMask = pstate.fpRegMask386
+		c.FPReg = pstate.framepointerReg386
+		c.LinkReg = pstate.linkReg386
 		c.hasGReg = false
 	case "arm":
 		c.PtrSize = 4
 		c.RegSize = 4
-		c.lowerBlock = rewriteBlockARM
-		c.lowerValue = rewriteValueARM
-		c.registers = registersARM[:]
-		c.gpRegMask = gpRegMaskARM
-		c.fpRegMask = fpRegMaskARM
-		c.FPReg = framepointerRegARM
-		c.LinkReg = linkRegARM
+		c.lowerBlock = pstate.rewriteBlockARM
+		c.lowerValue = pstate.rewriteValueARM
+		c.registers = pstate.registersARM[:]
+		c.gpRegMask = pstate.gpRegMaskARM
+		c.fpRegMask = pstate.fpRegMaskARM
+		c.FPReg = pstate.framepointerRegARM
+		c.LinkReg = pstate.linkRegARM
 		c.hasGReg = true
 	case "arm64":
 		c.PtrSize = 8
 		c.RegSize = 8
-		c.lowerBlock = rewriteBlockARM64
-		c.lowerValue = rewriteValueARM64
-		c.registers = registersARM64[:]
-		c.gpRegMask = gpRegMaskARM64
-		c.fpRegMask = fpRegMaskARM64
-		c.FPReg = framepointerRegARM64
-		c.LinkReg = linkRegARM64
+		c.lowerBlock = pstate.rewriteBlockARM64
+		c.lowerValue = pstate.rewriteValueARM64
+		c.registers = pstate.registersARM64[:]
+		c.gpRegMask = pstate.gpRegMaskARM64
+		c.fpRegMask = pstate.fpRegMaskARM64
+		c.FPReg = pstate.framepointerRegARM64
+		c.LinkReg = pstate.linkRegARM64
 		c.hasGReg = true
-		c.noDuffDevice = objabi.GOOS == "darwin" // darwin linker cannot handle BR26 reloc with non-zero addend
+		c.noDuffDevice = pstate.objabi.GOOS == "darwin" // darwin linker cannot handle BR26 reloc with non-zero addend
 	case "ppc64":
 		c.BigEndian = true
 		fallthrough
 	case "ppc64le":
 		c.PtrSize = 8
 		c.RegSize = 8
-		c.lowerBlock = rewriteBlockPPC64
-		c.lowerValue = rewriteValuePPC64
-		c.registers = registersPPC64[:]
-		c.gpRegMask = gpRegMaskPPC64
-		c.fpRegMask = fpRegMaskPPC64
-		c.FPReg = framepointerRegPPC64
-		c.LinkReg = linkRegPPC64
+		c.lowerBlock = pstate.rewriteBlockPPC64
+		c.lowerValue = pstate.rewriteValuePPC64
+		c.registers = pstate.registersPPC64[:]
+		c.gpRegMask = pstate.gpRegMaskPPC64
+		c.fpRegMask = pstate.fpRegMaskPPC64
+		c.FPReg = pstate.framepointerRegPPC64
+		c.LinkReg = pstate.linkRegPPC64
 		c.noDuffDevice = true // TODO: Resolve PPC64 DuffDevice (has zero, but not copy)
 		c.hasGReg = true
 	case "mips64":
@@ -276,24 +276,24 @@ func NewConfig(arch string, types Types, ctxt *obj.Link, optimize bool) *Config 
 		c.PtrSize = 8
 		c.RegSize = 8
 		c.lowerBlock = rewriteBlockMIPS64
-		c.lowerValue = rewriteValueMIPS64
-		c.registers = registersMIPS64[:]
-		c.gpRegMask = gpRegMaskMIPS64
-		c.fpRegMask = fpRegMaskMIPS64
-		c.specialRegMask = specialRegMaskMIPS64
-		c.FPReg = framepointerRegMIPS64
-		c.LinkReg = linkRegMIPS64
+		c.lowerValue = pstate.rewriteValueMIPS64
+		c.registers = pstate.registersMIPS64[:]
+		c.gpRegMask = pstate.gpRegMaskMIPS64
+		c.fpRegMask = pstate.fpRegMaskMIPS64
+		c.specialRegMask = pstate.specialRegMaskMIPS64
+		c.FPReg = pstate.framepointerRegMIPS64
+		c.LinkReg = pstate.linkRegMIPS64
 		c.hasGReg = true
 	case "s390x":
 		c.PtrSize = 8
 		c.RegSize = 8
-		c.lowerBlock = rewriteBlockS390X
-		c.lowerValue = rewriteValueS390X
-		c.registers = registersS390X[:]
-		c.gpRegMask = gpRegMaskS390X
-		c.fpRegMask = fpRegMaskS390X
-		c.FPReg = framepointerRegS390X
-		c.LinkReg = linkRegS390X
+		c.lowerBlock = pstate.rewriteBlockS390X
+		c.lowerValue = pstate.rewriteValueS390X
+		c.registers = pstate.registersS390X[:]
+		c.gpRegMask = pstate.gpRegMaskS390X
+		c.fpRegMask = pstate.fpRegMaskS390X
+		c.FPReg = pstate.framepointerRegS390X
+		c.LinkReg = pstate.linkRegS390X
 		c.hasGReg = true
 		c.noDuffDevice = true
 		c.BigEndian = true
@@ -304,25 +304,25 @@ func NewConfig(arch string, types Types, ctxt *obj.Link, optimize bool) *Config 
 		c.PtrSize = 4
 		c.RegSize = 4
 		c.lowerBlock = rewriteBlockMIPS
-		c.lowerValue = rewriteValueMIPS
-		c.registers = registersMIPS[:]
-		c.gpRegMask = gpRegMaskMIPS
-		c.fpRegMask = fpRegMaskMIPS
-		c.specialRegMask = specialRegMaskMIPS
-		c.FPReg = framepointerRegMIPS
-		c.LinkReg = linkRegMIPS
+		c.lowerValue = pstate.rewriteValueMIPS
+		c.registers = pstate.registersMIPS[:]
+		c.gpRegMask = pstate.gpRegMaskMIPS
+		c.fpRegMask = pstate.fpRegMaskMIPS
+		c.specialRegMask = pstate.specialRegMaskMIPS
+		c.FPReg = pstate.framepointerRegMIPS
+		c.LinkReg = pstate.linkRegMIPS
 		c.hasGReg = true
 		c.noDuffDevice = true
 	case "wasm":
 		c.PtrSize = 8
 		c.RegSize = 8
 		c.lowerBlock = rewriteBlockWasm
-		c.lowerValue = rewriteValueWasm
-		c.registers = registersWasm[:]
-		c.gpRegMask = gpRegMaskWasm
-		c.fpRegMask = fpRegMaskWasm
-		c.FPReg = framepointerRegWasm
-		c.LinkReg = linkRegWasm
+		c.lowerValue = pstate.rewriteValueWasm
+		c.registers = pstate.registersWasm[:]
+		c.gpRegMask = pstate.gpRegMaskWasm
+		c.fpRegMask = pstate.fpRegMaskWasm
+		c.FPReg = pstate.framepointerRegWasm
+		c.LinkReg = pstate.linkRegWasm
 		c.hasGReg = true
 		c.noDuffDevice = true
 		c.useAvg = false
@@ -332,12 +332,12 @@ func NewConfig(arch string, types Types, ctxt *obj.Link, optimize bool) *Config 
 	}
 	c.ctxt = ctxt
 	c.optimize = optimize
-	c.nacl = objabi.GOOS == "nacl"
+	c.nacl = pstate.objabi.GOOS == "nacl"
 	c.useSSE = true
 
 	// Don't use Duff's device nor SSE on Plan 9 AMD64, because
 	// floating point operations are not allowed in note handler.
-	if objabi.GOOS == "plan9" && arch == "amd64" {
+	if pstate.objabi.GOOS == "plan9" && arch == "amd64" {
 		c.noDuffDevice = true
 		c.useSSE = false
 	}
@@ -347,17 +347,17 @@ func NewConfig(arch string, types Types, ctxt *obj.Link, optimize bool) *Config 
 
 		// Returns clobber BP on nacl/386, so the write
 		// barrier does.
-		opcodeTable[Op386LoweredWB].reg.clobbers |= 1 << 5 // BP
+		pstate.opcodeTable[Op386LoweredWB].reg.clobbers |= 1 << 5 // BP
 
 		// ... and SI on nacl/amd64.
-		opcodeTable[OpAMD64LoweredWB].reg.clobbers |= 1 << 6 // SI
+		pstate.opcodeTable[OpAMD64LoweredWB].reg.clobbers |= 1 << 6 // SI
 	}
 
 	if ctxt.Flag_shared {
 		// LoweredWB is secretly a CALL and CALLs on 386 in
 		// shared mode get rewritten by obj6.go to go through
 		// the GOT, which clobbers BX.
-		opcodeTable[Op386LoweredWB].reg.clobbers |= 1 << 3 // BX
+		pstate.opcodeTable[Op386LoweredWB].reg.clobbers |= 1 << 3 // BX
 	}
 
 	// cutoff is compared with product of numblocks and numvalues,

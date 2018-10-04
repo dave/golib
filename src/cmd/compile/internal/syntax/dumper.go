@@ -48,9 +48,7 @@ type dumper struct {
 	line   int          // current line number
 }
 
-var indentBytes = []byte(".  ")
-
-func (p *dumper) Write(data []byte) (n int, err error) {
+func (p *dumper) Write(pstate *PackageState, data []byte) (n int, err error) {
 	var m int
 	for i, b := range data {
 		// invariant: data[0:n] has been written
@@ -67,7 +65,7 @@ func (p *dumper) Write(data []byte) (n int, err error) {
 				return
 			}
 			for j := p.indent; j > 0; j-- {
-				_, err = p.output.Write(indentBytes)
+				_, err = p.output.Write(pstate.indentBytes)
 				if err != nil {
 					return
 				}

@@ -8,10 +8,10 @@ package obj
 
 import (
 	"bufio"
-	"cmd/internal/dwarf"
-	"cmd/internal/objabi"
-	"cmd/internal/sys"
 	"fmt"
+	"github.com/dave/golib/src/cmd/internal/dwarf"
+	"github.com/dave/golib/src/cmd/internal/objabi"
+	"github.com/dave/golib/src/cmd/internal/sys"
 	"log"
 	"path/filepath"
 	"sort"
@@ -86,7 +86,7 @@ func newObjWriter(ctxt *Link, b *bufio.Writer) *objWriter {
 	}
 }
 
-func WriteObjFile(ctxt *Link, b *bufio.Writer) {
+func (pstate *PackageState) WriteObjFile(ctxt *Link, b *bufio.Writer) {
 	w := newObjWriter(ctxt, b)
 
 	// Magic header
@@ -103,11 +103,11 @@ func WriteObjFile(ctxt *Link, b *bufio.Writer) {
 
 	// Symbol references
 	for _, s := range ctxt.Text {
-		w.writeRefs(s)
+		w.writeRefs(pstate, s)
 		w.addLengths(s)
 	}
 	for _, s := range ctxt.Data {
-		w.writeRefs(s)
+		w.writeRefs(pstate, s)
 		w.addLengths(s)
 	}
 	// End symbol references
@@ -140,10 +140,10 @@ func WriteObjFile(ctxt *Link, b *bufio.Writer) {
 
 	// Symbols
 	for _, s := range ctxt.Text {
-		w.writeSym(s)
+		w.writeSym(pstate, s)
 	}
 	for _, s := range ctxt.Data {
-		w.writeSym(s)
+		w.writeSym(pstate, s)
 	}
 
 	// Magic footer
@@ -181,7 +181,7 @@ func (w *objWriter) writeRef(s *LSym, isPath bool) {
 	m[s.Name] = w.nRefs
 }
 
-func (w *objWriter) writeRefs(s *LSym) {
+func (w *objWriter) writeRefs(pstate *PackageState, s *LSym) {
 	w.writeRef(s, false)
 	w.writeRef(s.Gotype, false)
 	for _, r := range s.R {
@@ -203,7 +203,7 @@ func (w *objWriter) writeRefs(s *LSym) {
 		}
 		for _, call := range pc.InlTree.nodes {
 			w.writeRef(call.Func, false)
-			f, _ := linkgetlineFromPos(w.ctxt, call.Pos)
+			f, _ := pstate.linkgetlineFromPos(w.ctxt, call.Pos)
 			fsym := w.ctxt.Lookup(f)
 			w.writeRef(fsym, true)
 		}
@@ -279,7 +279,7 @@ func (w *objWriter) writeSymDebug(s *LSym) {
 	}
 }
 
-func (w *objWriter) writeSym(s *LSym) {
+func (w *objWriter) writeSym(pstate *PackageState, s *LSym) {
 	ctxt := w.ctxt
 	if ctxt.Debugasm {
 		w.writeSymDebug(s)
@@ -375,7 +375,7 @@ func (w *objWriter) writeSym(s *LSym) {
 	w.writeInt(int64(len(pc.InlTree.nodes)))
 	for _, call := range pc.InlTree.nodes {
 		w.writeInt(int64(call.Parent))
-		f, l := linkgetlineFromPos(w.ctxt, call.Pos)
+		f, l := pstate.linkgetlineFromPos(w.ctxt, call.Pos)
 		fsym := ctxt.Lookup(f)
 		w.writeRefIndex(fsym)
 		w.writeInt(int64(l))
@@ -526,10 +526,10 @@ func (s *LSym) Len() int64 {
 // fileSymbol returns a symbol corresponding to the source file of the
 // first instruction (prog) of the specified function. This will
 // presumably be the file in which the function is defined.
-func (ctxt *Link) fileSymbol(fn *LSym) *LSym {
+func (ctxt *Link) fileSymbol(pstate *PackageState, fn *LSym) *LSym {
 	p := fn.Func.Text
 	if p != nil {
-		f, _ := linkgetlineFromPos(ctxt, p.Pos)
+		f, _ := pstate.linkgetlineFromPos(ctxt, p.Pos)
 		fsym := ctxt.Lookup(f)
 		return fsym
 	}
@@ -539,7 +539,7 @@ func (ctxt *Link) fileSymbol(fn *LSym) *LSym {
 // populateDWARF fills in the DWARF Debugging Information Entries for
 // TEXT symbol 's'. The various DWARF symbols must already have been
 // initialized in InitTextSym.
-func (ctxt *Link) populateDWARF(curfn interface{}, s *LSym, myimportpath string) {
+func (ctxt *Link) populateDWARF(pstate *PackageState, curfn interface{}, s *LSym, myimportpath string) {
 	info, loc, ranges, absfunc, _ := ctxt.dwarfSym(s)
 	if info.Size != 0 {
 		ctxt.Diag("makeFuncDebugEntry double process %v", s)
@@ -552,7 +552,7 @@ func (ctxt *Link) populateDWARF(curfn interface{}, s *LSym, myimportpath string)
 	}
 	var err error
 	dwctxt := dwCtxt{ctxt}
-	filesym := ctxt.fileSymbol(s)
+	filesym := ctxt.fileSymbol(pstate, s)
 	fnstate := &dwarf.FnState{
 		Name:       s.Name,
 		Importpath: myimportpath,
@@ -568,13 +568,13 @@ func (ctxt *Link) populateDWARF(curfn interface{}, s *LSym, myimportpath string)
 		InlCalls:   inlcalls,
 	}
 	if absfunc != nil {
-		err = dwarf.PutAbstractFunc(dwctxt, fnstate)
+		err = pstate.dwarf.PutAbstractFunc(dwctxt, fnstate)
 		if err != nil {
 			ctxt.Diag("emitting DWARF for %s failed: %v", s.Name, err)
 		}
-		err = dwarf.PutConcreteFunc(dwctxt, fnstate)
+		err = pstate.dwarf.PutConcreteFunc(dwctxt, fnstate)
 	} else {
-		err = dwarf.PutDefaultFunc(dwctxt, fnstate)
+		err = pstate.dwarf.PutDefaultFunc(dwctxt, fnstate)
 	}
 	if err != nil {
 		ctxt.Diag("emitting DWARF for %s failed: %v", s.Name, err)
@@ -583,7 +583,7 @@ func (ctxt *Link) populateDWARF(curfn interface{}, s *LSym, myimportpath string)
 
 // DwarfIntConst creates a link symbol for an integer constant with the
 // given name, type and value.
-func (ctxt *Link) DwarfIntConst(myimportpath, name, typename string, val int64) {
+func (ctxt *Link) DwarfIntConst(pstate *PackageState, myimportpath, name, typename string, val int64) {
 	if myimportpath == "" {
 		return
 	}
@@ -591,10 +591,10 @@ func (ctxt *Link) DwarfIntConst(myimportpath, name, typename string, val int64) 
 		s.Type = objabi.SDWARFINFO
 		ctxt.Data = append(ctxt.Data, s)
 	})
-	dwarf.PutIntConst(dwCtxt{ctxt}, s, ctxt.Lookup(dwarf.InfoPrefix+typename), myimportpath+"."+name, val)
+	pstate.dwarf.PutIntConst(dwCtxt{ctxt}, s, ctxt.Lookup(dwarf.InfoPrefix+typename), myimportpath+"."+name, val)
 }
 
-func (ctxt *Link) DwarfAbstractFunc(curfn interface{}, s *LSym, myimportpath string) {
+func (ctxt *Link) DwarfAbstractFunc(pstate *PackageState, curfn interface{}, s *LSym, myimportpath string) {
 	absfn := ctxt.DwFixups.AbsFuncDwarfSym(s)
 	if absfn.Size != 0 {
 		ctxt.Diag("internal error: DwarfAbstractFunc double process %v", s)
@@ -604,7 +604,7 @@ func (ctxt *Link) DwarfAbstractFunc(curfn interface{}, s *LSym, myimportpath str
 	}
 	scopes, _ := ctxt.DebugInfo(s, curfn)
 	dwctxt := dwCtxt{ctxt}
-	filesym := ctxt.fileSymbol(s)
+	filesym := ctxt.fileSymbol(pstate, s)
 	fnstate := dwarf.FnState{
 		Name:       s.Name,
 		Importpath: myimportpath,
@@ -614,7 +614,7 @@ func (ctxt *Link) DwarfAbstractFunc(curfn interface{}, s *LSym, myimportpath str
 		External:   !s.Static(),
 		Scopes:     scopes,
 	}
-	if err := dwarf.PutAbstractFunc(dwctxt, &fnstate); err != nil {
+	if err := pstate.dwarf.PutAbstractFunc(dwctxt, &fnstate); err != nil {
 		ctxt.Diag("emitting DWARF for %s failed: %v", s.Name, err)
 	}
 }

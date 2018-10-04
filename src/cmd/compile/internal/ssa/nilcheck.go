@@ -5,12 +5,12 @@
 package ssa
 
 import (
-	"cmd/internal/src"
+	"github.com/dave/golib/src/cmd/internal/src"
 )
 
 // nilcheckelim eliminates unnecessary nil checks.
 // runs on machine-independent code.
-func nilcheckelim(f *Func) {
+func (pstate *PackageState) nilcheckelim(f *Func) {
 	// A nil check is redundant if the same nil check was successful in a
 	// dominating block. The efficacy of this pass depends heavily on the
 	// efficacy of the cse pass.
@@ -105,7 +105,7 @@ func nilcheckelim(f *Func) {
 			}
 
 			// Next, order values in the current block w.r.t. stores.
-			b.Values = storeOrder(b.Values, sset, storeNumber)
+			b.Values = pstate.storeOrder(b.Values, sset, storeNumber)
 
 			pendingLines := f.cachedLineStarts // Holds statement boundaries that need to be moved to a new value/block
 			pendingLines.clear()
@@ -120,7 +120,7 @@ func nilcheckelim(f *Func) {
 					ptr := v.Args[0]
 					if nonNilValues[ptr.ID] {
 						if v.Pos.IsStmt() == src.PosIsStmt { // Boolean true is a terrible statement boundary.
-							pendingLines.add(v.Pos.Line())
+							pendingLines.add(pstate, v.Pos.Line())
 							v.Pos = v.Pos.WithNotStmt()
 						}
 						// This is a redundant explicit nil check.
@@ -137,10 +137,10 @@ func nilcheckelim(f *Func) {
 							f.Warnl(v.Pos, "removed nil check")
 						}
 						if v.Pos.IsStmt() == src.PosIsStmt { // About to lose a statement boundary
-							pendingLines.add(v.Pos.Line())
+							pendingLines.add(pstate, v.Pos.Line())
 						}
 						v.reset(OpUnknown)
-						f.freeValue(v)
+						f.freeValue(pstate, v)
 						i--
 						continue
 					}
@@ -184,7 +184,7 @@ const minZeroPage = 4096
 
 // nilcheckelim2 eliminates unnecessary nil checks.
 // Runs after lowering and scheduling.
-func nilcheckelim2(f *Func) {
+func (pstate *PackageState) nilcheckelim2(f *Func) {
 	unnecessary := f.newSparseSet(f.NumValues())
 	defer f.retSparseSet(unnecessary)
 
@@ -200,18 +200,18 @@ func nilcheckelim2(f *Func) {
 		firstToRemove := len(b.Values)
 		for i := len(b.Values) - 1; i >= 0; i-- {
 			v := b.Values[i]
-			if opcodeTable[v.Op].nilCheck && unnecessary.contains(v.Args[0].ID) {
+			if pstate.opcodeTable[v.Op].nilCheck && unnecessary.contains(v.Args[0].ID) {
 				if f.fe.Debug_checknil() && v.Pos.Line() > 1 {
 					f.Warnl(v.Pos, "removed nil check")
 				}
 				if v.Pos.IsStmt() == src.PosIsStmt {
-					pendingLines.add(v.Pos.Line())
+					pendingLines.add(pstate, v.Pos.Line())
 				}
 				v.reset(OpUnknown)
 				firstToRemove = i
 				continue
 			}
-			if v.Type.IsMemory() || v.Type.IsTuple() && v.Type.FieldType(1).IsMemory() {
+			if v.Type.IsMemory(pstate.types) || v.Type.IsTuple() && v.Type.FieldType(pstate.types, 1).IsMemory(pstate.types) {
 				if v.Op == OpVarDef || v.Op == OpVarKill || v.Op == OpVarLive {
 					// These ops don't really change memory.
 					continue
@@ -224,15 +224,15 @@ func nilcheckelim2(f *Func) {
 			// Find any pointers that this op is guaranteed to fault on if nil.
 			var ptrstore [2]*Value
 			ptrs := ptrstore[:0]
-			if opcodeTable[v.Op].faultOnNilArg0 {
+			if pstate.opcodeTable[v.Op].faultOnNilArg0 {
 				ptrs = append(ptrs, v.Args[0])
 			}
-			if opcodeTable[v.Op].faultOnNilArg1 {
+			if pstate.opcodeTable[v.Op].faultOnNilArg1 {
 				ptrs = append(ptrs, v.Args[1])
 			}
 			for _, ptr := range ptrs {
 				// Check to make sure the offset is small.
-				switch opcodeTable[v.Op].auxType {
+				switch pstate.opcodeTable[v.Op].auxType {
 				case auxSymOff:
 					if v.Aux != nil || v.AuxInt < 0 || v.AuxInt >= minZeroPage {
 						continue
@@ -243,14 +243,14 @@ func nilcheckelim2(f *Func) {
 						continue
 					}
 				case auxInt32:
-					// Mips uses this auxType for atomic add constant. It does not affect the effective address.
+				// Mips uses this auxType for atomic add constant. It does not affect the effective address.
 				case auxInt64:
-					// ARM uses this auxType for duffcopy/duffzero/alignment info.
-					// It does not affect the effective address.
+				// ARM uses this auxType for duffcopy/duffzero/alignment info.
+				// It does not affect the effective address.
 				case auxNone:
-					// offset is zero.
+				// offset is zero.
 				default:
-					v.Fatalf("can't handle aux %s (type %d) yet\n", v.auxString(), int(opcodeTable[v.Op].auxType))
+					v.Fatalf("can't handle aux %s (type %d) yet\n", v.auxString(pstate), int(pstate.opcodeTable[v.Op].auxType))
 				}
 				// This instruction is guaranteed to fault if ptr is nil.
 				// Any previous nil check op is unnecessary.

@@ -32,13 +32,13 @@
 package ld
 
 import (
-	"cmd/internal/objabi"
-	"cmd/internal/sys"
-	"cmd/link/internal/sym"
+	"github.com/dave/golib/src/cmd/internal/objabi"
+	"github.com/dave/golib/src/cmd/internal/sys"
+	"github.com/dave/golib/src/cmd/link/internal/sym"
 	"log"
 )
 
-func linknew(arch *sys.Arch) *Link {
+func (pstate *PackageState) linknew(arch *sys.Arch) *Link {
 	ctxt := &Link{
 		Syms:         sym.NewSymbols(),
 		Out:          &OutBuf{arch: arch},
@@ -46,14 +46,14 @@ func linknew(arch *sys.Arch) *Link {
 		LibraryByPkg: make(map[string]*sym.Library),
 	}
 
-	if objabi.GOARCH != arch.Name {
-		log.Fatalf("invalid objabi.GOARCH %s (want %s)", objabi.GOARCH, arch.Name)
+	if pstate.objabi.GOARCH != arch.Name {
+		log.Fatalf("invalid objabi.GOARCH %s (want %s)", pstate.objabi.GOARCH, arch.Name)
 	}
 
-	AtExit(func() {
-		if nerrors > 0 && ctxt.Out.f != nil {
+	pstate.AtExit(func() {
+		if pstate.nerrors > 0 && ctxt.Out.f != nil {
 			ctxt.Out.f.Close()
-			mayberemoveoutfile()
+			pstate.mayberemoveoutfile()
 		}
 	})
 
@@ -61,7 +61,7 @@ func linknew(arch *sys.Arch) *Link {
 }
 
 // computeTLSOffset records the thread-local storage offset.
-func (ctxt *Link) computeTLSOffset() {
+func (ctxt *Link) computeTLSOffset(pstate *PackageState) {
 	switch ctxt.HeadType {
 	default:
 		log.Fatalf("unknown thread-local storage offset for %v", ctxt.HeadType)
@@ -69,18 +69,18 @@ func (ctxt *Link) computeTLSOffset() {
 	case objabi.Hplan9, objabi.Hwindows, objabi.Hjs:
 		break
 
-		/*
-		 * ELF uses TLS offset negative from FS.
-		 * Translate 0(FS) and 8(FS) into -16(FS) and -8(FS).
-		 * Known to low-level assembly in package runtime and runtime/cgo.
-		 */
+	/*
+	 * ELF uses TLS offset negative from FS.
+	 * Translate 0(FS) and 8(FS) into -16(FS) and -8(FS).
+	 * Known to low-level assembly in package runtime and runtime/cgo.
+	 */
 	case objabi.Hlinux,
 		objabi.Hfreebsd,
 		objabi.Hnetbsd,
 		objabi.Hopenbsd,
 		objabi.Hdragonfly,
 		objabi.Hsolaris:
-		if objabi.GOOS == "android" {
+		if pstate.objabi.GOOS == "android" {
 			switch ctxt.Arch.Family {
 			case sys.AMD64:
 				// Android/amd64 constant - offset from 0(FS) to our TLS slot.
@@ -111,21 +111,21 @@ func (ctxt *Link) computeTLSOffset() {
 			ctxt.Tlsoffset = -8
 		}
 
-		/*
-		 * OS X system constants - offset from 0(GS) to our TLS.
-		 */
+	/*
+	 * OS X system constants - offset from 0(GS) to our TLS.
+	 */
 	case objabi.Hdarwin:
 		switch ctxt.Arch.Family {
 		default:
 			log.Fatalf("unknown thread-local storage offset for darwin/%s", ctxt.Arch.Name)
 
-			/*
-			 * For x86, Apple has reserved a slot in the TLS for Go. See issue 23617.
-			 * That slot is at offset 0x30 on amd64, and 0x18 on 386.
-			 * The slot will hold the G pointer.
-			 * These constants should match those in runtime/sys_darwin_{386,amd64}.s
-			 * and runtime/cgo/gcc_darwin_{386,amd64}.c.
-			 */
+		/*
+		 * For x86, Apple has reserved a slot in the TLS for Go. See issue 23617.
+		 * That slot is at offset 0x30 on amd64, and 0x18 on 386.
+		 * The slot will hold the G pointer.
+		 * These constants should match those in runtime/sys_darwin_{386,amd64}.s
+		 * and runtime/cgo/gcc_darwin_{386,amd64}.c.
+		 */
 		case sys.I386:
 			ctxt.Tlsoffset = 0x18
 

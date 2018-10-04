@@ -5,14 +5,14 @@
 package gc
 
 import (
-	"cmd/compile/internal/ssa"
-	"cmd/compile/internal/types"
-	"cmd/internal/dwarf"
-	"cmd/internal/obj"
-	"cmd/internal/objabi"
-	"cmd/internal/src"
-	"cmd/internal/sys"
 	"fmt"
+	"github.com/dave/golib/src/cmd/compile/internal/ssa"
+	"github.com/dave/golib/src/cmd/compile/internal/types"
+	"github.com/dave/golib/src/cmd/internal/dwarf"
+	"github.com/dave/golib/src/cmd/internal/obj"
+	"github.com/dave/golib/src/cmd/internal/objabi"
+	"github.com/dave/golib/src/cmd/internal/src"
+	"github.com/dave/golib/src/cmd/internal/sys"
 	"math/rand"
 	"sort"
 	"strings"
@@ -20,43 +20,36 @@ import (
 	"time"
 )
 
-// "Portable" code generation.
-
-var (
-	nBackendWorkers int     // number of concurrent backend workers, set by a compiler flag
-	compilequeue    []*Node // functions waiting to be compiled
-)
-
-func emitptrargsmap(fn *Node) {
+func (pstate *PackageState) emitptrargsmap(fn *Node) {
 	if fn.funcname() == "_" {
 		return
 	}
-	sym := lookup(fmt.Sprintf("%s.args_stackmap", fn.funcname()))
-	lsym := sym.Linksym()
+	sym := pstate.lookup(fmt.Sprintf("%s.args_stackmap", fn.funcname()))
+	lsym := sym.Linksym(pstate.types)
 
-	nptr := int(fn.Type.ArgWidth() / int64(Widthptr))
+	nptr := int(fn.Type.ArgWidth(pstate.types) / int64(pstate.Widthptr))
 	bv := bvalloc(int32(nptr) * 2)
 	nbitmap := 1
-	if fn.Type.NumResults() > 0 {
+	if fn.Type.NumResults(pstate.types) > 0 {
 		nbitmap = 2
 	}
-	off := duint32(lsym, 0, uint32(nbitmap))
-	off = duint32(lsym, off, uint32(bv.n))
+	off := pstate.duint32(lsym, 0, uint32(nbitmap))
+	off = pstate.duint32(lsym, off, uint32(bv.n))
 
-	if fn.IsMethod() {
-		onebitwalktype1(fn.Type.Recvs(), 0, bv)
+	if fn.IsMethod(pstate) {
+		pstate.onebitwalktype1(fn.Type.Recvs(pstate.types), 0, bv)
 	}
-	if fn.Type.NumParams() > 0 {
-		onebitwalktype1(fn.Type.Params(), 0, bv)
+	if fn.Type.NumParams(pstate.types) > 0 {
+		pstate.onebitwalktype1(fn.Type.Params(pstate.types), 0, bv)
 	}
-	off = dbvec(lsym, off, bv)
+	off = pstate.dbvec(lsym, off, bv)
 
-	if fn.Type.NumResults() > 0 {
-		onebitwalktype1(fn.Type.Results(), 0, bv)
-		off = dbvec(lsym, off, bv)
+	if fn.Type.NumResults(pstate.types) > 0 {
+		pstate.onebitwalktype1(fn.Type.Results(pstate.types), 0, bv)
+		off = pstate.dbvec(lsym, off, bv)
 	}
 
-	ggloblsym(lsym, int32(off), obj.RODATA|obj.LOCAL)
+	pstate.ggloblsym(lsym, int32(off), obj.RODATA|obj.LOCAL)
 }
 
 // cmpstackvarlt reports whether the stack variable a sorts before b.
@@ -69,7 +62,7 @@ func emitptrargsmap(fn *Node) {
 // really means, in memory, things with pointers needing zeroing at
 // the top of the stack and increasing in size.
 // Non-autos sort on offset.
-func cmpstackvarlt(a, b *Node) bool {
+func (pstate *PackageState) cmpstackvarlt(a, b *Node) bool {
 	if (a.Class() == PAUTO) != (b.Class() == PAUTO) {
 		return b.Class() == PAUTO
 	}
@@ -82,8 +75,8 @@ func cmpstackvarlt(a, b *Node) bool {
 		return a.Name.Used()
 	}
 
-	ap := types.Haspointers(a.Type)
-	bp := types.Haspointers(b.Type)
+	ap := pstate.types.Haspointers(a.Type)
+	bp := pstate.types.Haspointers(b.Type)
 	if ap != bp {
 		return ap
 	}
@@ -104,11 +97,11 @@ func cmpstackvarlt(a, b *Node) bool {
 // byStackvar implements sort.Interface for []*Node using cmpstackvarlt.
 type byStackVar []*Node
 
-func (s byStackVar) Len() int           { return len(s) }
-func (s byStackVar) Less(i, j int) bool { return cmpstackvarlt(s[i], s[j]) }
-func (s byStackVar) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
+func (s byStackVar) Len() int                                 { return len(s) }
+func (s byStackVar) Less(pstate *PackageState, i, j int) bool { return pstate.cmpstackvarlt(s[i], s[j]) }
+func (s byStackVar) Swap(i, j int)                            { s[i], s[j] = s[j], s[i] }
 
-func (s *ssafn) AllocFrame(f *ssa.Func) {
+func (s *ssafn) AllocFrame(pstate *PackageState, f *ssa.Func) {
 	s.stksize = 0
 	s.stkptrsize = 0
 	fn := s.curfn.Func
@@ -133,7 +126,7 @@ func (s *ssafn) AllocFrame(f *ssa.Func) {
 				switch n.Class() {
 				case PPARAM, PPARAMOUT:
 					// Don't modify nodfp; it is a global.
-					if n != nodfp {
+					if n != pstate.nodfp {
 						n.Name.SetUsed(true)
 					}
 				case PAUTO:
@@ -141,14 +134,14 @@ func (s *ssafn) AllocFrame(f *ssa.Func) {
 				}
 			}
 			if !scratchUsed {
-				scratchUsed = v.Op.UsesScratch()
+				scratchUsed = v.Op.UsesScratch(pstate.ssa)
 			}
 
 		}
 	}
 
 	if f.Config.NeedsFpScratch && scratchUsed {
-		s.scratchFpMem = tempAt(src.NoXPos, s.curfn, types.Types[TUINT64])
+		s.scratchFpMem = pstate.tempAt(pstate.src.NoXPos, s.curfn, pstate.types.Types[TUINT64])
 	}
 
 	sort.Sort(byStackVar(fn.Dcl))
@@ -163,81 +156,81 @@ func (s *ssafn) AllocFrame(f *ssa.Func) {
 			break
 		}
 
-		dowidth(n.Type)
+		pstate.dowidth(n.Type)
 		w := n.Type.Width
-		if w >= thearch.MAXWIDTH || w < 0 {
-			Fatalf("bad width")
+		if w >= pstate.thearch.MAXWIDTH || w < 0 {
+			pstate.Fatalf("bad width")
 		}
 		s.stksize += w
-		s.stksize = Rnd(s.stksize, int64(n.Type.Align))
-		if types.Haspointers(n.Type) {
+		s.stksize = pstate.Rnd(s.stksize, int64(n.Type.Align))
+		if pstate.types.Haspointers(n.Type) {
 			s.stkptrsize = s.stksize
 		}
-		if thearch.LinkArch.InFamily(sys.MIPS, sys.MIPS64, sys.ARM, sys.ARM64, sys.PPC64, sys.S390X) {
-			s.stksize = Rnd(s.stksize, int64(Widthptr))
+		if pstate.thearch.LinkArch.InFamily(sys.MIPS, sys.MIPS64, sys.ARM, sys.ARM64, sys.PPC64, sys.S390X) {
+			s.stksize = pstate.Rnd(s.stksize, int64(pstate.Widthptr))
 		}
 		n.Xoffset = -s.stksize
 	}
 
-	s.stksize = Rnd(s.stksize, int64(Widthreg))
-	s.stkptrsize = Rnd(s.stkptrsize, int64(Widthreg))
+	s.stksize = pstate.Rnd(s.stksize, int64(pstate.Widthreg))
+	s.stkptrsize = pstate.Rnd(s.stkptrsize, int64(pstate.Widthreg))
 }
 
-func funccompile(fn *Node) {
-	if Curfn != nil {
-		Fatalf("funccompile %v inside %v", fn.Func.Nname.Sym, Curfn.Func.Nname.Sym)
+func (pstate *PackageState) funccompile(fn *Node) {
+	if pstate.Curfn != nil {
+		pstate.Fatalf("funccompile %v inside %v", fn.Func.Nname.Sym, pstate.Curfn.Func.Nname.Sym)
 	}
 
 	if fn.Type == nil {
-		if nerrors == 0 {
-			Fatalf("funccompile missing type")
+		if pstate.nerrors == 0 {
+			pstate.Fatalf("funccompile missing type")
 		}
 		return
 	}
 
 	// assign parameter offsets
-	dowidth(fn.Type)
+	pstate.dowidth(fn.Type)
 
 	if fn.Nbody.Len() == 0 {
-		emitptrargsmap(fn)
+		pstate.emitptrargsmap(fn)
 		return
 	}
 
-	dclcontext = PAUTO
-	Curfn = fn
+	pstate.dclcontext = PAUTO
+	pstate.Curfn = fn
 
-	compile(fn)
+	pstate.compile(fn)
 
-	Curfn = nil
-	dclcontext = PEXTERN
+	pstate.Curfn = nil
+	pstate.dclcontext = PEXTERN
 }
 
-func compile(fn *Node) {
-	saveerrors()
+func (pstate *PackageState) compile(fn *Node) {
+	pstate.saveerrors()
 
-	order(fn)
-	if nerrors != 0 {
+	pstate.order(fn)
+	if pstate.nerrors != 0 {
 		return
 	}
 
-	walk(fn)
-	if nerrors != 0 {
+	pstate.walk(fn)
+	if pstate.nerrors != 0 {
 		return
 	}
-	if instrumenting {
-		instrument(fn)
+	if pstate.instrumenting {
+		pstate.instrument(fn)
 	}
 
 	// From this point, there should be no uses of Curfn. Enforce that.
-	Curfn = nil
+	pstate.Curfn = nil
 
 	// Set up the function's LSym early to avoid data races with the assemblers.
-	fn.Func.initLSym()
+	fn.Func.initLSym(pstate)
 
-	if compilenow() {
-		compileSSA(fn, 0)
+	if pstate.compilenow() {
+		pstate.compileSSA(fn, 0)
 	} else {
-		compilequeue = append(compilequeue, fn)
+		pstate.compilequeue = append(pstate.compilequeue, fn)
 	}
 }
 
@@ -245,8 +238,8 @@ func compile(fn *Node) {
 // If functions are not compiled immediately,
 // they are enqueued in compilequeue,
 // which is drained by compileFunctions.
-func compilenow() bool {
-	return nBackendWorkers == 1 && Debug_compilelater == 0
+func (pstate *PackageState) compilenow() bool {
+	return pstate.nBackendWorkers == 1 && pstate.Debug_compilelater == 0
 }
 
 const maxStackSize = 1 << 30
@@ -255,18 +248,18 @@ const maxStackSize = 1 << 30
 // uses it to generate a plist,
 // and flushes that plist to machine code.
 // worker indicates which of the backend workers is doing the processing.
-func compileSSA(fn *Node, worker int) {
-	f := buildssa(fn, worker)
+func (pstate *PackageState) compileSSA(fn *Node, worker int) {
+	f := pstate.buildssa(fn, worker)
 	// Note: check arg size to fix issue 25507.
-	if f.Frontend().(*ssafn).stksize >= maxStackSize || fn.Type.ArgWidth() >= maxStackSize {
-		largeStackFramesMu.Lock()
-		largeStackFrames = append(largeStackFrames, fn.Pos)
-		largeStackFramesMu.Unlock()
+	if f.Frontend().(*ssafn).stksize >= maxStackSize || fn.Type.ArgWidth(pstate.types) >= maxStackSize {
+		pstate.largeStackFramesMu.Lock()
+		pstate.largeStackFrames = append(pstate.largeStackFrames, fn.Pos)
+		pstate.largeStackFramesMu.Unlock()
 		return
 	}
-	pp := newProgs(fn, worker)
-	defer pp.Free()
-	genssa(f, pp)
+	pp := pstate.newProgs(fn, worker)
+	defer pp.Free(pstate)
+	pstate.genssa(f, pp)
 	// Check frame size again.
 	// The check above included only the space needed for local variables.
 	// After genssa, the space needed includes local variables and the callee arg region.
@@ -274,15 +267,15 @@ func compileSSA(fn *Node, worker int) {
 	// If there are any oversized stack frames,
 	// the assembler may emit inscrutable complaints about invalid instructions.
 	if pp.Text.To.Offset >= maxStackSize {
-		largeStackFramesMu.Lock()
-		largeStackFrames = append(largeStackFrames, fn.Pos)
-		largeStackFramesMu.Unlock()
+		pstate.largeStackFramesMu.Lock()
+		pstate.largeStackFrames = append(pstate.largeStackFrames, fn.Pos)
+		pstate.largeStackFramesMu.Unlock()
 		return
 	}
 
-	pp.Flush() // assemble, fill in boilerplate, etc.
+	pp.Flush(pstate) // assemble, fill in boilerplate, etc.
 	// fieldtrack must be called after pp.Flush. See issue 20014.
-	fieldtrack(pp.Text.From.Sym, fn.Func.FieldTrack)
+	pstate.fieldtrack(pp.Text.From.Sym, fn.Func.FieldTrack)
 }
 
 func init() {
@@ -294,53 +287,53 @@ func init() {
 // compileFunctions compiles all functions in compilequeue.
 // It fans out nBackendWorkers to do the work
 // and waits for them to complete.
-func compileFunctions() {
-	if len(compilequeue) != 0 {
-		sizeCalculationDisabled = true // not safe to calculate sizes concurrently
+func (pstate *PackageState) compileFunctions() {
+	if len(pstate.compilequeue) != 0 {
+		pstate.sizeCalculationDisabled = true // not safe to calculate sizes concurrently
 		if raceEnabled {
 			// Randomize compilation order to try to shake out races.
-			tmp := make([]*Node, len(compilequeue))
-			perm := rand.Perm(len(compilequeue))
+			tmp := make([]*Node, len(pstate.compilequeue))
+			perm := rand.Perm(len(pstate.compilequeue))
 			for i, v := range perm {
-				tmp[v] = compilequeue[i]
+				tmp[v] = pstate.compilequeue[i]
 			}
-			copy(compilequeue, tmp)
+			copy(pstate.compilequeue, tmp)
 		} else {
 			// Compile the longest functions first,
 			// since they're most likely to be the slowest.
 			// This helps avoid stragglers.
-			obj.SortSlice(compilequeue, func(i, j int) bool {
-				return compilequeue[i].Nbody.Len() > compilequeue[j].Nbody.Len()
+			obj.SortSlice(pstate.compilequeue, func(i, j int) bool {
+				return pstate.compilequeue[i].Nbody.Len() > pstate.compilequeue[j].Nbody.Len()
 			})
 		}
 		var wg sync.WaitGroup
-		Ctxt.InParallel = true
-		c := make(chan *Node, nBackendWorkers)
-		for i := 0; i < nBackendWorkers; i++ {
+		pstate.Ctxt.InParallel = true
+		c := make(chan *Node, pstate.nBackendWorkers)
+		for i := 0; i < pstate.nBackendWorkers; i++ {
 			wg.Add(1)
 			go func(worker int) {
 				for fn := range c {
-					compileSSA(fn, worker)
+					pstate.compileSSA(fn, worker)
 				}
 				wg.Done()
 			}(i)
 		}
-		for _, fn := range compilequeue {
+		for _, fn := range pstate.compilequeue {
 			c <- fn
 		}
 		close(c)
-		compilequeue = nil
+		pstate.compilequeue = nil
 		wg.Wait()
-		Ctxt.InParallel = false
-		sizeCalculationDisabled = false
+		pstate.Ctxt.InParallel = false
+		pstate.sizeCalculationDisabled = false
 	}
 }
 
-func debuginfo(fnsym *obj.LSym, curfn interface{}) ([]dwarf.Scope, dwarf.InlCalls) {
+func (pstate *PackageState) debuginfo(fnsym *obj.LSym, curfn interface{}) ([]dwarf.Scope, dwarf.InlCalls) {
 	fn := curfn.(*Node)
 	if fn.Func.Nname != nil {
-		if expect := fn.Func.Nname.Sym.Linksym(); fnsym != expect {
-			Fatalf("unexpected fnsym: %v != %v", fnsym, expect)
+		if expect := fn.Func.Nname.Sym.Linksym(pstate.types); fnsym != expect {
+			pstate.Fatalf("unexpected fnsym: %v != %v", fnsym, expect)
 		}
 	}
 
@@ -356,7 +349,7 @@ func debuginfo(fnsym *obj.LSym, curfn interface{}) ([]dwarf.Scope, dwarf.InlCall
 			if !n.Name.Used() {
 				// Text == nil -> generating abstract function
 				if fnsym.Func.Text != nil {
-					Fatalf("debuginfo unused node (AllocFrame should truncate fn.Func.Dcl)")
+					pstate.Fatalf("debuginfo unused node (AllocFrame should truncate fn.Func.Dcl)")
 				}
 				continue
 			}
@@ -367,16 +360,16 @@ func debuginfo(fnsym *obj.LSym, curfn interface{}) ([]dwarf.Scope, dwarf.InlCall
 			continue
 		}
 		automDecls = append(automDecls, n)
-		gotype := ngotype(n).Linksym()
+		gotype := pstate.ngotype(n).Linksym(pstate.types)
 		fnsym.Func.Autom = append(fnsym.Func.Autom, &obj.Auto{
-			Asym:    Ctxt.Lookup(n.Sym.Name),
+			Asym:    pstate.Ctxt.Lookup(n.Sym.Name),
 			Aoffset: int32(n.Xoffset),
 			Name:    name,
 			Gotype:  gotype,
 		})
 	}
 
-	decls, dwarfVars := createDwarfVars(fnsym, fn.Func, automDecls)
+	decls, dwarfVars := pstate.createDwarfVars(fnsym, fn.Func, automDecls)
 
 	var varScopes []ScopeID
 	for _, decl := range decls {
@@ -398,20 +391,20 @@ func debuginfo(fnsym *obj.LSym, curfn interface{}) ([]dwarf.Scope, dwarf.InlCall
 			// captured.
 			pos = decl.Name.Defn.Pos
 		}
-		varScopes = append(varScopes, findScope(fn.Func.Marks, pos))
+		varScopes = append(varScopes, pstate.findScope(fn.Func.Marks, pos))
 	}
 
-	scopes := assembleScopes(fnsym, fn, dwarfVars, varScopes)
+	scopes := pstate.assembleScopes(fnsym, fn, dwarfVars, varScopes)
 	var inlcalls dwarf.InlCalls
-	if genDwarfInline > 0 {
-		inlcalls = assembleInlines(fnsym, dwarfVars)
+	if pstate.genDwarfInline > 0 {
+		inlcalls = pstate.assembleInlines(fnsym, dwarfVars)
 	}
 	return scopes, inlcalls
 }
 
 // createSimpleVars creates a DWARF entry for every variable declared in the
 // function, claiming that they are permanently on the stack.
-func createSimpleVars(automDecls []*Node) ([]*Node, []*dwarf.Var, map[*Node]bool) {
+func (pstate *PackageState) createSimpleVars(automDecls []*Node) ([]*Node, []*dwarf.Var, map[*Node]bool) {
 	var vars []*dwarf.Var
 	var decls []*Node
 	selected := make(map[*Node]bool)
@@ -425,42 +418,42 @@ func createSimpleVars(automDecls []*Node) ([]*Node, []*dwarf.Var, map[*Node]bool
 		switch n.Class() {
 		case PAUTO:
 			abbrev = dwarf.DW_ABRV_AUTO
-			if Ctxt.FixedFrameSize() == 0 {
-				offs -= int64(Widthptr)
+			if pstate.Ctxt.FixedFrameSize() == 0 {
+				offs -= int64(pstate.Widthptr)
 			}
-			if objabi.Framepointer_enabled(objabi.GOOS, objabi.GOARCH) {
-				offs -= int64(Widthptr)
+			if pstate.objabi.Framepointer_enabled(pstate.objabi.GOOS, pstate.objabi.GOARCH) {
+				offs -= int64(pstate.Widthptr)
 			}
 
 		case PPARAM, PPARAMOUT:
 			abbrev = dwarf.DW_ABRV_PARAM
-			offs += Ctxt.FixedFrameSize()
+			offs += pstate.Ctxt.FixedFrameSize()
 		default:
-			Fatalf("createSimpleVars unexpected type %v for node %v", n.Class(), n)
+			pstate.Fatalf("createSimpleVars unexpected type %v for node %v", n.Class(), n)
 		}
 
 		selected[n] = true
-		typename := dwarf.InfoPrefix + typesymname(n.Type)
+		typename := dwarf.InfoPrefix + pstate.typesymname(n.Type)
 		decls = append(decls, n)
 		inlIndex := 0
-		if genDwarfInline > 1 {
+		if pstate.genDwarfInline > 1 {
 			if n.InlFormal() || n.InlLocal() {
-				inlIndex = posInlIndex(n.Pos) + 1
+				inlIndex = pstate.posInlIndex(n.Pos) + 1
 				if n.InlFormal() {
 					abbrev = dwarf.DW_ABRV_PARAM
 				}
 			}
 		}
-		declpos := Ctxt.InnermostPos(n.Pos)
+		declpos := pstate.Ctxt.InnermostPos(n.Pos)
 		vars = append(vars, &dwarf.Var{
 			Name:          n.Sym.Name,
 			IsReturnValue: n.Class() == PPARAMOUT,
 			IsInlFormal:   n.InlFormal(),
 			Abbrev:        abbrev,
 			StackOffset:   int32(offs),
-			Type:          Ctxt.Lookup(typename),
+			Type:          pstate.Ctxt.Lookup(typename),
 			DeclFile:      declpos.RelFilename(),
-			DeclLine:      declpos.RelLine(),
+			DeclLine:      declpos.RelLine(pstate.src),
 			DeclCol:       declpos.Col(),
 			InlIndex:      int32(inlIndex),
 			ChildIndex:    -1,
@@ -471,7 +464,7 @@ func createSimpleVars(automDecls []*Node) ([]*Node, []*dwarf.Var, map[*Node]bool
 
 // createComplexVars creates recomposed DWARF vars with location lists,
 // suitable for describing optimized code.
-func createComplexVars(fn *Func) ([]*Node, []*dwarf.Var, map[*Node]bool) {
+func (pstate *PackageState) createComplexVars(fn *Func) ([]*Node, []*dwarf.Var, map[*Node]bool) {
 	debugInfo := fn.DebugInfo
 
 	// Produce a DWARF variable entry for each user variable.
@@ -486,7 +479,7 @@ func createComplexVars(fn *Func) ([]*Node, []*dwarf.Var, map[*Node]bool) {
 			ssaVars[debugInfo.Slots[slot].N.(*Node)] = true
 		}
 
-		if dvar := createComplexVar(fn, ssa.VarID(varID)); dvar != nil {
+		if dvar := pstate.createComplexVar(fn, ssa.VarID(varID)); dvar != nil {
 			decls = append(decls, n)
 			vars = append(vars, dvar)
 		}
@@ -497,20 +490,20 @@ func createComplexVars(fn *Func) ([]*Node, []*dwarf.Var, map[*Node]bool) {
 
 // createDwarfVars process fn, returning a list of DWARF variables and the
 // Nodes they represent.
-func createDwarfVars(fnsym *obj.LSym, fn *Func, automDecls []*Node) ([]*Node, []*dwarf.Var) {
+func (pstate *PackageState) createDwarfVars(fnsym *obj.LSym, fn *Func, automDecls []*Node) ([]*Node, []*dwarf.Var) {
 	// Collect a raw list of DWARF vars.
 	var vars []*dwarf.Var
 	var decls []*Node
 	var selected map[*Node]bool
-	if Ctxt.Flag_locationlists && Ctxt.Flag_optimize && fn.DebugInfo != nil {
-		decls, vars, selected = createComplexVars(fn)
+	if pstate.Ctxt.Flag_locationlists && pstate.Ctxt.Flag_optimize && fn.DebugInfo != nil {
+		decls, vars, selected = pstate.createComplexVars(fn)
 	} else {
-		decls, vars, selected = createSimpleVars(automDecls)
+		decls, vars, selected = pstate.createSimpleVars(automDecls)
 	}
 
 	var dcl []*Node
 	if fnsym.WasInlined() {
-		dcl = preInliningDcls(fnsym)
+		dcl = pstate.preInliningDcls(fnsym)
 	} else {
 		dcl = automDecls
 	}
@@ -529,33 +522,33 @@ func createDwarfVars(fnsym *obj.LSym, fn *Func, automDecls []*Node) ([]*Node, []
 			continue
 		}
 		c := n.Sym.Name[0]
-		if c == '.' || n.Type.IsUntyped() {
+		if c == '.' || n.Type.IsUntyped(pstate.types) {
 			continue
 		}
-		typename := dwarf.InfoPrefix + typesymname(n.Type)
+		typename := dwarf.InfoPrefix + pstate.typesymname(n.Type)
 		decls = append(decls, n)
 		abbrev := dwarf.DW_ABRV_AUTO_LOCLIST
 		if n.Class() == PPARAM || n.Class() == PPARAMOUT {
 			abbrev = dwarf.DW_ABRV_PARAM_LOCLIST
 		}
 		inlIndex := 0
-		if genDwarfInline > 1 {
+		if pstate.genDwarfInline > 1 {
 			if n.InlFormal() || n.InlLocal() {
-				inlIndex = posInlIndex(n.Pos) + 1
+				inlIndex = pstate.posInlIndex(n.Pos) + 1
 				if n.InlFormal() {
 					abbrev = dwarf.DW_ABRV_PARAM_LOCLIST
 				}
 			}
 		}
-		declpos := Ctxt.InnermostPos(n.Pos)
+		declpos := pstate.Ctxt.InnermostPos(n.Pos)
 		vars = append(vars, &dwarf.Var{
 			Name:          n.Sym.Name,
 			IsReturnValue: n.Class() == PPARAMOUT,
 			Abbrev:        abbrev,
 			StackOffset:   int32(n.Xoffset),
-			Type:          Ctxt.Lookup(typename),
+			Type:          pstate.Ctxt.Lookup(typename),
 			DeclFile:      declpos.RelFilename(),
-			DeclLine:      declpos.RelLine(),
+			DeclLine:      declpos.RelLine(pstate.src),
 			DeclCol:       declpos.Col(),
 			InlIndex:      int32(inlIndex),
 			ChildIndex:    -1,
@@ -563,9 +556,9 @@ func createDwarfVars(fnsym *obj.LSym, fn *Func, automDecls []*Node) ([]*Node, []
 		// Append a "deleted auto" entry to the autom list so as to
 		// insure that the type in question is picked up by the linker.
 		// See issue 22941.
-		gotype := ngotype(n).Linksym()
+		gotype := pstate.ngotype(n).Linksym(pstate.types)
 		fnsym.Func.Autom = append(fnsym.Func.Autom, &obj.Auto{
-			Asym:    Ctxt.Lookup(n.Sym.Name),
+			Asym:    pstate.Ctxt.Lookup(n.Sym.Name),
 			Aoffset: int32(-1),
 			Name:    obj.NAME_DELETED_AUTO,
 			Gotype:  gotype,
@@ -582,14 +575,14 @@ func createDwarfVars(fnsym *obj.LSym, fn *Func, automDecls []*Node) ([]*Node, []
 // function that is not local to the package being compiled, then the
 // names of the variables may have been "versioned" to avoid conflicts
 // with local vars; disregard this versioning when sorting.
-func preInliningDcls(fnsym *obj.LSym) []*Node {
-	fn := Ctxt.DwFixups.GetPrecursorFunc(fnsym).(*Node)
+func (pstate *PackageState) preInliningDcls(fnsym *obj.LSym) []*Node {
+	fn := pstate.Ctxt.DwFixups.GetPrecursorFunc(fnsym).(*Node)
 	var rdcl []*Node
 	for _, n := range fn.Func.Inl.Dcl {
 		c := n.Sym.Name[0]
 		// Avoid reporting "_" parameters, since if there are more than
 		// one, it can result in a collision later on, as in #23179.
-		if unversion(n.Sym.Name) == "_" || c == '.' || n.Type.IsUntyped() {
+		if unversion(n.Sym.Name) == "_" || c == '.' || n.Type.IsUntyped(pstate.types) {
 			continue
 		}
 		rdcl = append(rdcl, n)
@@ -626,25 +619,25 @@ func (s byNodeName) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
 // stackOffset returns the stack location of a LocalSlot relative to the
 // stack pointer, suitable for use in a DWARF location entry. This has nothing
 // to do with its offset in the user variable.
-func stackOffset(slot ssa.LocalSlot) int32 {
+func (pstate *PackageState) stackOffset(slot ssa.LocalSlot) int32 {
 	n := slot.N.(*Node)
 	var base int64
 	switch n.Class() {
 	case PAUTO:
-		if Ctxt.FixedFrameSize() == 0 {
-			base -= int64(Widthptr)
+		if pstate.Ctxt.FixedFrameSize() == 0 {
+			base -= int64(pstate.Widthptr)
 		}
-		if objabi.Framepointer_enabled(objabi.GOOS, objabi.GOARCH) {
-			base -= int64(Widthptr)
+		if pstate.objabi.Framepointer_enabled(pstate.objabi.GOOS, pstate.objabi.GOARCH) {
+			base -= int64(pstate.Widthptr)
 		}
 	case PPARAM, PPARAMOUT:
-		base += Ctxt.FixedFrameSize()
+		base += pstate.Ctxt.FixedFrameSize()
 	}
 	return int32(base + n.Xoffset + slot.Off)
 }
 
 // createComplexVar builds a single DWARF variable entry and location list.
-func createComplexVar(fn *Func, varID ssa.VarID) *dwarf.Var {
+func (pstate *PackageState) createComplexVar(fn *Func, varID ssa.VarID) *dwarf.Var {
 	debug := fn.DebugInfo
 	n := debug.Vars[varID].(*Node)
 
@@ -658,31 +651,31 @@ func createComplexVar(fn *Func, varID ssa.VarID) *dwarf.Var {
 		return nil
 	}
 
-	gotype := ngotype(n).Linksym()
+	gotype := pstate.ngotype(n).Linksym(pstate.types)
 	typename := dwarf.InfoPrefix + gotype.Name[len("type."):]
 	inlIndex := 0
-	if genDwarfInline > 1 {
+	if pstate.genDwarfInline > 1 {
 		if n.InlFormal() || n.InlLocal() {
-			inlIndex = posInlIndex(n.Pos) + 1
+			inlIndex = pstate.posInlIndex(n.Pos) + 1
 			if n.InlFormal() {
 				abbrev = dwarf.DW_ABRV_PARAM_LOCLIST
 			}
 		}
 	}
-	declpos := Ctxt.InnermostPos(n.Pos)
+	declpos := pstate.Ctxt.InnermostPos(n.Pos)
 	dvar := &dwarf.Var{
 		Name:          n.Sym.Name,
 		IsReturnValue: n.Class() == PPARAMOUT,
 		IsInlFormal:   n.InlFormal(),
 		Abbrev:        abbrev,
-		Type:          Ctxt.Lookup(typename),
+		Type:          pstate.Ctxt.Lookup(typename),
 		// The stack offset is used as a sorting key, so for decomposed
 		// variables just give it the first one. It's not used otherwise.
 		// This won't work well if the first slot hasn't been assigned a stack
 		// location, but it's not obvious how to do better.
-		StackOffset: stackOffset(debug.Slots[debug.VarSlots[varID][0]]),
+		StackOffset: pstate.stackOffset(debug.Slots[debug.VarSlots[varID][0]]),
 		DeclFile:    declpos.RelFilename(),
-		DeclLine:    declpos.RelLine(),
+		DeclLine:    declpos.RelLine(pstate.src),
 		DeclCol:     declpos.Col(),
 		InlIndex:    int32(inlIndex),
 		ChildIndex:  -1,
@@ -690,7 +683,7 @@ func createComplexVar(fn *Func, varID ssa.VarID) *dwarf.Var {
 	list := debug.LocationLists[varID]
 	if len(list) != 0 {
 		dvar.PutLocationList = func(listSym, startPC dwarf.Sym) {
-			debug.PutLocationList(list, Ctxt, listSym.(*obj.LSym), startPC.(*obj.LSym))
+			debug.PutLocationList(list, pstate.Ctxt, listSym.(*obj.LSym), startPC.(*obj.LSym))
 		}
 	}
 	return dvar
@@ -698,11 +691,11 @@ func createComplexVar(fn *Func, varID ssa.VarID) *dwarf.Var {
 
 // fieldtrack adds R_USEFIELD relocations to fnsym to record any
 // struct fields that it used.
-func fieldtrack(fnsym *obj.LSym, tracked map[*types.Sym]struct{}) {
+func (pstate *PackageState) fieldtrack(fnsym *obj.LSym, tracked map[*types.Sym]struct{}) {
 	if fnsym == nil {
 		return
 	}
-	if objabi.Fieldtrack_enabled == 0 || len(tracked) == 0 {
+	if pstate.objabi.Fieldtrack_enabled == 0 || len(tracked) == 0 {
 		return
 	}
 
@@ -713,7 +706,7 @@ func fieldtrack(fnsym *obj.LSym, tracked map[*types.Sym]struct{}) {
 	sort.Sort(symByName(trackSyms))
 	for _, sym := range trackSyms {
 		r := obj.Addrel(fnsym)
-		r.Sym = sym.Linksym()
+		r.Sym = sym.Linksym(pstate.types)
 		r.Type = objabi.R_USEFIELD
 	}
 }

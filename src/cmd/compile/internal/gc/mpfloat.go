@@ -130,24 +130,24 @@ func (a *Mpflt) CmpFloat64(c float64) int {
 	return a.Val.Cmp(big.NewFloat(c))
 }
 
-func (a *Mpflt) Float64() float64 {
+func (a *Mpflt) Float64(pstate *PackageState) float64 {
 	x, _ := a.Val.Float64()
 
 	// check for overflow
-	if math.IsInf(x, 0) && nsavederrors+nerrors == 0 {
-		Fatalf("ovf in Mpflt Float64")
+	if math.IsInf(x, 0) && pstate.nsavederrors+pstate.nerrors == 0 {
+		pstate.Fatalf("ovf in Mpflt Float64")
 	}
 
 	return x + 0 // avoid -0 (should not be needed, but be conservative)
 }
 
-func (a *Mpflt) Float32() float64 {
+func (a *Mpflt) Float32(pstate *PackageState) float64 {
 	x32, _ := a.Val.Float32()
 	x := float64(x32)
 
 	// check for overflow
-	if math.IsInf(x, 0) && nsavederrors+nerrors == 0 {
-		Fatalf("ovf in Mpflt Float32")
+	if math.IsInf(x, 0) && pstate.nsavederrors+pstate.nerrors == 0 {
+		pstate.Fatalf("ovf in Mpflt Float32")
 	}
 
 	return x + 0 // avoid -0 (should not be needed, but be conservative)
@@ -176,20 +176,20 @@ func (a *Mpflt) Neg() {
 	}
 }
 
-func (a *Mpflt) SetString(as string) {
+func (a *Mpflt) SetString(pstate *PackageState, as string) {
 	for len(as) > 0 && (as[0] == ' ' || as[0] == '\t') {
 		as = as[1:]
 	}
 
 	f, _, err := a.Val.Parse(as, 10)
 	if err != nil {
-		yyerror("malformed constant: %s (%v)", as, err)
+		pstate.yyerror("malformed constant: %s (%v)", as, err)
 		a.Val.SetFloat64(0)
 		return
 	}
 
 	if f.IsInf() {
-		yyerror("constant too large: %s", as)
+		pstate.yyerror("constant too large: %s", as)
 		a.Val.SetFloat64(0)
 		return
 	}

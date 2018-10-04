@@ -5,22 +5,22 @@
 package arm64
 
 import (
-	"cmd/compile/internal/gc"
-	"cmd/compile/internal/ssa"
-	"cmd/internal/obj/arm64"
+	"github.com/dave/golib/src/cmd/compile/internal/gc"
+	"github.com/dave/golib/src/cmd/compile/internal/ssa"
+	"github.com/dave/golib/src/cmd/internal/obj/arm64"
 )
 
-func Init(arch *gc.Arch) {
-	arch.LinkArch = &arm64.Linkarm64
+func (pstate *PackageState) Init(arch *gc.Arch) {
+	arch.LinkArch = &pstate.arm64.Linkarm64
 	arch.REGSP = arm64.REGSP
 	arch.MAXWIDTH = 1 << 50
 
 	arch.PadFrame = padframe
-	arch.ZeroRange = zerorange
-	arch.ZeroAuto = zeroAuto
-	arch.Ginsnop = ginsnop
+	arch.ZeroRange = pstate.zerorange
+	arch.ZeroAuto = pstate.zeroAuto
+	arch.Ginsnop = pstate.ginsnop
 
 	arch.SSAMarkMoves = func(s *gc.SSAGenState, b *ssa.Block) {}
-	arch.SSAGenValue = ssaGenValue
-	arch.SSAGenBlock = ssaGenBlock
+	arch.SSAGenValue = pstate.ssaGenValue
+	arch.SSAGenBlock = pstate.ssaGenBlock
 }

@@ -56,7 +56,7 @@ func GoSyntax(inst Inst, pc uint64, symname SymLookup) string {
 	prefix := ""
 	switch last & 0xFF {
 	case 0, 0x66, 0x67:
-		// ignore
+	// ignore
 	default:
 		prefix += last.String() + " "
 	}

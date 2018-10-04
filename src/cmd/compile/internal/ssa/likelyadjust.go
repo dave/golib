@@ -49,12 +49,12 @@ func (sdom SparseTree) outerinner(outer, inner *loop) {
 	outer.isInner = false
 }
 
-func checkContainsCall(bb *Block) bool {
+func (pstate *PackageState) checkContainsCall(bb *Block) bool {
 	if bb.Kind == BlockDefer {
 		return true
 	}
 	for _, v := range bb.Values {
-		if opcodeTable[v.Op].call {
+		if pstate.opcodeTable[v.Op].call {
 			return true
 		}
 	}
@@ -95,8 +95,6 @@ const (
 	blEXIT    = 3
 )
 
-var bllikelies = [4]string{"default", "call", "ret", "exit"}
-
 func describePredictionAgrees(b *Block, prediction BranchPrediction) string {
 	s := ""
 	if prediction == b.Likely {
@@ -107,12 +105,12 @@ func describePredictionAgrees(b *Block, prediction BranchPrediction) string {
 	return s
 }
 
-func describeBranchPrediction(f *Func, b *Block, likely, not int8, prediction BranchPrediction) {
+func (pstate *PackageState) describeBranchPrediction(f *Func, b *Block, likely, not int8, prediction BranchPrediction) {
 	f.Warnl(b.Pos, "Branch prediction rule %s < %s%s",
-		bllikelies[likely-blMin], bllikelies[not-blMin], describePredictionAgrees(b, prediction))
+		pstate.bllikelies[likely-blMin], pstate.bllikelies[not-blMin], describePredictionAgrees(b, prediction))
 }
 
-func likelyadjust(f *Func) {
+func (pstate *PackageState) likelyadjust(f *Func) {
 	// The values assigned to certain and local only matter
 	// in their rank order.  0 is default, more positive
 	// is less likely. It's possible to assign a negative
@@ -121,7 +119,7 @@ func likelyadjust(f *Func) {
 	local := make([]int8, f.NumBlocks())   // for our immediate predecessors.
 
 	po := f.postorder()
-	nest := f.loopnest()
+	nest := f.loopnest(pstate)
 	b2l := nest.b2l
 
 	for _, b := range po {
@@ -131,14 +129,14 @@ func likelyadjust(f *Func) {
 			local[b.ID] = blEXIT
 			certain[b.ID] = blEXIT
 
-			// Ret, it depends.
+		// Ret, it depends.
 		case BlockRet, BlockRetJmp:
 			local[b.ID] = blRET
 			certain[b.ID] = blRET
 
-			// Calls. TODO not all calls are equal, names give useful clues.
-			// Any name-based heuristics are only relative to other calls,
-			// and less influential than inferences from loop structure.
+		// Calls. TODO not all calls are equal, names give useful clues.
+		// Any name-based heuristics are only relative to other calls,
+		// and less influential than inferences from loop structure.
 		case BlockDefer:
 			local[b.ID] = blCALL
 			certain[b.ID] = max8(blCALL, certain[b.Succs[0].b.ID])
@@ -174,7 +172,7 @@ func likelyadjust(f *Func) {
 					case l0 == nil:
 						prediction = BranchUnlikely
 
-						// prefer to stay in loop, not exit to outer.
+					// prefer to stay in loop, not exit to outer.
 					case l == l0:
 						prediction = BranchLikely
 					case l == l1:
@@ -192,22 +190,22 @@ func likelyadjust(f *Func) {
 					if certain[b1] > certain[b0] {
 						prediction = BranchLikely
 						if f.pass.debug > 0 {
-							describeBranchPrediction(f, b, certain[b0], certain[b1], prediction)
+							pstate.describeBranchPrediction(f, b, certain[b0], certain[b1], prediction)
 						}
 					} else if certain[b0] > certain[b1] {
 						prediction = BranchUnlikely
 						if f.pass.debug > 0 {
-							describeBranchPrediction(f, b, certain[b1], certain[b0], prediction)
+							pstate.describeBranchPrediction(f, b, certain[b1], certain[b0], prediction)
 						}
 					} else if local[b1] > local[b0] {
 						prediction = BranchLikely
 						if f.pass.debug > 0 {
-							describeBranchPrediction(f, b, local[b0], local[b1], prediction)
+							pstate.describeBranchPrediction(f, b, local[b0], local[b1], prediction)
 						}
 					} else if local[b0] > local[b1] {
 						prediction = BranchUnlikely
 						if f.pass.debug > 0 {
-							describeBranchPrediction(f, b, local[b1], local[b0], prediction)
+							pstate.describeBranchPrediction(f, b, local[b1], local[b0], prediction)
 						}
 					}
 				}
@@ -219,14 +217,14 @@ func likelyadjust(f *Func) {
 			}
 			// Look for calls in the block.  If there is one, make this block unlikely.
 			for _, v := range b.Values {
-				if opcodeTable[v.Op].call {
+				if pstate.opcodeTable[v.Op].call {
 					local[b.ID] = blCALL
 					certain[b.ID] = max8(blCALL, certain[b.Succs[0].b.ID])
 				}
 			}
 		}
 		if f.pass.debug > 2 {
-			f.Warnl(b.Pos, "BP: Block %s, local=%s, certain=%s", b, bllikelies[local[b.ID]-blMin], bllikelies[certain[b.ID]-blMin])
+			f.Warnl(b.Pos, "BP: Block %s, local=%s, certain=%s", b, pstate.bllikelies[local[b.ID]-blMin], pstate.bllikelies[certain[b.ID]-blMin])
 		}
 
 	}
@@ -271,7 +269,7 @@ func (l *loop) nearestOuterLoop(sdom SparseTree, b *Block) *loop {
 	return o
 }
 
-func loopnestfor(f *Func) *loopnest {
+func (pstate *PackageState) loopnestfor(f *Func) *loopnest {
 	po := f.postorder()
 	sdom := f.sdom()
 	b2l := make([]*loop, f.NumBlocks())
@@ -370,7 +368,7 @@ func loopnestfor(f *Func) *loopnest {
 	// Calculate containsUnavoidableCall for regalloc
 	dominatedByCall := make([]bool, f.NumBlocks())
 	for _, b := range po {
-		if checkContainsCall(b) {
+		if pstate.checkContainsCall(b) {
 			dominatedByCall[b.ID] = true
 		}
 	}

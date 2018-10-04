@@ -95,7 +95,7 @@ func init() {
 		gpstore = regInfo{inputs: []regMask{gpspsb, gpsp, 0}}
 		fpload  = regInfo{inputs: []regMask{gpspsb, 0}, outputs: []regMask{fp}}
 		fpstore = regInfo{inputs: []regMask{gpspsb, fp, 0}}
-		// fpstoreconst = regInfo{inputs: []regMask{fp, 0}}
+	// fpstoreconst = regInfo{inputs: []regMask{fp, 0}}
 	)
 
 	var WasmOps = []opData{
@@ -195,7 +195,7 @@ func init() {
 
 	archs = append(archs, arch{
 		name:            "Wasm",
-		pkg:             "cmd/internal/obj/wasm",
+		pkg:             "github.com/dave/golib/src/cmd/internal/obj/wasm",
 		genfile:         "",
 		ops:             WasmOps,
 		blocks:          nil,

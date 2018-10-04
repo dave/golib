@@ -30,9 +30,9 @@
 package ppc64
 
 import (
-	"cmd/internal/obj"
-	"cmd/internal/objabi"
-	"cmd/internal/sys"
+	"github.com/dave/golib/src/cmd/internal/obj"
+	"github.com/dave/golib/src/cmd/internal/objabi"
+	"github.com/dave/golib/src/cmd/internal/sys"
 )
 
 func progedit(ctxt *obj.Link, p *obj.Prog, newprog obj.ProgAlloc) {
@@ -73,7 +73,7 @@ func progedit(ctxt *obj.Link, p *obj.Prog, newprog obj.ProgAlloc) {
 			p.From.Offset = 0
 		}
 
-		// Put >32-bit constants in memory and load them
+	// Put >32-bit constants in memory and load them
 	case AMOVD:
 		if p.From.Type == obj.TYPE_CONST && p.From.Name == obj.NAME_NONE && p.From.Reg == 0 && int64(int32(p.From.Offset)) != p.From.Offset {
 			p.From.Type = obj.TYPE_MEM
@@ -1071,22 +1071,4 @@ func (c *ctxt9) stacksplit(p *obj.Prog, framesize int32) *obj.Prog {
 	q1.Pcond = p
 
 	return p
-}
-
-var Linkppc64 = obj.LinkArch{
-	Arch:           sys.ArchPPC64,
-	Init:           buildop,
-	Preprocess:     preprocess,
-	Assemble:       span9,
-	Progedit:       progedit,
-	DWARFRegisters: PPC64DWARFRegisters,
-}
-
-var Linkppc64le = obj.LinkArch{
-	Arch:           sys.ArchPPC64LE,
-	Init:           buildop,
-	Preprocess:     preprocess,
-	Assemble:       span9,
-	Progedit:       progedit,
-	DWARFRegisters: PPC64DWARFRegisters,
 }

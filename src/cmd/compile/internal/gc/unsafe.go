@@ -5,16 +5,16 @@
 package gc
 
 // evalunsafe evaluates a package unsafe operation and returns the result.
-func evalunsafe(n *Node) int64 {
+func (pstate *PackageState) evalunsafe(n *Node) int64 {
 	switch n.Op {
 	case OALIGNOF, OSIZEOF:
-		n.Left = typecheck(n.Left, Erv)
-		n.Left = defaultlit(n.Left, nil)
+		n.Left = pstate.typecheck(n.Left, Erv)
+		n.Left = pstate.defaultlit(n.Left, nil)
 		tr := n.Left.Type
 		if tr == nil {
 			return 0
 		}
-		dowidth(tr)
+		pstate.dowidth(tr)
 		if n.Op == OALIGNOF {
 			return int64(tr.Align)
 		}
@@ -23,17 +23,17 @@ func evalunsafe(n *Node) int64 {
 	case OOFFSETOF:
 		// must be a selector.
 		if n.Left.Op != OXDOT {
-			yyerror("invalid expression %v", n)
+			pstate.yyerror("invalid expression %v", n)
 			return 0
 		}
 
 		// Remember base of selector to find it back after dot insertion.
 		// Since r->left may be mutated by typechecking, check it explicitly
 		// first to track it correctly.
-		n.Left.Left = typecheck(n.Left.Left, Erv)
+		n.Left.Left = pstate.typecheck(n.Left.Left, Erv)
 		base := n.Left.Left
 
-		n.Left = typecheck(n.Left, Erv)
+		n.Left = pstate.typecheck(n.Left, Erv)
 		if n.Left.Type == nil {
 			return 0
 		}
@@ -41,10 +41,10 @@ func evalunsafe(n *Node) int64 {
 		case ODOT, ODOTPTR:
 			break
 		case OCALLPART:
-			yyerror("invalid expression %v: argument is a method value", n)
+			pstate.yyerror("invalid expression %v: argument is a method value", n)
 			return 0
 		default:
-			yyerror("invalid expression %v", n)
+			pstate.yyerror("invalid expression %v", n)
 			return 0
 		}
 
@@ -57,7 +57,7 @@ func evalunsafe(n *Node) int64 {
 				// but accessing f must not otherwise involve
 				// indirection via embedded pointer types.
 				if r.Left != base {
-					yyerror("invalid expression %v: selector implies indirection of embedded %v", n, r.Left)
+					pstate.yyerror("invalid expression %v: selector implies indirection of embedded %v", n, r.Left)
 					return 0
 				}
 				fallthrough
@@ -65,12 +65,12 @@ func evalunsafe(n *Node) int64 {
 				v += r.Xoffset
 			default:
 				Dump("unsafenmagic", n.Left)
-				Fatalf("impossible %#v node after dot insertion", r.Op)
+				pstate.Fatalf("impossible %#v node after dot insertion", r.Op)
 			}
 		}
 		return v
 	}
 
-	Fatalf("unexpected op %v", n.Op)
+	pstate.Fatalf("unexpected op %v", n.Op)
 	return 0
 }

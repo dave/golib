@@ -7,11 +7,11 @@ package objfile
 import (
 	"bufio"
 	"bytes"
-	"cmd/internal/src"
 	"container/list"
 	"debug/gosym"
 	"encoding/binary"
 	"fmt"
+	"github.com/dave/golib/src/cmd/internal/src"
 	"io"
 	"io/ioutil"
 	"os"
@@ -68,7 +68,7 @@ func (e *Entry) Disasm() (*Disasm, error) {
 	for _, sym := range syms {
 		switch sym.Name {
 		case "runtime.text", "text", "_text", "runtime.etext", "etext", "_etext":
-			// drop
+		// drop
 		default:
 			keep = append(keep, sym)
 		}
@@ -105,7 +105,7 @@ func (d *Disasm) lookup(addr uint64) (name string, base uint64) {
 // regardless of host operating system.
 func base(path string) string {
 	path = path[strings.LastIndex(path, "/")+1:]
-	path = path[strings.LastIndex(path, `\`)+1:]
+	path = path[strings.LastIndex(path, "\\")+1:]
 	return path
 }
 

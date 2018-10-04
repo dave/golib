@@ -45,14 +45,9 @@ const (
 	gt
 )
 
-var relationStrings = [...]string{
-	0: "none", lt: "<", eq: "==", lt | eq: "<=",
-	gt: ">", gt | lt: "!=", gt | eq: ">=", gt | eq | lt: "any",
-}
-
-func (r relation) String() string {
-	if r < relation(len(relationStrings)) {
-		return relationStrings[r]
+func (r relation) String(pstate *PackageState) string {
+	if r < relation(len(pstate.relationStrings)) {
+		return pstate.relationStrings[r]
 	}
 	return fmt.Sprintf("relation(%d)", uint(r))
 }
@@ -70,13 +65,9 @@ const (
 	boolean
 )
 
-var domainStrings = [...]string{
-	"signed", "unsigned", "pointer", "boolean",
-}
-
-func (d domain) String() string {
+func (d domain) String(pstate *PackageState) string {
 	s := ""
-	for i, ds := range domainStrings {
+	for i, ds := range pstate.domainStrings {
 		if d&(1<<uint(i)) != 0 {
 			if len(s) != 0 {
 				s += "|"
@@ -133,8 +124,6 @@ func (l limit) intersect(l2 limit) limit {
 	return l
 }
 
-var noLimit = limit{math.MinInt64, math.MaxInt64, 0, math.MaxUint64}
-
 // a limitFact is a limit known for a particular value.
 type limitFact struct {
 	vid   ID
@@ -176,11 +165,6 @@ type factsTable struct {
 	caps map[ID]*Value
 }
 
-// checkpointFact is an invalid value used for checkpointing
-// and restoring factsTable.
-var checkpointFact = fact{}
-var checkpointBound = limitFact{}
-
 func newFactsTable(f *Func) *factsTable {
 	ft := &factsTable{}
 	ft.order[0] = f.newPoset() // signed
@@ -196,7 +180,7 @@ func newFactsTable(f *Func) *factsTable {
 
 // update updates the set of relations between v and w in domain d
 // restricting it to r.
-func (ft *factsTable) update(parent *Block, v, w *Value, d domain, r relation) {
+func (ft *factsTable) update(pstate *PackageState, parent *Block, v, w *Value, d domain, r relation) {
 	// No need to do anything else if we already found unsat.
 	if ft.unsat {
 		return
@@ -240,7 +224,7 @@ func (ft *factsTable) update(parent *Block, v, w *Value, d domain, r relation) {
 	} else {
 		if lessByID(w, v) {
 			v, w = w, v
-			r = reverseBits[r]
+			r = pstate.reverseBits[r]
 		}
 
 		p := pair{v, w, d}
@@ -268,7 +252,7 @@ func (ft *factsTable) update(parent *Block, v, w *Value, d domain, r relation) {
 	// Extract bounds when comparing against constants
 	if v.isGenericIntConst() {
 		v, w = w, v
-		r = reverseBits[r]
+		r = pstate.reverseBits[r]
 	}
 	if v != nil && w.isGenericIntConst() {
 		// Note: all the +1/-1 below could overflow/underflow. Either will
@@ -278,7 +262,7 @@ func (ft *factsTable) update(parent *Block, v, w *Value, d domain, r relation) {
 		// of the value's type.
 		old, ok := ft.limits[v.ID]
 		if !ok {
-			old = noLimit
+			old = pstate.noLimit
 			if v.isGenericIntConst() {
 				switch d {
 				case signed:
@@ -295,7 +279,7 @@ func (ft *factsTable) update(parent *Block, v, w *Value, d domain, r relation) {
 				}
 			}
 		}
-		lim := noLimit
+		lim := pstate.noLimit
 		switch d {
 		case signed:
 			c := w.AuxInt
@@ -324,7 +308,7 @@ func (ft *factsTable) update(parent *Block, v, w *Value, d domain, r relation) {
 				// int(x) >= 0 && int(x) >= N  ⇒  uint(x) >= N
 				lim.umin = uint64(lim.min)
 			}
-			if lim.max != noLimit.max && old.min >= 0 && lim.max >= 0 {
+			if lim.max != pstate.noLimit.max && old.min >= 0 && lim.max >= 0 {
 				// 0 <= int(x) <= N  ⇒  0 <= uint(x) <= N
 				// This is for a max update, so the lower bound
 				// comes from what we already know (old).
@@ -383,21 +367,21 @@ func (ft *factsTable) update(parent *Block, v, w *Value, d domain, r relation) {
 		// len(s) > w implies cap(s) > w
 		// len(s) >= w implies cap(s) >= w
 		// len(s) == w implies cap(s) >= w
-		ft.update(parent, ft.caps[v.Args[0].ID], w, d, r|gt)
+		ft.update(pstate, parent, ft.caps[v.Args[0].ID], w, d, r|gt)
 	}
 	if w.Op == OpSliceLen && r&gt == 0 && ft.caps[w.Args[0].ID] != nil {
 		// same, length on the RHS.
-		ft.update(parent, v, ft.caps[w.Args[0].ID], d, r|lt)
+		ft.update(pstate, parent, v, ft.caps[w.Args[0].ID], d, r|lt)
 	}
 	if v.Op == OpSliceCap && r&gt == 0 && ft.lens[v.Args[0].ID] != nil {
 		// cap(s) < w implies len(s) < w
 		// cap(s) <= w implies len(s) <= w
 		// cap(s) == w implies len(s) <= w
-		ft.update(parent, ft.lens[v.Args[0].ID], w, d, r|lt)
+		ft.update(pstate, parent, ft.lens[v.Args[0].ID], w, d, r|lt)
 	}
 	if w.Op == OpSliceCap && r&lt == 0 && ft.lens[w.Args[0].ID] != nil {
 		// same, capacity on the RHS.
-		ft.update(parent, v, ft.lens[w.Args[0].ID], d, r|gt)
+		ft.update(pstate, parent, v, ft.lens[w.Args[0].ID], d, r|gt)
 	}
 
 	// Process fence-post implications.
@@ -405,7 +389,7 @@ func (ft *factsTable) update(parent *Block, v, w *Value, d domain, r relation) {
 	// First, make the condition > or >=.
 	if r == lt || r == lt|eq {
 		v, w = w, v
-		r = reverseBits[r]
+		r = pstate.reverseBits[r]
 	}
 	switch r {
 	case gt:
@@ -414,10 +398,10 @@ func (ft *factsTable) update(parent *Block, v, w *Value, d domain, r relation) {
 			//
 			// This is useful for eliminating the
 			// growslice branch of append.
-			ft.update(parent, x, w, d, gt|eq)
+			ft.update(pstate, parent, x, w, d, gt|eq)
 		} else if x, delta := isConstDelta(w); x != nil && delta == -1 {
 			// v > x-1  ⇒  v >= x
-			ft.update(parent, v, x, d, gt|eq)
+			ft.update(pstate, parent, v, x, d, gt|eq)
 		}
 	case gt | eq:
 		if x, delta := isConstDelta(v); x != nil && delta == -1 {
@@ -425,14 +409,14 @@ func (ft *factsTable) update(parent *Block, v, w *Value, d domain, r relation) {
 			//
 			// Useful for i > 0; s[i-1].
 			lim, ok := ft.limits[x.ID]
-			if ok && lim.min > opMin[v.Op] {
-				ft.update(parent, x, w, d, gt)
+			if ok && lim.min > pstate.opMin[v.Op] {
+				ft.update(pstate, parent, x, w, d, gt)
 			}
 		} else if x, delta := isConstDelta(w); x != nil && delta == 1 {
 			// v >= x+1 && x < max  ⇒  v > x
 			lim, ok := ft.limits[x.ID]
-			if ok && lim.max < opMax[w.Op] {
-				ft.update(parent, v, x, d, gt)
+			if ok && lim.max < pstate.opMax[w.Op] {
+				ft.update(pstate, parent, v, x, d, gt)
 			}
 		}
 	}
@@ -449,9 +433,9 @@ func (ft *factsTable) update(parent *Block, v, w *Value, d domain, r relation) {
 				//    if delta < 0 and x > MinInt - delta, then x > w (because x+delta cannot underflow)
 				// This is useful for loops with bounds "len(slice)-K" (delta = -K)
 				if l, has := ft.limits[x.ID]; has && delta < 0 {
-					if (x.Type.Size() == 8 && l.min >= math.MinInt64-delta) ||
-						(x.Type.Size() == 4 && l.min >= math.MinInt32-delta) {
-						ft.update(parent, x, w, signed, r)
+					if (x.Type.Size(pstate.types) == 8 && l.min >= math.MinInt64-delta) ||
+						(x.Type.Size(pstate.types) == 4 && l.min >= math.MinInt32-delta) {
+						ft.update(pstate, parent, x, w, signed, r)
 					}
 				}
 			} else {
@@ -474,7 +458,7 @@ func (ft *factsTable) update(parent *Block, v, w *Value, d domain, r relation) {
 				// Notice the conditions for max are still <=, as they handle overflows.
 				var min, max int64
 				var vmin, vmax *Value
-				switch x.Type.Size() {
+				switch x.Type.Size(pstate.types) {
 				case 8:
 					min = w.AuxInt - delta
 					max = int64(^uint64(0)>>1) - delta
@@ -495,8 +479,8 @@ func (ft *factsTable) update(parent *Block, v, w *Value, d domain, r relation) {
 
 				if min < max {
 					// Record that x > min and max >= x
-					ft.update(parent, x, vmin, d, r)
-					ft.update(parent, vmax, x, d, r|eq)
+					ft.update(pstate, parent, x, vmin, d, r)
+					ft.update(pstate, parent, vmax, x, d, r|eq)
 				} else {
 					// We know that either x>min OR x<=max. factsTable cannot record OR conditions,
 					// so let's see if we can already prove that one of them is false, in which case
@@ -504,10 +488,10 @@ func (ft *factsTable) update(parent *Block, v, w *Value, d domain, r relation) {
 					if l, has := ft.limits[x.ID]; has {
 						if l.max <= min {
 							// x>min is impossible, so it must be x<=max
-							ft.update(parent, vmax, x, d, r|eq)
+							ft.update(pstate, parent, vmax, x, d, r|eq)
 						} else if l.min > max {
 							// x<=max is impossible, so it must be x>min
-							ft.update(parent, x, vmin, d, r)
+							ft.update(pstate, parent, x, vmin, d, r)
 						}
 					}
 				}
@@ -515,16 +499,6 @@ func (ft *factsTable) update(parent *Block, v, w *Value, d domain, r relation) {
 		}
 	}
 
-}
-
-var opMin = map[Op]int64{
-	OpAdd64: math.MinInt64, OpSub64: math.MinInt64,
-	OpAdd32: math.MinInt32, OpSub32: math.MinInt32,
-}
-
-var opMax = map[Op]int64{
-	OpAdd64: math.MaxInt64, OpSub64: math.MaxInt64,
-	OpAdd32: math.MaxInt32, OpSub32: math.MaxInt32,
 }
 
 // isNonNegative reports whether v is known to be non-negative.
@@ -555,12 +529,12 @@ func (ft *factsTable) isNonNegative(v *Value) bool {
 
 // checkpoint saves the current state of known relations.
 // Called when descending on a branch.
-func (ft *factsTable) checkpoint() {
+func (ft *factsTable) checkpoint(pstate *PackageState) {
 	if ft.unsat {
 		ft.unsatDepth++
 	}
-	ft.stack = append(ft.stack, checkpointFact)
-	ft.limitStack = append(ft.limitStack, checkpointBound)
+	ft.stack = append(ft.stack, pstate.checkpointFact)
+	ft.limitStack = append(ft.limitStack, pstate.checkpointBound)
 	ft.order[0].Checkpoint()
 	ft.order[1].Checkpoint()
 }
@@ -568,7 +542,7 @@ func (ft *factsTable) checkpoint() {
 // restore restores known relation to the state just
 // before the previous checkpoint.
 // Called when backing up on a branch.
-func (ft *factsTable) restore() {
+func (ft *factsTable) restore(pstate *PackageState) {
 	if ft.unsatDepth > 0 {
 		ft.unsatDepth--
 	} else {
@@ -577,7 +551,7 @@ func (ft *factsTable) restore() {
 	for {
 		old := ft.stack[len(ft.stack)-1]
 		ft.stack = ft.stack[:len(ft.stack)-1]
-		if old == checkpointFact {
+		if old == pstate.checkpointFact {
 			break
 		}
 		if old.r == lt|eq|gt {
@@ -592,7 +566,7 @@ func (ft *factsTable) restore() {
 		if old.vid == 0 { // checkpointBound
 			break
 		}
-		if old.limit == noLimit {
+		if old.limit == pstate.noLimit {
 			delete(ft.limits, old.vid)
 		} else {
 			ft.limits[old.vid] = old.limit
@@ -612,75 +586,6 @@ func lessByID(v, w *Value) bool {
 	}
 	return w != nil && v.ID < w.ID
 }
-
-var (
-	reverseBits = [...]relation{0, 4, 2, 6, 1, 5, 3, 7}
-
-	// maps what we learn when the positive branch is taken.
-	// For example:
-	//      OpLess8:   {signed, lt},
-	//	v1 = (OpLess8 v2 v3).
-	// If v1 branch is taken than we learn that the rangeMaks
-	// can be at most lt.
-	domainRelationTable = map[Op]struct {
-		d domain
-		r relation
-	}{
-		OpEq8:   {signed | unsigned, eq},
-		OpEq16:  {signed | unsigned, eq},
-		OpEq32:  {signed | unsigned, eq},
-		OpEq64:  {signed | unsigned, eq},
-		OpEqPtr: {pointer, eq},
-
-		OpNeq8:   {signed | unsigned, lt | gt},
-		OpNeq16:  {signed | unsigned, lt | gt},
-		OpNeq32:  {signed | unsigned, lt | gt},
-		OpNeq64:  {signed | unsigned, lt | gt},
-		OpNeqPtr: {pointer, lt | gt},
-
-		OpLess8:   {signed, lt},
-		OpLess8U:  {unsigned, lt},
-		OpLess16:  {signed, lt},
-		OpLess16U: {unsigned, lt},
-		OpLess32:  {signed, lt},
-		OpLess32U: {unsigned, lt},
-		OpLess64:  {signed, lt},
-		OpLess64U: {unsigned, lt},
-
-		OpLeq8:   {signed, lt | eq},
-		OpLeq8U:  {unsigned, lt | eq},
-		OpLeq16:  {signed, lt | eq},
-		OpLeq16U: {unsigned, lt | eq},
-		OpLeq32:  {signed, lt | eq},
-		OpLeq32U: {unsigned, lt | eq},
-		OpLeq64:  {signed, lt | eq},
-		OpLeq64U: {unsigned, lt | eq},
-
-		OpGeq8:   {signed, eq | gt},
-		OpGeq8U:  {unsigned, eq | gt},
-		OpGeq16:  {signed, eq | gt},
-		OpGeq16U: {unsigned, eq | gt},
-		OpGeq32:  {signed, eq | gt},
-		OpGeq32U: {unsigned, eq | gt},
-		OpGeq64:  {signed, eq | gt},
-		OpGeq64U: {unsigned, eq | gt},
-
-		OpGreater8:   {signed, gt},
-		OpGreater8U:  {unsigned, gt},
-		OpGreater16:  {signed, gt},
-		OpGreater16U: {unsigned, gt},
-		OpGreater32:  {signed, gt},
-		OpGreater32U: {unsigned, gt},
-		OpGreater64:  {signed, gt},
-		OpGreater64U: {unsigned, gt},
-
-		// For these ops, the negative branch is different: we can only
-		// prove signed/GE (signed/GT) if we can prove that arg0 is non-negative.
-		// See the special case in addBranchRestrictions.
-		OpIsInBounds:      {signed | unsigned, lt},      // 0 <= arg0 < arg1
-		OpIsSliceInBounds: {signed | unsigned, lt | eq}, // 0 <= arg0 <= arg1
-	}
-)
 
 // prove removes redundant BlockIf branches that can be inferred
 // from previous dominating comparisons.
@@ -713,9 +618,9 @@ var (
 // block, and then separately asserts the block's branch condition and
 // its negation. If either leads to a contradiction, it can trim that
 // successor.
-func prove(f *Func) {
+func (pstate *PackageState) prove(f *Func) {
 	ft := newFactsTable(f)
-	ft.checkpoint()
+	ft.checkpoint(pstate)
 
 	// Find length and capacity ops.
 	var zero *Value
@@ -736,7 +641,7 @@ func prove(f *Func) {
 				if zero == nil {
 					zero = b.NewValue0I(b.Pos, OpConst64, f.Config.Types.Int64, 0)
 				}
-				ft.update(b, v, zero, signed, gt|eq)
+				ft.update(pstate, b, v, zero, signed, gt|eq)
 			case OpSliceLen:
 				if ft.lens == nil {
 					ft.lens = map[ID]*Value{}
@@ -745,7 +650,7 @@ func prove(f *Func) {
 				if zero == nil {
 					zero = b.NewValue0I(b.Pos, OpConst64, f.Config.Types.Int64, 0)
 				}
-				ft.update(b, v, zero, signed, gt|eq)
+				ft.update(pstate, b, v, zero, signed, gt|eq)
 			case OpSliceCap:
 				if ft.caps == nil {
 					ft.caps = map[ID]*Value{}
@@ -754,7 +659,7 @@ func prove(f *Func) {
 				if zero == nil {
 					zero = b.NewValue0I(b.Pos, OpConst64, f.Config.Types.Int64, 0)
 				}
-				ft.update(b, v, zero, signed, gt|eq)
+				ft.update(pstate, b, v, zero, signed, gt|eq)
 			}
 		}
 	}
@@ -807,19 +712,19 @@ func prove(f *Func) {
 
 		switch node.state {
 		case descend:
-			ft.checkpoint()
+			ft.checkpoint(pstate)
 			if iv, ok := indVars[node.block]; ok {
-				addIndVarRestrictions(ft, parent, iv)
+				pstate.addIndVarRestrictions(ft, parent, iv)
 			}
 
 			if branch != unknown {
-				addBranchRestrictions(ft, parent, branch)
+				pstate.addBranchRestrictions(ft, parent, branch)
 				if ft.unsat {
 					// node.block is unreachable.
 					// Remove it and don't visit
 					// its children.
 					removeBranch(parent, branch)
-					ft.restore()
+					ft.restore(pstate)
 					break
 				}
 				// Otherwise, we can now commit to
@@ -828,7 +733,7 @@ func prove(f *Func) {
 			}
 
 			// Add inductive facts for phis in this block.
-			addLocalInductiveFacts(ft, node.block)
+			pstate.addLocalInductiveFacts(ft, node.block)
 
 			work = append(work, bp{
 				block: node.block,
@@ -842,18 +747,18 @@ func prove(f *Func) {
 			}
 
 		case simplify:
-			simplifyBlock(sdom, ft, node.block)
-			ft.restore()
+			pstate.simplifyBlock(sdom, ft, node.block)
+			ft.restore(pstate)
 		}
 	}
 
-	ft.restore()
+	ft.restore(pstate)
 
 	// Return the posets to the free list
 	for _, po := range ft.order {
 		// Make sure it's empty as it should be. A non-empty poset
 		// might cause errors and miscompilations if reused.
-		if checkEnabled {
+		if pstate.checkEnabled {
 			if err := po.CheckEmpty(); err != nil {
 				f.Fatalf("prove poset not empty after function %s: %v", f.Name, err)
 			}
@@ -886,38 +791,38 @@ func getBranch(sdom SparseTree, p *Block, b *Block) branch {
 // addIndVarRestrictions updates the factsTables ft with the facts
 // learned from the induction variable indVar which drives the loop
 // starting in Block b.
-func addIndVarRestrictions(ft *factsTable, b *Block, iv indVar) {
+func (pstate *PackageState) addIndVarRestrictions(ft *factsTable, b *Block, iv indVar) {
 	d := signed
 	if isNonNegative(iv.min) && isNonNegative(iv.max) {
 		d |= unsigned
 	}
 
 	if iv.flags&indVarMinExc == 0 {
-		addRestrictions(b, ft, d, iv.min, iv.ind, lt|eq)
+		pstate.addRestrictions(b, ft, d, iv.min, iv.ind, lt|eq)
 	} else {
-		addRestrictions(b, ft, d, iv.min, iv.ind, lt)
+		pstate.addRestrictions(b, ft, d, iv.min, iv.ind, lt)
 	}
 
 	if iv.flags&indVarMaxInc == 0 {
-		addRestrictions(b, ft, d, iv.ind, iv.max, lt)
+		pstate.addRestrictions(b, ft, d, iv.ind, iv.max, lt)
 	} else {
-		addRestrictions(b, ft, d, iv.ind, iv.max, lt|eq)
+		pstate.addRestrictions(b, ft, d, iv.ind, iv.max, lt|eq)
 	}
 }
 
 // addBranchRestrictions updates the factsTables ft with the facts learned when
 // branching from Block b in direction br.
-func addBranchRestrictions(ft *factsTable, b *Block, br branch) {
+func (pstate *PackageState) addBranchRestrictions(ft *factsTable, b *Block, br branch) {
 	c := b.Control
 	switch br {
 	case negative:
-		addRestrictions(b, ft, boolean, nil, c, eq)
+		pstate.addRestrictions(b, ft, boolean, nil, c, eq)
 	case positive:
-		addRestrictions(b, ft, boolean, nil, c, lt|gt)
+		pstate.addRestrictions(b, ft, boolean, nil, c, lt|gt)
 	default:
 		panic("unknown branch")
 	}
-	if tr, has := domainRelationTable[b.Control.Op]; has {
+	if tr, has := pstate.domainRelationTable[b.Control.Op]; has {
 		// When we branched from parent we learned a new set of
 		// restrictions. Update the factsTable accordingly.
 		d := tr.d
@@ -945,16 +850,16 @@ func addBranchRestrictions(ft *factsTable, b *Block, br branch) {
 					d |= signed
 				}
 			}
-			addRestrictions(b, ft, d, c.Args[0], c.Args[1], tr.r^(lt|gt|eq))
+			pstate.addRestrictions(b, ft, d, c.Args[0], c.Args[1], tr.r^(lt|gt|eq))
 		case positive:
-			addRestrictions(b, ft, d, c.Args[0], c.Args[1], tr.r)
+			pstate.addRestrictions(b, ft, d, c.Args[0], c.Args[1], tr.r)
 		}
 	}
 }
 
 // addRestrictions updates restrictions from the immediate
 // dominating block (p) using r.
-func addRestrictions(parent *Block, ft *factsTable, t domain, v, w *Value, r relation) {
+func (pstate *PackageState) addRestrictions(parent *Block, ft *factsTable, t domain, v, w *Value, r relation) {
 	if t == 0 {
 		// Trivial case: nothing to do.
 		// Shoult not happen, but just in case.
@@ -964,7 +869,7 @@ func addRestrictions(parent *Block, ft *factsTable, t domain, v, w *Value, r rel
 		if t&i == 0 {
 			continue
 		}
-		ft.update(parent, v, w, i, r)
+		ft.update(pstate, parent, v, w, i, r)
 	}
 }
 
@@ -975,7 +880,7 @@ func addRestrictions(parent *Block, ft *factsTable, t domain, v, w *Value, r rel
 // created by OFORUNTIL, which isn't detected by findIndVar.
 //
 // TODO: It would be nice to combine this with findIndVar.
-func addLocalInductiveFacts(ft *factsTable, b *Block) {
+func (pstate *PackageState) addLocalInductiveFacts(ft *factsTable, b *Block) {
 	// This looks for a specific pattern of induction:
 	//
 	// 1. i1 = OpPhi(min, i2) in b
@@ -1027,7 +932,7 @@ func addLocalInductiveFacts(ft *factsTable, b *Block) {
 				br = negative
 			}
 
-			tr, has := domainRelationTable[pred.Control.Op]
+			tr, has := pstate.domainRelationTable[pred.Control.Op]
 			if !has {
 				continue
 			}
@@ -1053,28 +958,26 @@ func addLocalInductiveFacts(ft *factsTable, b *Block) {
 			// fact table. We "prove" min < max by showing
 			// that min >= max is unsat. (This may simply
 			// compare two constants; that's fine.)
-			ft.checkpoint()
-			ft.update(b, min, max, tr.d, gt|eq)
+			ft.checkpoint(pstate)
+			ft.update(pstate, b, min, max, tr.d, gt|eq)
 			proved := ft.unsat
-			ft.restore()
+			ft.restore(pstate)
 
 			if proved {
 				// We know that min <= i1 < max.
 				if b.Func.pass.debug > 0 {
 					printIndVar(b, i1, min, max, 1, 0)
 				}
-				ft.update(b, min, i1, tr.d, lt|eq)
-				ft.update(b, i1, max, tr.d, lt)
+				ft.update(pstate, b, min, i1, tr.d, lt|eq)
+				ft.update(pstate, b, i1, max, tr.d, lt)
 			}
 		}
 	}
 }
 
-var ctzNonZeroOp = map[Op]Op{OpCtz8: OpCtz8NonZero, OpCtz16: OpCtz16NonZero, OpCtz32: OpCtz32NonZero, OpCtz64: OpCtz64NonZero}
-
 // simplifyBlock simplifies some constant values in b and evaluates
 // branches to non-uniquely dominated successors of b.
-func simplifyBlock(sdom SparseTree, ft *factsTable, b *Block) {
+func (pstate *PackageState) simplifyBlock(sdom SparseTree, ft *factsTable, b *Block) {
 	for _, v := range b.Values {
 		switch v.Op {
 		case OpSlicemask:
@@ -1113,7 +1016,7 @@ func simplifyBlock(sdom SparseTree, ft *factsTable, b *Block) {
 				if b.Func.pass.debug > 0 {
 					b.Func.Warnl(v.Pos, "Proved %v non-zero", v.Op)
 				}
-				v.Op = ctzNonZeroOp[v.Op]
+				v.Op = pstate.ctzNonZeroOp[v.Op]
 			}
 
 		case OpLsh8x8, OpLsh8x16, OpLsh8x32, OpLsh8x64,
@@ -1135,7 +1038,7 @@ func simplifyBlock(sdom SparseTree, ft *factsTable, b *Block) {
 			if !ok {
 				continue
 			}
-			bits := 8 * v.Args[0].Type.Size()
+			bits := 8 * v.Args[0].Type.Size(pstate.types)
 			if lim.umax < uint64(bits) || (lim.max < bits && ft.isNonNegative(by)) {
 				v.AuxInt = 1 // see shiftIsBounded
 				if b.Func.pass.debug > 0 {
@@ -1160,10 +1063,10 @@ func simplifyBlock(sdom SparseTree, ft *factsTable, b *Block) {
 		}
 		// For edges to other blocks, this can trim a branch
 		// even if we couldn't get rid of the child itself.
-		ft.checkpoint()
-		addBranchRestrictions(ft, parent, branch)
+		ft.checkpoint(pstate)
+		pstate.addBranchRestrictions(ft, parent, branch)
 		unsat := ft.unsat
-		ft.restore()
+		ft.restore(pstate)
 		if unsat {
 			// This branch is impossible, so remove it
 			// from the block.

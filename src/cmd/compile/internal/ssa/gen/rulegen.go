@@ -161,9 +161,9 @@ func genRules(arch arch) {
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "package ssa")
 	fmt.Fprintln(w, "import \"math\"")
-	fmt.Fprintln(w, "import \"cmd/internal/obj\"")
-	fmt.Fprintln(w, "import \"cmd/internal/objabi\"")
-	fmt.Fprintln(w, "import \"cmd/compile/internal/types\"")
+	fmt.Fprintln(w, "import \"github.com/dave/golib/src/cmd/internal/obj\"")
+	fmt.Fprintln(w, "import \"github.com/dave/golib/src/cmd/internal/objabi\"")
+	fmt.Fprintln(w, "import \"github.com/dave/golib/src/cmd/compile/internal/types\"")
 	fmt.Fprintln(w, "var _ = math.MinInt8  // in case not otherwise used")
 	fmt.Fprintln(w, "var _ = obj.ANOP      // in case not otherwise used")
 	fmt.Fprintln(w, "var _ = objabi.GOROOT // in case not otherwise used")
@@ -790,7 +790,7 @@ func isVariable(s string) bool {
 }
 
 // opRegexp is a regular expression to find the opcode portion of s-expressions.
-var opRegexp = regexp.MustCompile(`[(]\w*[(](\w+[|])+\w+[)]\w* `)
+var opRegexp = regexp.MustCompile("[(]\\w*[(](\\w+[|])+\\w+[)]\\w* ")
 
 // expandOr converts a rule into multiple rules by expanding | ops.
 func expandOr(r string) []string {

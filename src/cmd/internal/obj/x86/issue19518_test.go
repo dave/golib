@@ -6,7 +6,7 @@ package x86_test
 
 import (
 	"bytes"
-	"internal/testenv"
+	"github.com/dave/golib/src/internal/testenv"
 	"io/ioutil"
 	"os"
 	"os/exec"
@@ -15,22 +15,9 @@ import (
 	"testing"
 )
 
-const asmData = `
-GLOBL zeros<>(SB),8,$64
-TEXT ·testASM(SB),4,$0
-VMOVDQU zeros<>(SB), Y8 // PC relative relocation is off by 1, for Y8-15
-RET
-`
+const asmData = "\nGLOBL zeros<>(SB),8,$64\nTEXT ·testASM(SB),4,$0\nVMOVDQU zeros<>(SB), Y8 // PC relative relocation is off by 1, for Y8-15\nRET\n"
 
-const goData = `
-package main
-
-func testASM()
-
-func main() {
-	testASM()
-}
-`
+const goData = "\npackage main\n\nfunc testASM()\n\nfunc main() {\n\ttestASM()\n}\n"
 
 func objdumpOutput(t *testing.T) []byte {
 	cwd, err := os.Getwd()

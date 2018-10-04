@@ -12,55 +12,43 @@ import (
 
 // Line returns n's position as a string. If n has been inlined,
 // it uses the outermost position where n has been inlined.
-func (n *Node) Line() string {
-	return linestr(n.Pos)
+func (n *Node) Line(pstate *PackageState) string {
+	return pstate.linestr(n.Pos)
 }
 
-var atExitFuncs []func()
-
-func atExit(f func()) {
-	atExitFuncs = append(atExitFuncs, f)
+func (pstate *PackageState) atExit(f func()) {
+	pstate.atExitFuncs = append(pstate.atExitFuncs, f)
 }
 
-func Exit(code int) {
-	for i := len(atExitFuncs) - 1; i >= 0; i-- {
-		f := atExitFuncs[i]
-		atExitFuncs = atExitFuncs[:i]
+func (pstate *PackageState) Exit(code int) {
+	for i := len(pstate.atExitFuncs) - 1; i >= 0; i-- {
+		f := pstate.atExitFuncs[i]
+		pstate.atExitFuncs = pstate.atExitFuncs[:i]
 		f()
 	}
 	os.Exit(code)
 }
 
-var (
-	blockprofile   string
-	cpuprofile     string
-	memprofile     string
-	memprofilerate int64
-	traceprofile   string
-	traceHandler   func(string)
-	mutexprofile   string
-)
-
-func startProfile() {
-	if cpuprofile != "" {
-		f, err := os.Create(cpuprofile)
+func (pstate *PackageState) startProfile() {
+	if pstate.cpuprofile != "" {
+		f, err := os.Create(pstate.cpuprofile)
 		if err != nil {
-			Fatalf("%v", err)
+			pstate.Fatalf("%v", err)
 		}
 		if err := pprof.StartCPUProfile(f); err != nil {
-			Fatalf("%v", err)
+			pstate.Fatalf("%v", err)
 		}
-		atExit(pprof.StopCPUProfile)
+		pstate.atExit(pprof.StopCPUProfile)
 	}
-	if memprofile != "" {
-		if memprofilerate != 0 {
-			runtime.MemProfileRate = int(memprofilerate)
+	if pstate.memprofile != "" {
+		if pstate.memprofilerate != 0 {
+			runtime.MemProfileRate = int(pstate.memprofilerate)
 		}
-		f, err := os.Create(memprofile)
+		f, err := os.Create(pstate.memprofile)
 		if err != nil {
-			Fatalf("%v", err)
+			pstate.Fatalf("%v", err)
 		}
-		atExit(func() {
+		pstate.atExit(func() {
 			// Profile all outstanding allocations.
 			runtime.GC()
 			// compilebench parses the memory profile to extract memstats,
@@ -68,36 +56,36 @@ func startProfile() {
 			// See golang.org/issue/18641 and runtime/pprof/pprof.go:writeHeap.
 			const writeLegacyFormat = 1
 			if err := pprof.Lookup("heap").WriteTo(f, writeLegacyFormat); err != nil {
-				Fatalf("%v", err)
+				pstate.Fatalf("%v", err)
 			}
 		})
 	} else {
 		// Not doing memory profiling; disable it entirely.
 		runtime.MemProfileRate = 0
 	}
-	if blockprofile != "" {
-		f, err := os.Create(blockprofile)
+	if pstate.blockprofile != "" {
+		f, err := os.Create(pstate.blockprofile)
 		if err != nil {
-			Fatalf("%v", err)
+			pstate.Fatalf("%v", err)
 		}
 		runtime.SetBlockProfileRate(1)
-		atExit(func() {
+		pstate.atExit(func() {
 			pprof.Lookup("block").WriteTo(f, 0)
 			f.Close()
 		})
 	}
-	if mutexprofile != "" {
-		f, err := os.Create(mutexprofile)
+	if pstate.mutexprofile != "" {
+		f, err := os.Create(pstate.mutexprofile)
 		if err != nil {
-			Fatalf("%v", err)
+			pstate.Fatalf("%v", err)
 		}
 		startMutexProfiling()
-		atExit(func() {
+		pstate.atExit(func() {
 			pprof.Lookup("mutex").WriteTo(f, 0)
 			f.Close()
 		})
 	}
-	if traceprofile != "" && traceHandler != nil {
-		traceHandler(traceprofile)
+	if pstate.traceprofile != "" && pstate.traceHandler != nil {
+		pstate.traceHandler(pstate.traceprofile)
 	}
 }

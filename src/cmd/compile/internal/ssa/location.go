@@ -5,8 +5,8 @@
 package ssa
 
 import (
-	"cmd/compile/internal/types"
 	"fmt"
+	"github.com/dave/golib/src/cmd/compile/internal/types"
 )
 
 // A place that an ssa variable can reside.

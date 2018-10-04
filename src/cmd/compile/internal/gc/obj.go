@@ -5,14 +5,14 @@
 package gc
 
 import (
-	"cmd/compile/internal/types"
-	"cmd/internal/bio"
-	"cmd/internal/obj"
-	"cmd/internal/objabi"
-	"cmd/internal/src"
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"github.com/dave/golib/src/cmd/compile/internal/types"
+	"github.com/dave/golib/src/cmd/internal/bio"
+	"github.com/dave/golib/src/cmd/internal/obj"
+	"github.com/dave/golib/src/cmd/internal/objabi"
+	"github.com/dave/golib/src/cmd/internal/src"
 	"io"
 	"strconv"
 )
@@ -42,50 +42,50 @@ const (
 	modeLinkerObj
 )
 
-func dumpobj() {
-	if !dolinkobj {
-		dumpobj1(outfile, modeCompilerObj)
+func (pstate *PackageState) dumpobj() {
+	if !pstate.dolinkobj {
+		pstate.dumpobj1(pstate.outfile, modeCompilerObj)
 		return
 	}
-	if linkobj == "" {
-		dumpobj1(outfile, modeCompilerObj|modeLinkerObj)
+	if pstate.linkobj == "" {
+		pstate.dumpobj1(pstate.outfile, modeCompilerObj|modeLinkerObj)
 		return
 	}
-	dumpobj1(outfile, modeCompilerObj)
-	dumpobj1(linkobj, modeLinkerObj)
+	pstate.dumpobj1(pstate.outfile, modeCompilerObj)
+	pstate.dumpobj1(pstate.linkobj, modeLinkerObj)
 }
 
-func dumpobj1(outfile string, mode int) {
+func (pstate *PackageState) dumpobj1(outfile string, mode int) {
 	bout, err := bio.Create(outfile)
 	if err != nil {
-		flusherrors()
+		pstate.flusherrors()
 		fmt.Printf("can't create %s: %v\n", outfile, err)
-		errorexit()
+		pstate.errorexit()
 	}
 	defer bout.Close()
 	bout.WriteString("!<arch>\n")
 
 	if mode&modeCompilerObj != 0 {
 		start := startArchiveEntry(bout)
-		dumpCompilerObj(bout)
+		pstate.dumpCompilerObj(bout)
 		finishArchiveEntry(bout, start, "__.PKGDEF")
 	}
 	if mode&modeLinkerObj != 0 {
 		start := startArchiveEntry(bout)
-		dumpLinkerObj(bout)
+		pstate.dumpLinkerObj(bout)
 		finishArchiveEntry(bout, start, "_go_.o")
 	}
 }
 
-func printObjHeader(bout *bio.Writer) {
-	fmt.Fprintf(bout, "go object %s %s %s %s\n", objabi.GOOS, objabi.GOARCH, objabi.Version, objabi.Expstring())
-	if buildid != "" {
-		fmt.Fprintf(bout, "build id %q\n", buildid)
+func (pstate *PackageState) printObjHeader(bout *bio.Writer) {
+	fmt.Fprintf(bout, "go object %s %s %s %s\n", pstate.objabi.GOOS, pstate.objabi.GOARCH, pstate.objabi.Version, pstate.objabi.Expstring())
+	if pstate.buildid != "" {
+		fmt.Fprintf(bout, "build id %q\n", pstate.buildid)
 	}
-	if localpkg.Name == "main" {
+	if pstate.localpkg.Name == "main" {
 		fmt.Fprintf(bout, "main\n")
 	}
-	if safemode {
+	if pstate.safemode {
 		fmt.Fprintf(bout, "safe\n")
 	} else {
 		fmt.Fprintf(bout, "----\n") // room for some other tool to write "safe"
@@ -114,35 +114,35 @@ func finishArchiveEntry(bout *bio.Writer, start int64, name string) {
 	bout.Seek(start+size+(size&1), 0)
 }
 
-func dumpCompilerObj(bout *bio.Writer) {
-	printObjHeader(bout)
-	dumpexport(bout)
+func (pstate *PackageState) dumpCompilerObj(bout *bio.Writer) {
+	pstate.printObjHeader(bout)
+	pstate.dumpexport(bout)
 }
 
-func dumpLinkerObj(bout *bio.Writer) {
-	printObjHeader(bout)
+func (pstate *PackageState) dumpLinkerObj(bout *bio.Writer) {
+	pstate.printObjHeader(bout)
 
-	if len(pragcgobuf) != 0 {
+	if len(pstate.pragcgobuf) != 0 {
 		// write empty export section; must be before cgo section
 		fmt.Fprintf(bout, "\n$$\n\n$$\n\n")
 		fmt.Fprintf(bout, "\n$$  // cgo\n")
-		if err := json.NewEncoder(bout).Encode(pragcgobuf); err != nil {
-			Fatalf("serializing pragcgobuf: %v", err)
+		if err := json.NewEncoder(bout).Encode(pstate.pragcgobuf); err != nil {
+			pstate.Fatalf("serializing pragcgobuf: %v", err)
 		}
 		fmt.Fprintf(bout, "\n$$\n\n")
 	}
 
 	fmt.Fprintf(bout, "\n!\n")
 
-	externs := len(externdcl)
+	externs := len(pstate.externdcl)
 
-	dumpglobls()
-	addptabs()
-	addsignats(externdcl)
-	dumpsignats()
-	dumptabs()
-	dumpimportstrings()
-	dumpbasictypes()
+	pstate.dumpglobls()
+	pstate.addptabs()
+	pstate.addsignats(pstate.externdcl)
+	pstate.dumpsignats()
+	pstate.dumptabs()
+	pstate.dumpimportstrings()
+	pstate.dumpbasictypes()
 
 	// Calls to dumpsignats can generate functions,
 	// like method wrappers and hash and equality routines.
@@ -151,35 +151,35 @@ func dumpLinkerObj(bout *bio.Writer) {
 	// number of types in a finite amount of code.
 	// In the typical case, we loop 0 or 1 times.
 	// It was not until issue 24761 that we found any code that required a loop at all.
-	for len(compilequeue) > 0 {
-		compileFunctions()
-		dumpsignats()
+	for len(pstate.compilequeue) > 0 {
+		pstate.compileFunctions()
+		pstate.dumpsignats()
 	}
 
 	// Dump extra globals.
-	tmp := externdcl
+	tmp := pstate.externdcl
 
-	if externdcl != nil {
-		externdcl = externdcl[externs:]
+	if pstate.externdcl != nil {
+		pstate.externdcl = pstate.externdcl[externs:]
 	}
-	dumpglobls()
-	externdcl = tmp
+	pstate.dumpglobls()
+	pstate.externdcl = tmp
 
-	if zerosize > 0 {
-		zero := mappkg.Lookup("zero")
-		ggloblsym(zero.Linksym(), int32(zerosize), obj.DUPOK|obj.RODATA)
+	if pstate.zerosize > 0 {
+		zero := pstate.mappkg.Lookup(pstate.types, "zero")
+		pstate.ggloblsym(zero.Linksym(pstate.types), int32(pstate.zerosize), obj.DUPOK|obj.RODATA)
 	}
 
-	addGCLocals()
+	pstate.addGCLocals()
 
-	obj.WriteObjFile(Ctxt, bout.Writer)
+	pstate.obj.WriteObjFile(pstate.Ctxt, bout.Writer)
 }
 
-func addptabs() {
-	if !Ctxt.Flag_dynlink || localpkg.Name != "main" {
+func (pstate *PackageState) addptabs() {
+	if !pstate.Ctxt.Flag_dynlink || pstate.localpkg.Name != "main" {
 		return
 	}
-	for _, exportn := range exportlist {
+	for _, exportn := range pstate.exportlist {
 		s := exportn.Sym
 		n := asNode(s.Def)
 		if n == nil {
@@ -196,35 +196,35 @@ func addptabs() {
 		}
 		if n.Type.Etype == TFUNC && n.Class() == PFUNC {
 			// function
-			ptabs = append(ptabs, ptabEntry{s: s, t: asNode(s.Def).Type})
+			pstate.ptabs = append(pstate.ptabs, ptabEntry{s: s, t: asNode(s.Def).Type})
 		} else {
 			// variable
-			ptabs = append(ptabs, ptabEntry{s: s, t: types.NewPtr(asNode(s.Def).Type)})
+			pstate.ptabs = append(pstate.ptabs, ptabEntry{s: s, t: pstate.types.NewPtr(asNode(s.Def).Type)})
 		}
 	}
 }
 
-func dumpGlobal(n *Node) {
+func (pstate *PackageState) dumpGlobal(n *Node) {
 	if n.Type == nil {
-		Fatalf("external %v nil type\n", n)
+		pstate.Fatalf("external %v nil type\n", n)
 	}
 	if n.Class() == PFUNC {
 		return
 	}
-	if n.Sym.Pkg != localpkg {
+	if n.Sym.Pkg != pstate.localpkg {
 		return
 	}
-	dowidth(n.Type)
-	ggloblnod(n)
+	pstate.dowidth(n.Type)
+	pstate.ggloblnod(n)
 }
 
-func dumpGlobalConst(n *Node) {
+func (pstate *PackageState) dumpGlobalConst(n *Node) {
 	// only export typed constants
 	t := n.Type
 	if t == nil {
 		return
 	}
-	if n.Sym.Pkg != localpkg {
+	if n.Sym.Pkg != pstate.localpkg {
 		return
 	}
 	// only export integer constants for now
@@ -240,45 +240,45 @@ func dumpGlobalConst(n *Node) {
 	case TUINT64:
 	case TUINT:
 	case TUINTPTR:
-		// ok
+	// ok
 	case TIDEAL:
-		if !Isconst(n, CTINT) {
+		if !pstate.Isconst(n, CTINT) {
 			return
 		}
 		x := n.Val().U.(*Mpint)
-		if x.Cmp(minintval[TINT]) < 0 || x.Cmp(maxintval[TINT]) > 0 {
+		if x.Cmp(pstate.minintval[TINT]) < 0 || x.Cmp(pstate.maxintval[TINT]) > 0 {
 			return
 		}
 		// Ideal integers we export as int (if they fit).
-		t = types.Types[TINT]
+		t = pstate.types.Types[TINT]
 	default:
 		return
 	}
-	Ctxt.DwarfIntConst(myimportpath, n.Sym.Name, typesymname(t), n.Int64())
+	pstate.Ctxt.DwarfIntConst(pstate.obj, pstate.myimportpath, n.Sym.Name, pstate.typesymname(t), n.Int64(pstate))
 }
 
-func dumpglobls() {
+func (pstate *PackageState) dumpglobls() {
 	// add globals
-	for _, n := range externdcl {
+	for _, n := range pstate.externdcl {
 		switch n.Op {
 		case ONAME:
-			dumpGlobal(n)
+			pstate.dumpGlobal(n)
 		case OLITERAL:
-			dumpGlobalConst(n)
+			pstate.dumpGlobalConst(n)
 		}
 	}
 
-	obj.SortSlice(funcsyms, func(i, j int) bool {
-		return funcsyms[i].LinksymName() < funcsyms[j].LinksymName()
+	obj.SortSlice(pstate.funcsyms, func(i, j int) bool {
+		return pstate.funcsyms[i].LinksymName() < pstate.funcsyms[j].LinksymName()
 	})
-	for _, s := range funcsyms {
-		sf := s.Pkg.Lookup(funcsymname(s)).Linksym()
-		dsymptr(sf, 0, s.Linksym(), 0)
-		ggloblsym(sf, int32(Widthptr), obj.DUPOK|obj.RODATA)
+	for _, s := range pstate.funcsyms {
+		sf := s.Pkg.Lookup(pstate.types, funcsymname(s)).Linksym(pstate.types)
+		pstate.dsymptr(sf, 0, s.Linksym(pstate.types), 0)
+		pstate.ggloblsym(sf, int32(pstate.Widthptr), obj.DUPOK|obj.RODATA)
 	}
 
 	// Do not reprocess funcsyms on next dumpglobls call.
-	funcsyms = nil
+	pstate.funcsyms = nil
 }
 
 // addGCLocals adds gcargs and gclocals symbols to Ctxt.Data.
@@ -286,9 +286,9 @@ func dumpglobls() {
 // Though the object file format handles duplicates efficiently,
 // storing only a single copy of the data,
 // failure to remove these duplicates adds a few percent to object file size.
-func addGCLocals() {
+func (pstate *PackageState) addGCLocals() {
 	seen := make(map[string]bool)
-	for _, s := range Ctxt.Text {
+	for _, s := range pstate.Ctxt.Text {
 		if s.Func == nil {
 			continue
 		}
@@ -296,46 +296,46 @@ func addGCLocals() {
 			if seen[gcsym.Name] {
 				continue
 			}
-			Ctxt.Data = append(Ctxt.Data, gcsym)
+			pstate.Ctxt.Data = append(pstate.Ctxt.Data, gcsym)
 			seen[gcsym.Name] = true
 		}
 	}
 }
 
-func duintxx(s *obj.LSym, off int, v uint64, wid int) int {
+func (pstate *PackageState) duintxx(s *obj.LSym, off int, v uint64, wid int) int {
 	if off&(wid-1) != 0 {
-		Fatalf("duintxxLSym: misaligned: v=%d wid=%d off=%d", v, wid, off)
+		pstate.Fatalf("duintxxLSym: misaligned: v=%d wid=%d off=%d", v, wid, off)
 	}
-	s.WriteInt(Ctxt, int64(off), wid, int64(v))
+	s.WriteInt(pstate.Ctxt, int64(off), wid, int64(v))
 	return off + wid
 }
 
-func duint8(s *obj.LSym, off int, v uint8) int {
-	return duintxx(s, off, uint64(v), 1)
+func (pstate *PackageState) duint8(s *obj.LSym, off int, v uint8) int {
+	return pstate.duintxx(s, off, uint64(v), 1)
 }
 
-func duint16(s *obj.LSym, off int, v uint16) int {
-	return duintxx(s, off, uint64(v), 2)
+func (pstate *PackageState) duint16(s *obj.LSym, off int, v uint16) int {
+	return pstate.duintxx(s, off, uint64(v), 2)
 }
 
-func duint32(s *obj.LSym, off int, v uint32) int {
-	return duintxx(s, off, uint64(v), 4)
+func (pstate *PackageState) duint32(s *obj.LSym, off int, v uint32) int {
+	return pstate.duintxx(s, off, uint64(v), 4)
 }
 
-func duintptr(s *obj.LSym, off int, v uint64) int {
-	return duintxx(s, off, v, Widthptr)
+func (pstate *PackageState) duintptr(s *obj.LSym, off int, v uint64) int {
+	return pstate.duintxx(s, off, v, pstate.Widthptr)
 }
 
-func dbvec(s *obj.LSym, off int, bv bvec) int {
+func (pstate *PackageState) dbvec(s *obj.LSym, off int, bv bvec) int {
 	// Runtime reads the bitmaps as byte arrays. Oblige.
 	for j := 0; int32(j) < bv.n; j += 8 {
 		word := bv.b[j/32]
-		off = duint8(s, off, uint8(word>>(uint(j)%32)))
+		off = pstate.duint8(s, off, uint8(word>>(uint(j)%32)))
 	}
 	return off
 }
 
-func stringsym(pos src.XPos, s string) (data *obj.LSym) {
+func (pstate *PackageState) stringsym(pos src.XPos, s string) (data *obj.LSym) {
 	var symname string
 	if len(s) > 100 {
 		// Huge strings are hashed to avoid long names in object files.
@@ -352,134 +352,132 @@ func stringsym(pos src.XPos, s string) (data *obj.LSym) {
 	const prefix = "go.string."
 	symdataname := prefix + symname
 
-	symdata := Ctxt.Lookup(symdataname)
+	symdata := pstate.Ctxt.Lookup(symdataname)
 
 	if !symdata.SeenGlobl() {
 		// string data
-		off := dsname(symdata, 0, s, pos, "string")
-		ggloblsym(symdata, int32(off), obj.DUPOK|obj.RODATA|obj.LOCAL)
+		off := pstate.dsname(symdata, 0, s, pos, "string")
+		pstate.ggloblsym(symdata, int32(off), obj.DUPOK|obj.RODATA|obj.LOCAL)
 	}
 
 	return symdata
 }
 
-var slicebytes_gen int
+func (pstate *PackageState) slicebytes(nam *Node, s string, len int) {
+	pstate.slicebytes_gen++
+	symname := fmt.Sprintf(".gobytes.%d", pstate.slicebytes_gen)
+	sym := pstate.localpkg.Lookup(pstate.types, symname)
+	sym.Def = asTypesNode(pstate.newname(sym))
 
-func slicebytes(nam *Node, s string, len int) {
-	slicebytes_gen++
-	symname := fmt.Sprintf(".gobytes.%d", slicebytes_gen)
-	sym := localpkg.Lookup(symname)
-	sym.Def = asTypesNode(newname(sym))
-
-	lsym := sym.Linksym()
-	off := dsname(lsym, 0, s, nam.Pos, "slice")
-	ggloblsym(lsym, int32(off), obj.NOPTR|obj.LOCAL)
+	lsym := sym.Linksym(pstate.types)
+	off := pstate.dsname(lsym, 0, s, nam.Pos, "slice")
+	pstate.ggloblsym(lsym, int32(off), obj.NOPTR|obj.LOCAL)
 
 	if nam.Op != ONAME {
-		Fatalf("slicebytes %v", nam)
+		pstate.Fatalf("slicebytes %v", nam)
 	}
-	nsym := nam.Sym.Linksym()
+	nsym := nam.Sym.Linksym(pstate.types)
 	off = int(nam.Xoffset)
-	off = dsymptr(nsym, off, lsym, 0)
-	off = duintptr(nsym, off, uint64(len))
-	duintptr(nsym, off, uint64(len))
+	off = pstate.dsymptr(nsym, off, lsym, 0)
+	off = pstate.duintptr(nsym, off, uint64(len))
+	pstate.duintptr(nsym, off, uint64(len))
 }
 
-func dsname(s *obj.LSym, off int, t string, pos src.XPos, what string) int {
+func (pstate *PackageState) dsname(s *obj.LSym, off int, t string, pos src.XPos, what string) int {
 	// Objects that are too large will cause the data section to overflow right away,
 	// causing a cryptic error message by the linker. Check for oversize objects here
 	// and provide a useful error message instead.
 	if int64(len(t)) > 2e9 {
-		yyerrorl(pos, "%v with length %v is too big", what, len(t))
+		pstate.yyerrorl(pos, "%v with length %v is too big", what, len(t))
 		return 0
 	}
 
-	s.WriteString(Ctxt, int64(off), len(t), t)
+	s.WriteString(pstate.Ctxt, int64(off), len(t), t)
 	return off + len(t)
 }
 
-func dsymptr(s *obj.LSym, off int, x *obj.LSym, xoff int) int {
-	off = int(Rnd(int64(off), int64(Widthptr)))
-	s.WriteAddr(Ctxt, int64(off), Widthptr, x, int64(xoff))
-	off += Widthptr
+func (pstate *PackageState) dsymptr(s *obj.LSym, off int, x *obj.LSym, xoff int) int {
+	off = int(pstate.Rnd(int64(off), int64(pstate.Widthptr)))
+	s.WriteAddr(pstate.Ctxt, int64(off), pstate.Widthptr, x, int64(xoff))
+	off += pstate.Widthptr
 	return off
 }
 
-func dsymptrOff(s *obj.LSym, off int, x *obj.LSym) int {
-	s.WriteOff(Ctxt, int64(off), x, 0)
+func (pstate *PackageState) dsymptrOff(s *obj.LSym, off int, x *obj.LSym) int {
+	s.WriteOff(pstate.Ctxt, int64(off), x, 0)
 	off += 4
 	return off
 }
 
-func dsymptrWeakOff(s *obj.LSym, off int, x *obj.LSym) int {
-	s.WriteWeakOff(Ctxt, int64(off), x, 0)
+func (pstate *PackageState) dsymptrWeakOff(s *obj.LSym, off int, x *obj.LSym) int {
+	s.WriteWeakOff(pstate.Ctxt, int64(off), x, 0)
 	off += 4
 	return off
 }
 
-func gdata(nam *Node, nr *Node, wid int) {
+func (pstate *PackageState) gdata(nam *Node, nr *Node, wid int) {
 	if nam.Op != ONAME {
-		Fatalf("gdata nam op %v", nam.Op)
+		pstate.Fatalf("gdata nam op %v", nam.Op)
 	}
 	if nam.Sym == nil {
-		Fatalf("gdata nil nam sym")
+		pstate.Fatalf("gdata nil nam sym")
 	}
-	s := nam.Sym.Linksym()
+	s := nam.Sym.Linksym(pstate.types)
 
 	switch nr.Op {
 	case OLITERAL:
 		switch u := nr.Val().U.(type) {
 		case bool:
 			i := int64(obj.Bool2int(u))
-			s.WriteInt(Ctxt, nam.Xoffset, wid, i)
+			s.WriteInt(pstate.Ctxt, nam.Xoffset, wid, i)
 
 		case *Mpint:
-			s.WriteInt(Ctxt, nam.Xoffset, wid, u.Int64())
+			s.WriteInt(pstate.Ctxt, nam.Xoffset, wid, u.Int64(pstate))
 
 		case *Mpflt:
-			f := u.Float64()
+			f := u.Float64(pstate)
 			switch nam.Type.Etype {
 			case TFLOAT32:
-				s.WriteFloat32(Ctxt, nam.Xoffset, float32(f))
+				s.WriteFloat32(pstate.Ctxt, nam.Xoffset, float32(f))
 			case TFLOAT64:
-				s.WriteFloat64(Ctxt, nam.Xoffset, f)
+				s.WriteFloat64(pstate.Ctxt, nam.Xoffset, f)
 			}
 
 		case *Mpcplx:
-			r := u.Real.Float64()
-			i := u.Imag.Float64()
+			r := u.Real.Float64(pstate)
+			i := u.Imag.Float64(pstate)
 			switch nam.Type.Etype {
 			case TCOMPLEX64:
-				s.WriteFloat32(Ctxt, nam.Xoffset, float32(r))
-				s.WriteFloat32(Ctxt, nam.Xoffset+4, float32(i))
+				s.WriteFloat32(pstate.Ctxt, nam.Xoffset, float32(r))
+				s.WriteFloat32(pstate.Ctxt, nam.Xoffset+4, float32(i))
 			case TCOMPLEX128:
-				s.WriteFloat64(Ctxt, nam.Xoffset, r)
-				s.WriteFloat64(Ctxt, nam.Xoffset+8, i)
+				s.WriteFloat64(pstate.Ctxt, nam.Xoffset, r)
+				s.WriteFloat64(pstate.Ctxt, nam.Xoffset+8, i)
 			}
 
 		case string:
-			symdata := stringsym(nam.Pos, u)
-			s.WriteAddr(Ctxt, nam.Xoffset, Widthptr, symdata, 0)
-			s.WriteInt(Ctxt, nam.Xoffset+int64(Widthptr), Widthptr, int64(len(u)))
+			symdata := pstate.stringsym(nam.Pos, u)
+			s.WriteAddr(pstate.Ctxt, nam.Xoffset, pstate.Widthptr, symdata, 0)
+			s.WriteInt(pstate.Ctxt, nam.Xoffset+int64(pstate.Widthptr), pstate.Widthptr, int64(len(u)))
 
 		default:
-			Fatalf("gdata unhandled OLITERAL %v", nr)
+			pstate.Fatalf("gdata unhandled OLITERAL %v", nr)
 		}
 
 	case OADDR:
 		if nr.Left.Op != ONAME {
-			Fatalf("gdata ADDR left op %v", nr.Left.Op)
+			pstate.Fatalf("gdata ADDR left op %v", nr.Left.Op)
 		}
 		to := nr.Left
-		s.WriteAddr(Ctxt, nam.Xoffset, wid, to.Sym.Linksym(), to.Xoffset)
+		s.WriteAddr(pstate.Ctxt, nam.Xoffset, wid, to.Sym.Linksym(pstate.types), to.Xoffset)
 
 	case ONAME:
 		if nr.Class() != PFUNC {
-			Fatalf("gdata NAME not PFUNC %d", nr.Class())
+			pstate.Fatalf("gdata NAME not PFUNC %d", nr.Class())
 		}
-		s.WriteAddr(Ctxt, nam.Xoffset, wid, funcsym(nr.Sym).Linksym(), nr.Xoffset)
+		s.WriteAddr(pstate.Ctxt, nam.Xoffset, wid, pstate.funcsym(nr.Sym).Linksym(pstate.types), nr.Xoffset)
 
 	default:
-		Fatalf("gdata unhandled op %v %v\n", nr, nr.Op)
+		pstate.Fatalf("gdata unhandled op %v %v\n", nr, nr.Op)
 	}
 }

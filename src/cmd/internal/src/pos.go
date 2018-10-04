@@ -29,9 +29,6 @@ type Pos struct {
 	lico
 }
 
-// NoPos is a valid unknown position.
-var NoPos Pos
-
 // MakePos creates a new Pos value with the given base, and (file-absolute)
 // line and column.
 func MakePos(base *PosBase, line, col uint) Pos {
@@ -47,15 +44,15 @@ func (p Pos) IsKnown() bool {
 
 // Before reports whether the position p comes before q in the source.
 // For positions in different files, ordering is by filename.
-func (p Pos) Before(q Pos) bool {
-	n, m := p.Filename(), q.Filename()
+func (p Pos) Before(pstate *PackageState, q Pos) bool {
+	n, m := p.Filename(pstate), q.Filename(pstate)
 	return n < m || n == m && p.lico < q.lico
 }
 
 // After reports whether the position p comes after q in the source.
 // For positions in different files, ordering is by filename.
-func (p Pos) After(q Pos) bool {
-	n, m := p.Filename(), q.Filename()
+func (p Pos) After(pstate *PackageState, q Pos) bool {
+	n, m := p.Filename(pstate), q.Filename(pstate)
 	return n > m || n == m && p.lico > q.lico
 }
 
@@ -74,7 +71,7 @@ func (p Pos) LineNumberHTML() string {
 }
 
 // Filename returns the name of the actual file containing this position.
-func (p Pos) Filename() string { return p.base.Pos().RelFilename() }
+func (p Pos) Filename(pstate *PackageState) string { return p.base.Pos(pstate).RelFilename() }
 
 // Base returns the position base.
 func (p Pos) Base() *PosBase { return p.base }
@@ -86,17 +83,17 @@ func (p *Pos) SetBase(base *PosBase) { p.base = base }
 func (p Pos) RelFilename() string { return p.base.Filename() }
 
 // RelLine returns the line number relative to the position's base.
-func (p Pos) RelLine() uint {
+func (p Pos) RelLine(pstate *PackageState) uint {
 	b := p.base
 	if b.Line() == 0 {
 		// base line is unknown => relative line is unknown
 		return 0
 	}
-	return b.Line() + (p.Line() - b.Pos().Line())
+	return b.Line() + (p.Line() - b.Pos(pstate).Line())
 }
 
 // RelCol returns the column number relative to the position's base.
-func (p Pos) RelCol() uint {
+func (p Pos) RelCol(pstate *PackageState) uint {
 	b := p.base
 	if b.Col() == 0 {
 		// base column is unknown => relative column is unknown
@@ -105,9 +102,9 @@ func (p Pos) RelCol() uint {
 		// not just until the new newline)
 		return 0
 	}
-	if p.Line() == b.Pos().Line() {
+	if p.Line() == b.Pos(pstate).Line() {
 		// p on same line as p's base => column is relative to p's base
-		return b.Col() + (p.Col() - b.Pos().Col())
+		return b.Col() + (p.Col() - b.Pos(pstate).Col())
 	}
 	return p.Col()
 }
@@ -119,8 +116,8 @@ func (p Pos) AbsFilename() string { return p.base.AbsFilename() }
 // prefixed by FileSymPrefix to make it appropriate for use as a linker symbol.
 func (p Pos) SymFilename() string { return p.base.SymFilename() }
 
-func (p Pos) String() string {
-	return p.Format(true, true)
+func (p Pos) String(pstate *PackageState) string {
+	return p.Format(pstate, true, true)
 }
 
 // Format formats a position as "filename:line" or "filename:line:column",
@@ -128,14 +125,14 @@ func (p Pos) String() string {
 // For positions relative to line directives, the original position is
 // shown as well, as in "filename:line[origfile:origline:origcolumn] if
 // showOrig is set.
-func (p Pos) Format(showCol, showOrig bool) string {
+func (p Pos) Format(pstate *PackageState, showCol, showOrig bool) string {
 	if !p.IsKnown() {
 		return "<unknown line number>"
 	}
 
-	if b := p.base; b == b.Pos().base {
+	if b := p.base; b == b.Pos(pstate).base {
 		// base is file base (incl. nil)
-		return format(p.Filename(), p.Line(), p.Col(), showCol)
+		return format(p.Filename(pstate), p.Line(), p.Col(), showCol)
 	}
 
 	// base is relative
@@ -146,9 +143,9 @@ func (p Pos) Format(showCol, showOrig bool) string {
 	// that's provided via a line directive).
 	// TODO(gri) This may not be true if we have an inlining base.
 	// We may want to differentiate at some point.
-	s := format(p.RelFilename(), p.RelLine(), p.RelCol(), showCol)
+	s := format(p.RelFilename(), p.RelLine(pstate), p.RelCol(pstate), showCol)
 	if showOrig {
-		s += "[" + format(p.Filename(), p.Line(), p.Col(), showCol) + "]"
+		s += "[" + format(p.Filename(pstate), p.Line(), p.Col(), showCol) + "]"
 	}
 	return s
 }
@@ -218,15 +215,13 @@ func NewInliningBase(old *PosBase, inlTreeIndex int) *PosBase {
 	return base
 }
 
-var noPos Pos
-
 // Pos returns the position at which base is located.
 // If b == nil, the result is the zero position.
-func (b *PosBase) Pos() *Pos {
+func (b *PosBase) Pos(pstate *PackageState) *Pos {
 	if b != nil {
 		return &b.pos
 	}
-	return &noPos
+	return &pstate.noPos
 }
 
 // Filename returns the filename recorded with the base.

@@ -8,7 +8,7 @@
 package gc
 
 import (
-	"cmd/compile/internal/types"
+	"github.com/dave/golib/src/cmd/compile/internal/types"
 	"unsafe"
 )
 

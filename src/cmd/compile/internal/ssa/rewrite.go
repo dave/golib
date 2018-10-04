@@ -5,10 +5,10 @@
 package ssa
 
 import (
-	"cmd/compile/internal/types"
-	"cmd/internal/obj"
-	"cmd/internal/src"
 	"fmt"
+	"github.com/dave/golib/src/cmd/compile/internal/types"
+	"github.com/dave/golib/src/cmd/internal/obj"
+	"github.com/dave/golib/src/cmd/internal/src"
 	"io"
 	"math"
 	"math/bits"
@@ -16,7 +16,7 @@ import (
 	"path/filepath"
 )
 
-func applyRewrite(f *Func, rb blockRewriter, rv valueRewriter) {
+func (pstate *PackageState) applyRewrite(f *Func, rb blockRewriter, rv valueRewriter) {
 	// repeat rewrites until we find no more rewrites
 	pendingLines := f.cachedLineStarts // Holds statement boundaries that need to be moved to a new value/block
 	pendingLines.clear()
@@ -62,7 +62,7 @@ func applyRewrite(f *Func, rb blockRewriter, rv valueRewriter) {
 							// TODO: it's possible (in FOR loops, in particular) for statement boundaries for the same
 							// line to appear in more than one block, but only one block is stored, so if both end
 							// up here, then one will be lost.
-							pendingLines.set(a.Pos.Line(), int32(a.Block.ID))
+							pendingLines.set(pstate, a.Pos.Line(), int32(a.Block.ID))
 						}
 						a.Pos = a.Pos.WithNotStmt()
 					}
@@ -98,9 +98,9 @@ func applyRewrite(f *Func, rb blockRewriter, rv valueRewriter) {
 			vl := v.Pos.Line()
 			if v.Op == OpInvalid {
 				if v.Pos.IsStmt() == src.PosIsStmt {
-					pendingLines.set(vl, int32(b.ID))
+					pendingLines.set(pstate, vl, int32(b.ID))
 				}
-				f.freeValue(v)
+				f.freeValue(pstate, v)
 				continue
 			}
 			if v.Pos.IsStmt() != src.PosNotStmt && pendingLines.get(vl) == int32(b.ID) {
@@ -128,28 +128,28 @@ func applyRewrite(f *Func, rb blockRewriter, rv valueRewriter) {
 
 // Common functions called from rewriting rules
 
-func is64BitFloat(t *types.Type) bool {
-	return t.Size() == 8 && t.IsFloat()
+func (pstate *PackageState) is64BitFloat(t *types.Type) bool {
+	return t.Size(pstate.types) == 8 && t.IsFloat()
 }
 
-func is32BitFloat(t *types.Type) bool {
-	return t.Size() == 4 && t.IsFloat()
+func (pstate *PackageState) is32BitFloat(t *types.Type) bool {
+	return t.Size(pstate.types) == 4 && t.IsFloat()
 }
 
-func is64BitInt(t *types.Type) bool {
-	return t.Size() == 8 && t.IsInteger()
+func (pstate *PackageState) is64BitInt(t *types.Type) bool {
+	return t.Size(pstate.types) == 8 && t.IsInteger()
 }
 
-func is32BitInt(t *types.Type) bool {
-	return t.Size() == 4 && t.IsInteger()
+func (pstate *PackageState) is32BitInt(t *types.Type) bool {
+	return t.Size(pstate.types) == 4 && t.IsInteger()
 }
 
-func is16BitInt(t *types.Type) bool {
-	return t.Size() == 2 && t.IsInteger()
+func (pstate *PackageState) is16BitInt(t *types.Type) bool {
+	return t.Size(pstate.types) == 2 && t.IsInteger()
 }
 
-func is8BitInt(t *types.Type) bool {
-	return t.Size() == 1 && t.IsInteger()
+func (pstate *PackageState) is8BitInt(t *types.Type) bool {
+	return t.Size(pstate.types) == 1 && t.IsInteger()
 }
 
 func isPtr(t *types.Type) bool {
@@ -180,7 +180,7 @@ func canMergeSym(x, y interface{}) bool {
 // It also checks that the other non-load argument x is something we
 // are ok with clobbering (all our current load+op instructions clobber
 // their input register).
-func canMergeLoad(target, load, x *Value) bool {
+func (pstate *PackageState) canMergeLoad(target, load, x *Value) bool {
 	if target.Block.ID != load.Block.ID {
 		// If the load is in a different block do not merge it.
 		return false
@@ -201,13 +201,13 @@ func canMergeLoad(target, load, x *Value) bool {
 	if x.Uses != 1 {
 		return false
 	}
-	loopnest := x.Block.Func.loopnest()
+	loopnest := x.Block.Func.loopnest(pstate)
 	loopnest.calculateDepths()
 	if loopnest.depth(target.Block.ID) > loopnest.depth(x.Block.ID) {
 		return false
 	}
 
-	mem := load.MemoryArg()
+	mem := load.MemoryArg(pstate)
 
 	// We need the load's memory arg to still be alive at target. That
 	// can't be the case if one of target's args depends on a memory
@@ -254,12 +254,12 @@ search:
 			// the first logical store in the block.
 			continue search
 		}
-		if v.Type.IsTuple() && v.Type.FieldType(1).IsMemory() {
+		if v.Type.IsTuple() && v.Type.FieldType(pstate.types, 1).IsMemory(pstate.types) {
 			// We could handle this situation however it is likely
 			// to be very rare.
 			return false
 		}
-		if v.Type.IsMemory() {
+		if v.Type.IsMemory(pstate.types) {
 			if memPreds == nil {
 				// Initialise a map containing memory states
 				// known to be predecessors of load's memory
@@ -276,14 +276,14 @@ search:
 					if m.Block.ID != target.Block.ID {
 						break
 					}
-					if !m.Type.IsMemory() {
+					if !m.Type.IsMemory(pstate.types) {
 						break
 					}
 					memPreds[m] = true
 					if len(m.Args) == 0 {
 						break
 					}
-					m = m.MemoryArg()
+					m = m.MemoryArg(pstate)
 				}
 			}
 
@@ -625,8 +625,8 @@ func warnRule(cond bool, v *Value, s string) bool {
 }
 
 // for a pseudo-op like (LessThan x), extract x
-func flagArg(v *Value) *Value {
-	if len(v.Args) != 1 || !v.Args[0].Type.IsFlags() {
+func (pstate *PackageState) flagArg(v *Value) *Value {
+	if len(v.Args) != 1 || !v.Args[0].Type.IsFlags(pstate.types) {
 		return nil
 	}
 	return v.Args[0]
@@ -751,8 +751,8 @@ func ccARM64Eval(cc interface{}, flags *Value) int {
 
 // logRule logs the use of the rule s. This will only be enabled if
 // rewrite rules were generated with the -log option, see gen/rulegen.go.
-func logRule(s string) {
-	if ruleFile == nil {
+func (pstate *PackageState) logRule(s string) {
+	if pstate.ruleFile == nil {
 		// Open a log file to write log to. We open in append
 		// mode because all.bash runs the compiler lots of times,
 		// and we want the concatenation of all of those logs.
@@ -764,15 +764,13 @@ func logRule(s string) {
 		if err != nil {
 			panic(err)
 		}
-		ruleFile = w
+		pstate.ruleFile = w
 	}
-	_, err := fmt.Fprintf(ruleFile, "rewrite %s\n", s)
+	_, err := fmt.Fprintf(pstate.ruleFile, "rewrite %s\n", s)
 	if err != nil {
 		panic(err)
 	}
 }
-
-var ruleFile io.Writer
 
 func min(x, y int64) int64 {
 	if x < y {
@@ -955,27 +953,27 @@ func arm64BFWidth(mask, rshift int64) int64 {
 
 // sizeof returns the size of t in bytes.
 // It will panic if t is not a *types.Type.
-func sizeof(t interface{}) int64 {
-	return t.(*types.Type).Size()
+func (pstate *PackageState) sizeof(t interface{}) int64 {
+	return t.(*types.Type).Size(pstate.types)
 }
 
 // alignof returns the alignment of t in bytes.
 // It will panic if t is not a *types.Type.
-func alignof(t interface{}) int64 {
-	return t.(*types.Type).Alignment()
+func (pstate *PackageState) alignof(t interface{}) int64 {
+	return t.(*types.Type).Alignment(pstate.types)
 }
 
 // registerizable reports whether t is a primitive type that fits in
 // a register. It assumes float64 values will always fit into registers
 // even if that isn't strictly true.
 // It will panic if t is not a *types.Type.
-func registerizable(b *Block, t interface{}) bool {
+func (pstate *PackageState) registerizable(b *Block, t interface{}) bool {
 	typ := t.(*types.Type)
 	if typ.IsPtrShaped() || typ.IsFloat() {
 		return true
 	}
 	if typ.IsInteger() {
-		return typ.Size() <= b.Func.Config.RegSize
+		return typ.Size(pstate.types) <= b.Func.Config.RegSize
 	}
 	return false
 }

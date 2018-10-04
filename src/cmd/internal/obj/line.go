@@ -5,7 +5,7 @@
 package obj
 
 import (
-	"cmd/internal/src"
+	"github.com/dave/golib/src/cmd/internal/src"
 )
 
 // AddImport adds a package to the list of imported packages.
@@ -13,11 +13,11 @@ func (ctxt *Link) AddImport(pkg string) {
 	ctxt.Imports = append(ctxt.Imports, pkg)
 }
 
-func linkgetlineFromPos(ctxt *Link, xpos src.XPos) (f string, l int32) {
+func (pstate *PackageState) linkgetlineFromPos(ctxt *Link, xpos src.XPos) (f string, l int32) {
 	pos := ctxt.PosTable.Pos(xpos)
 	if !pos.IsKnown() {
 		pos = src.Pos{}
 	}
 	// TODO(gri) Should this use relative or absolute line number?
-	return pos.SymFilename(), int32(pos.RelLine())
+	return pos.SymFilename(), int32(pos.RelLine(pstate.src))
 }

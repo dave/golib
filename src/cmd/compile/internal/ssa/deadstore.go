@@ -5,15 +5,15 @@
 package ssa
 
 import (
-	"cmd/compile/internal/types"
-	"cmd/internal/src"
+	"github.com/dave/golib/src/cmd/compile/internal/types"
+	"github.com/dave/golib/src/cmd/internal/src"
 )
 
 // dse does dead-store elimination on the Function.
 // Dead stores are those which are unconditionally followed by
 // another store to the same location, with no intervening load.
 // This implementation only works within a basic block. TODO: use something more global.
-func dse(f *Func) {
+func (pstate *PackageState) dse(f *Func) {
 	var stores []*Value
 	loadUse := f.newSparseSet(f.NumValues())
 	defer f.retSparseSet(loadUse)
@@ -33,10 +33,10 @@ func dse(f *Func) {
 				// Ignore phis - they will always be first and can't be eliminated
 				continue
 			}
-			if v.Type.IsMemory() {
+			if v.Type.IsMemory(pstate.types) {
 				stores = append(stores, v)
 				for _, a := range v.Args {
-					if a.Block == b && a.Type.IsMemory() {
+					if a.Block == b && a.Type.IsMemory(pstate.types) {
 						storeUse.add(a.ID)
 						if v.Op != OpStore && v.Op != OpZero && v.Op != OpVarDef && v.Op != OpVarKill {
 							// CALL, DUFFCOPY, etc. are both
@@ -47,7 +47,7 @@ func dse(f *Func) {
 				}
 			} else {
 				for _, a := range v.Args {
-					if a.Block == b && a.Type.IsMemory() {
+					if a.Block == b && a.Type.IsMemory(pstate.types) {
 						loadUse.add(a.ID)
 					}
 				}
@@ -64,7 +64,7 @@ func dse(f *Func) {
 				continue
 			}
 			if last != nil {
-				b.Fatalf("two final stores - simultaneous live stores %s %s", last.LongString(), v.LongString())
+				b.Fatalf("two final stores - simultaneous live stores %s %s", last.LongString(pstate), v.LongString(pstate))
 			}
 			last = v
 		}
@@ -88,7 +88,7 @@ func dse(f *Func) {
 		if v.Op == OpStore || v.Op == OpZero {
 			var sz int64
 			if v.Op == OpStore {
-				sz = v.Aux.(*types.Type).Size()
+				sz = v.Aux.(*types.Type).Size(pstate.types)
 			} else { // OpZero
 				sz = v.AuxInt
 			}
@@ -99,10 +99,10 @@ func dse(f *Func) {
 					v.SetArgs1(v.Args[2])
 				} else {
 					// zero addr mem
-					typesz := v.Args[0].Type.Elem().Size()
+					typesz := v.Args[0].Type.Elem(pstate.types).Size(pstate.types)
 					if sz != typesz {
 						f.Fatalf("mismatched zero/store sizes: %d and %d [%s]",
-							sz, typesz, v.LongString())
+							sz, typesz, v.LongString(pstate))
 					}
 					v.SetArgs1(v.Args[1])
 				}
@@ -113,7 +113,7 @@ func dse(f *Func) {
 				if sz > 0x7fffffff { // work around sparseMap's int32 value type
 					sz = 0x7fffffff
 				}
-				shadowed.set(v.Args[0].ID, int32(sz), src.NoXPos)
+				shadowed.set(v.Args[0].ID, int32(sz), pstate.src.NoXPos)
 			}
 		}
 		// walk to previous store
@@ -125,7 +125,7 @@ func dse(f *Func) {
 			continue
 		}
 		for _, a := range v.Args {
-			if a.Block == b && a.Type.IsMemory() {
+			if a.Block == b && a.Type.IsMemory(pstate.types) {
 				v = a
 				goto walkloop
 			}
@@ -137,7 +137,7 @@ func dse(f *Func) {
 // we track the operations that the address of each auto reaches and if it only
 // reaches stores then we delete all the stores. The other operations will then
 // be eliminated by the dead code elimination pass.
-func elimDeadAutosGeneric(f *Func) {
+func (pstate *PackageState) elimDeadAutosGeneric(f *Func) {
 	addr := make(map[*Value]GCNode) // values that the address of the auto reaches
 	elim := make(map[*Value]GCNode) // values that could be eliminated if the auto is
 	used := make(map[GCNode]bool)   // used autos that must be kept
@@ -193,7 +193,7 @@ func elimDeadAutosGeneric(f *Func) {
 		// The code below assumes that we have handled all the ops
 		// with sym effects already. Sanity check that here.
 		// Ignore Args since they can't be autos.
-		if v.Op.SymEffect() != SymNone && v.Op != OpArg {
+		if v.Op.SymEffect(pstate) != SymNone && v.Op != OpArg {
 			panic("unhandled op with sym effect")
 		}
 
@@ -203,7 +203,7 @@ func elimDeadAutosGeneric(f *Func) {
 
 		// If the address of the auto reaches a memory or control
 		// operation not covered above then we probably need to keep it.
-		if v.Type.IsMemory() || v.Type.IsFlags() || (v.Op != OpPhi && v.MemoryArg() != nil) {
+		if v.Type.IsMemory(pstate.types) || v.Type.IsFlags(pstate.types) || (v.Op != OpPhi && v.MemoryArg(pstate) != nil) {
 			for _, a := range args {
 				if n, ok := addr[a]; ok {
 					if !used[n] {
@@ -273,7 +273,7 @@ func elimDeadAutosGeneric(f *Func) {
 			continue
 		}
 		// replace with OpCopy
-		v.SetArgs1(v.MemoryArg())
+		v.SetArgs1(v.MemoryArg(pstate))
 		v.Aux = nil
 		v.AuxInt = 0
 		v.Op = OpCopy
@@ -282,7 +282,7 @@ func elimDeadAutosGeneric(f *Func) {
 
 // elimUnreadAutos deletes stores (and associated bookkeeping ops VarDef and VarKill)
 // to autos that are never read from.
-func elimUnreadAutos(f *Func) {
+func (pstate *PackageState) elimUnreadAutos(f *Func) {
 	// Loop over all ops that affect autos taking note of which
 	// autos we need and also stores that we might be able to
 	// eliminate.
@@ -298,7 +298,7 @@ func elimUnreadAutos(f *Func) {
 				continue
 			}
 
-			effect := v.Op.SymEffect()
+			effect := v.Op.SymEffect(pstate)
 			switch effect {
 			case SymNone, SymWrite:
 				// If we haven't seen the auto yet
@@ -328,7 +328,7 @@ func elimUnreadAutos(f *Func) {
 		}
 
 		// replace store with OpCopy
-		store.SetArgs1(store.MemoryArg())
+		store.SetArgs1(store.MemoryArg(pstate))
 		store.Aux = nil
 		store.AuxInt = 0
 		store.Op = OpCopy

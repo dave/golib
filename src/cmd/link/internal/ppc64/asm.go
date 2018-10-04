@@ -31,17 +31,17 @@
 package ppc64
 
 import (
-	"cmd/internal/objabi"
-	"cmd/internal/sys"
-	"cmd/link/internal/ld"
-	"cmd/link/internal/sym"
 	"debug/elf"
 	"encoding/binary"
 	"fmt"
+	"github.com/dave/golib/src/cmd/internal/objabi"
+	"github.com/dave/golib/src/cmd/internal/sys"
+	"github.com/dave/golib/src/cmd/link/internal/ld"
+	"github.com/dave/golib/src/cmd/link/internal/sym"
 	"log"
 )
 
-func genplt(ctxt *ld.Link) {
+func (pstate *PackageState) genplt(ctxt *ld.Link) {
 	// The ppc64 ABI PLT has similar concepts to other
 	// architectures, but is laid out quite differently. When we
 	// see an R_PPC64_REL24 relocation to a dynamic symbol
@@ -100,7 +100,7 @@ func genplt(ctxt *ld.Link) {
 
 			// Reserve PLT entry and generate symbol
 			// resolver
-			addpltsym(ctxt, r.Sym)
+			pstate.addpltsym(ctxt, r.Sym)
 
 			// Generate call stub
 			n := fmt.Sprintf("%s.%s", s.Name, r.Sym.Name)
@@ -205,13 +205,13 @@ func genaddmoduledata(ctxt *ld.Link) {
 	initarray_entry.AddAddr(ctxt.Arch, initfunc)
 }
 
-func gentext(ctxt *ld.Link) {
+func (pstate *PackageState) gentext(ctxt *ld.Link) {
 	if ctxt.DynlinkingGo() {
 		genaddmoduledata(ctxt)
 	}
 
 	if ctxt.LinkMode == ld.LinkInternal {
-		genplt(ctxt)
+		pstate.genplt(ctxt)
 	}
 }
 
@@ -261,17 +261,17 @@ func gencallstub(ctxt *ld.Link, abicase int, stub *sym.Symbol, targ *sym.Symbol)
 	stub.AddUint32(ctxt.Arch, 0x4e800420) // bctr
 }
 
-func adddynrel(ctxt *ld.Link, s *sym.Symbol, r *sym.Reloc) bool {
+func (pstate *PackageState) adddynrel(ctxt *ld.Link, s *sym.Symbol, r *sym.Reloc) bool {
 	targ := r.Sym
 
 	switch r.Type {
 	default:
 		if r.Type >= 256 {
-			ld.Errorf(s, "unexpected relocation type %d (%s)", r.Type, sym.RelocName(ctxt.Arch, r.Type))
+			pstate.ld.Errorf(s, "unexpected relocation type %d (%s)", r.Type, pstate.sym.RelocName(ctxt.Arch, r.Type))
 			return false
 		}
 
-		// Handle relocations found in ELF object files.
+	// Handle relocations found in ELF object files.
 	case 256 + objabi.RelocType(elf.R_PPC64_REL24):
 		r.Type = objabi.R_CALLPOWER
 
@@ -284,7 +284,7 @@ func adddynrel(ctxt *ld.Link, s *sym.Symbol, r *sym.Reloc) bool {
 
 		if targ.Type == sym.SDYNIMPORT {
 			// Should have been handled in elfsetupplt
-			ld.Errorf(s, "unexpected R_PPC64_REL24 for dyn import")
+			pstate.ld.Errorf(s, "unexpected R_PPC64_REL24 for dyn import")
 		}
 
 		return true
@@ -294,7 +294,7 @@ func adddynrel(ctxt *ld.Link, s *sym.Symbol, r *sym.Reloc) bool {
 		r.Add += 4
 
 		if targ.Type == sym.SDYNIMPORT {
-			ld.Errorf(s, "unexpected R_PPC_REL32 for dyn import")
+			pstate.ld.Errorf(s, "unexpected R_PPC_REL32 for dyn import")
 		}
 
 		return true
@@ -303,7 +303,7 @@ func adddynrel(ctxt *ld.Link, s *sym.Symbol, r *sym.Reloc) bool {
 		r.Type = objabi.R_ADDR
 		if targ.Type == sym.SDYNIMPORT {
 			// These happen in .toc sections
-			ld.Adddynsym(ctxt, targ)
+			pstate.ld.Adddynsym(ctxt, targ)
 
 			rela := ctxt.Syms.Lookup(".rela", 0)
 			rela.AddAddrPlus(ctxt.Arch, s, int64(r.Off))
@@ -457,7 +457,7 @@ func machoreloc1(arch *sys.Arch, out *ld.OutBuf, s *sym.Symbol, r *sym.Reloc, se
 }
 
 // Return the value of .TOC. for symbol s
-func symtoc(ctxt *ld.Link, s *sym.Symbol) int64 {
+func (pstate *PackageState) symtoc(ctxt *ld.Link, s *sym.Symbol) int64 {
 	var toc *sym.Symbol
 
 	if s.Outer != nil {
@@ -467,14 +467,14 @@ func symtoc(ctxt *ld.Link, s *sym.Symbol) int64 {
 	}
 
 	if toc == nil {
-		ld.Errorf(s, "TOC-relative relocation in object without .TOC.")
+		pstate.ld.Errorf(s, "TOC-relative relocation in object without .TOC.")
 		return 0
 	}
 
 	return toc.Value
 }
 
-func archrelocaddr(ctxt *ld.Link, r *sym.Reloc, s *sym.Symbol, val *int64) bool {
+func (pstate *PackageState) archrelocaddr(ctxt *ld.Link, r *sym.Reloc, s *sym.Symbol, val *int64) bool {
 	var o1, o2 uint32
 	if ctxt.Arch.ByteOrder == binary.BigEndian {
 		o1 = uint32(*val >> 32)
@@ -491,9 +491,9 @@ func archrelocaddr(ctxt *ld.Link, r *sym.Reloc, s *sym.Symbol, val *int64) bool 
 	// instruction (it is an error in this case if the low 2 bits of the address
 	// are non-zero).
 
-	t := ld.Symaddr(r.Sym) + r.Add
+	t := pstate.ld.Symaddr(r.Sym) + r.Add
 	if t < 0 || t >= 1<<31 {
-		ld.Errorf(s, "relocation for %s is too big (>=2G): %d", s.Name, ld.Symaddr(r.Sym))
+		pstate.ld.Errorf(s, "relocation for %s is too big (>=2G): %d", s.Name, pstate.ld.Symaddr(r.Sym))
 	}
 	if t&0x8000 != 0 {
 		t += 0x10000
@@ -506,7 +506,7 @@ func archrelocaddr(ctxt *ld.Link, r *sym.Reloc, s *sym.Symbol, val *int64) bool 
 	case objabi.R_ADDRPOWER_DS:
 		o1 |= (uint32(t) >> 16) & 0xffff
 		if t&3 != 0 {
-			ld.Errorf(s, "bad DS reloc for %s: %d", s.Name, ld.Symaddr(r.Sym))
+			pstate.ld.Errorf(s, "bad DS reloc for %s: %d", s.Name, pstate.ld.Symaddr(r.Sym))
 		}
 		o2 |= uint32(t) & 0xfffc
 	default:
@@ -522,7 +522,7 @@ func archrelocaddr(ctxt *ld.Link, r *sym.Reloc, s *sym.Symbol, val *int64) bool 
 }
 
 // resolve direct jump relocation r in s, and add trampoline if necessary
-func trampoline(ctxt *ld.Link, r *sym.Reloc, s *sym.Symbol) {
+func (pstate *PackageState) trampoline(ctxt *ld.Link, r *sym.Reloc, s *sym.Symbol) {
 
 	// Trampolines are created if the branch offset is too large and the linker cannot insert a call stub to handle it.
 	// For internal linking, trampolines are always created for long calls.
@@ -533,13 +533,13 @@ func trampoline(ctxt *ld.Link, r *sym.Reloc, s *sym.Symbol) {
 		return
 	}
 
-	t := ld.Symaddr(r.Sym) + r.Add - (s.Value + int64(r.Off))
+	t := pstate.ld.Symaddr(r.Sym) + r.Add - (s.Value + int64(r.Off))
 	switch r.Type {
 	case objabi.R_CALLPOWER:
 
 		// If branch offset is too far then create a trampoline.
 
-		if (ctxt.LinkMode == ld.LinkExternal && s.Sect != r.Sym.Sect) || (ctxt.LinkMode == ld.LinkInternal && int64(int32(t<<6)>>6) != t) || (*ld.FlagDebugTramp > 1 && s.File != r.Sym.File) {
+		if (ctxt.LinkMode == ld.LinkExternal && s.Sect != r.Sym.Sect) || (ctxt.LinkMode == ld.LinkInternal && int64(int32(t<<6)>>6) != t) || (*pstate.ld.FlagDebugTramp > 1 && s.File != r.Sym.File) {
 			var tramp *sym.Symbol
 			for i := 0; ; i++ {
 
@@ -561,7 +561,7 @@ func trampoline(ctxt *ld.Link, r *sym.Reloc, s *sym.Symbol) {
 					break
 				}
 
-				t = ld.Symaddr(tramp) + r.Add - (s.Value + int64(r.Off))
+				t = pstate.ld.Symaddr(tramp) + r.Add - (s.Value + int64(r.Off))
 
 				// With internal linking, the trampoline can be used if it is not too far.
 				// With external linking, the trampoline must be in this section for it to be reused.
@@ -572,10 +572,10 @@ func trampoline(ctxt *ld.Link, r *sym.Reloc, s *sym.Symbol) {
 			if tramp.Type == 0 {
 				if ctxt.DynlinkingGo() || ctxt.BuildMode == ld.BuildModeCArchive || ctxt.BuildMode == ld.BuildModeCShared || ctxt.BuildMode == ld.BuildModePIE {
 					// Should have returned for above cases
-					ld.Errorf(s, "unexpected trampoline for shared or dynamic linking\n")
+					pstate.ld.Errorf(s, "unexpected trampoline for shared or dynamic linking\n")
 				} else {
-					ctxt.AddTramp(tramp)
-					gentramp(ctxt.Arch, ctxt.LinkMode, tramp, r.Sym, r.Add)
+					ctxt.AddTramp(pstate.ld, tramp)
+					pstate.gentramp(ctxt.Arch, ctxt.LinkMode, tramp, r.Sym, r.Add)
 				}
 			}
 			r.Sym = tramp
@@ -583,17 +583,17 @@ func trampoline(ctxt *ld.Link, r *sym.Reloc, s *sym.Symbol) {
 			r.Done = false
 		}
 	default:
-		ld.Errorf(s, "trampoline called with non-jump reloc: %d (%s)", r.Type, sym.RelocName(ctxt.Arch, r.Type))
+		pstate.ld.Errorf(s, "trampoline called with non-jump reloc: %d (%s)", r.Type, pstate.sym.RelocName(ctxt.Arch, r.Type))
 	}
 }
 
-func gentramp(arch *sys.Arch, linkmode ld.LinkMode, tramp, target *sym.Symbol, offset int64) {
+func (pstate *PackageState) gentramp(arch *sys.Arch, linkmode ld.LinkMode, tramp, target *sym.Symbol, offset int64) {
 	// Used for default build mode for an executable
 	// Address of the call target is generated using
 	// relocation and doesn't depend on r2 (TOC).
 	tramp.Size = 16 // 4 instructions
 	tramp.P = make([]byte, tramp.Size)
-	t := ld.Symaddr(target) + offset
+	t := pstate.ld.Symaddr(target) + offset
 	o1 := uint32(0x3fe00000) // lis r31,targetaddr hi
 	o2 := uint32(0x3bff0000) // addi r31,targetaddr lo
 	// With external linking, the target address must be
@@ -623,7 +623,7 @@ func gentramp(arch *sys.Arch, linkmode ld.LinkMode, tramp, target *sym.Symbol, o
 	arch.ByteOrder.PutUint32(tramp.P[12:], o4)
 }
 
-func archreloc(ctxt *ld.Link, r *sym.Reloc, s *sym.Symbol, val *int64) bool {
+func (pstate *PackageState) archreloc(ctxt *ld.Link, r *sym.Reloc, s *sym.Symbol, val *int64) bool {
 	if ctxt.LinkMode == ld.LinkExternal {
 		switch r.Type {
 		default:
@@ -646,12 +646,12 @@ func archreloc(ctxt *ld.Link, r *sym.Reloc, s *sym.Symbol, val *int64) bool {
 			rs := r.Sym
 			r.Xadd = r.Add
 			for rs.Outer != nil {
-				r.Xadd += ld.Symaddr(rs) - ld.Symaddr(rs.Outer)
+				r.Xadd += pstate.ld.Symaddr(rs) - pstate.ld.Symaddr(rs.Outer)
 				rs = rs.Outer
 			}
 
 			if rs.Type != sym.SHOSTOBJ && rs.Type != sym.SDYNIMPORT && rs.Sect == nil {
-				ld.Errorf(s, "missing section for %s", rs.Name)
+				pstate.ld.Errorf(s, "missing section for %s", rs.Name)
 			}
 			r.Xsym = rs
 
@@ -669,27 +669,27 @@ func archreloc(ctxt *ld.Link, r *sym.Reloc, s *sym.Symbol, val *int64) bool {
 		*val = r.Add
 		return true
 	case objabi.R_GOTOFF:
-		*val = ld.Symaddr(r.Sym) + r.Add - ld.Symaddr(ctxt.Syms.Lookup(".got", 0))
+		*val = pstate.ld.Symaddr(r.Sym) + r.Add - pstate.ld.Symaddr(ctxt.Syms.Lookup(".got", 0))
 		return true
 	case objabi.R_ADDRPOWER, objabi.R_ADDRPOWER_DS:
-		return archrelocaddr(ctxt, r, s, val)
+		return pstate.archrelocaddr(ctxt, r, s, val)
 	case objabi.R_CALLPOWER:
 		// Bits 6 through 29 = (S + A - P) >> 2
 
-		t := ld.Symaddr(r.Sym) + r.Add - (s.Value + int64(r.Off))
+		t := pstate.ld.Symaddr(r.Sym) + r.Add - (s.Value + int64(r.Off))
 
 		if t&3 != 0 {
-			ld.Errorf(s, "relocation for %s+%d is not aligned: %d", r.Sym.Name, r.Off, t)
+			pstate.ld.Errorf(s, "relocation for %s+%d is not aligned: %d", r.Sym.Name, r.Off, t)
 		}
 		// If branch offset is too far then create a trampoline.
 
 		if int64(int32(t<<6)>>6) != t {
-			ld.Errorf(s, "direct call too far: %s %x", r.Sym.Name, t)
+			pstate.ld.Errorf(s, "direct call too far: %s %x", r.Sym.Name, t)
 		}
 		*val |= int64(uint32(t) &^ 0xfc000003)
 		return true
 	case objabi.R_POWER_TOC: // S + A - .TOC.
-		*val = ld.Symaddr(r.Sym) + r.Add - symtoc(ctxt, s)
+		*val = pstate.ld.Symaddr(r.Sym) + r.Add - pstate.symtoc(ctxt, s)
 
 		return true
 	case objabi.R_POWER_TLS_LE:
@@ -699,7 +699,7 @@ func archreloc(ctxt *ld.Link, r *sym.Reloc, s *sym.Symbol, val *int64) bool {
 		// Specification".
 		v := r.Sym.Value - 0x7000
 		if int64(int16(v)) != v {
-			ld.Errorf(s, "TLS offset out of range %d", v)
+			pstate.ld.Errorf(s, "TLS offset out of range %d", v)
 		}
 		*val = (*val &^ 0xffff) | (v & 0xffff)
 		return true
@@ -708,10 +708,10 @@ func archreloc(ctxt *ld.Link, r *sym.Reloc, s *sym.Symbol, val *int64) bool {
 	return false
 }
 
-func archrelocvariant(ctxt *ld.Link, r *sym.Reloc, s *sym.Symbol, t int64) int64 {
+func (pstate *PackageState) archrelocvariant(ctxt *ld.Link, r *sym.Reloc, s *sym.Symbol, t int64) int64 {
 	switch r.Variant & sym.RV_TYPE_MASK {
 	default:
-		ld.Errorf(s, "unexpected relocation variant %d", r.Variant)
+		pstate.ld.Errorf(s, "unexpected relocation variant %d", r.Variant)
 		fallthrough
 
 	case sym.RV_NONE:
@@ -748,7 +748,7 @@ func archrelocvariant(ctxt *ld.Link, r *sym.Reloc, s *sym.Symbol, t int64) int64
 		t += 0x8000
 		fallthrough
 
-		// Fallthrough
+	// Fallthrough
 	case sym.RV_POWER_HI:
 		t >>= 16
 
@@ -786,7 +786,7 @@ func archrelocvariant(ctxt *ld.Link, r *sym.Reloc, s *sym.Symbol, t int64) int64
 			o1 = uint32(ld.Le16(s.P[r.Off:]))
 		}
 		if t&3 != 0 {
-			ld.Errorf(s, "relocation for %s+%d is not aligned: %d", r.Sym.Name, r.Off, t)
+			pstate.ld.Errorf(s, "relocation for %s+%d is not aligned: %d", r.Sym.Name, r.Off, t)
 		}
 		if (r.Variant&sym.RV_CHECK_OVERFLOW != 0) && int64(int16(t)) != t {
 			goto overflow
@@ -795,16 +795,16 @@ func archrelocvariant(ctxt *ld.Link, r *sym.Reloc, s *sym.Symbol, t int64) int64
 	}
 
 overflow:
-	ld.Errorf(s, "relocation for %s+%d is too big: %d", r.Sym.Name, r.Off, t)
+	pstate.ld.Errorf(s, "relocation for %s+%d is too big: %d", r.Sym.Name, r.Off, t)
 	return t
 }
 
-func addpltsym(ctxt *ld.Link, s *sym.Symbol) {
+func (pstate *PackageState) addpltsym(ctxt *ld.Link, s *sym.Symbol) {
 	if s.Plt >= 0 {
 		return
 	}
 
-	ld.Adddynsym(ctxt, s)
+	pstate.ld.Adddynsym(ctxt, s)
 
 	if ctxt.IsELF {
 		plt := ctxt.Syms.Lookup(".plt", 0)
@@ -814,7 +814,7 @@ func addpltsym(ctxt *ld.Link, s *sym.Symbol) {
 		}
 
 		// Create the glink resolver if necessary
-		glink := ensureglinkresolver(ctxt)
+		glink := pstate.ensureglinkresolver(ctxt)
 
 		// Write symbol resolver stub (just a branch to the
 		// glink resolver stub)
@@ -840,12 +840,12 @@ func addpltsym(ctxt *ld.Link, s *sym.Symbol) {
 		rela.AddUint64(ctxt.Arch, ld.ELF64_R_INFO(uint32(s.Dynid), uint32(elf.R_PPC64_JMP_SLOT)))
 		rela.AddUint64(ctxt.Arch, 0)
 	} else {
-		ld.Errorf(s, "addpltsym: unsupported binary format")
+		pstate.ld.Errorf(s, "addpltsym: unsupported binary format")
 	}
 }
 
 // Generate the glink resolver stub if necessary and return the .glink section
-func ensureglinkresolver(ctxt *ld.Link) *sym.Symbol {
+func (pstate *PackageState) ensureglinkresolver(ctxt *ld.Link) *sym.Symbol {
 	glink := ctxt.Syms.Lookup(".glink", 0)
 	if glink.Size != 0 {
 		return glink
@@ -899,136 +899,136 @@ func ensureglinkresolver(ctxt *ld.Link) *sym.Symbol {
 	// before the first symbol resolver stub.
 	s := ctxt.Syms.Lookup(".dynamic", 0)
 
-	ld.Elfwritedynentsymplus(ctxt, s, ld.DT_PPC64_GLINK, glink, glink.Size-32)
+	pstate.ld.Elfwritedynentsymplus(ctxt, s, ld.DT_PPC64_GLINK, glink, glink.Size-32)
 
 	return glink
 }
 
-func asmb(ctxt *ld.Link) {
+func (pstate *PackageState) asmb(ctxt *ld.Link) {
 	if ctxt.Debugvlog != 0 {
-		ctxt.Logf("%5.2f asmb\n", ld.Cputime())
+		ctxt.Logf("%5.2f asmb\n", pstate.ld.Cputime())
 	}
 
 	if ctxt.IsELF {
-		ld.Asmbelfsetup()
+		pstate.ld.Asmbelfsetup()
 	}
 
-	for _, sect := range ld.Segtext.Sections {
-		ctxt.Out.SeekSet(int64(sect.Vaddr - ld.Segtext.Vaddr + ld.Segtext.Fileoff))
+	for _, sect := range pstate.ld.Segtext.Sections {
+		ctxt.Out.SeekSet(pstate.ld, int64(sect.Vaddr-pstate.ld.Segtext.Vaddr+pstate.ld.Segtext.Fileoff))
 		// Handle additional text sections with Codeblk
 		if sect.Name == ".text" {
-			ld.Codeblk(ctxt, int64(sect.Vaddr), int64(sect.Length))
+			pstate.ld.Codeblk(ctxt, int64(sect.Vaddr), int64(sect.Length))
 		} else {
-			ld.Datblk(ctxt, int64(sect.Vaddr), int64(sect.Length))
+			pstate.ld.Datblk(ctxt, int64(sect.Vaddr), int64(sect.Length))
 		}
 	}
 
-	if ld.Segrodata.Filelen > 0 {
+	if pstate.ld.Segrodata.Filelen > 0 {
 		if ctxt.Debugvlog != 0 {
-			ctxt.Logf("%5.2f rodatblk\n", ld.Cputime())
+			ctxt.Logf("%5.2f rodatblk\n", pstate.ld.Cputime())
 		}
-		ctxt.Out.SeekSet(int64(ld.Segrodata.Fileoff))
-		ld.Datblk(ctxt, int64(ld.Segrodata.Vaddr), int64(ld.Segrodata.Filelen))
+		ctxt.Out.SeekSet(pstate.ld, int64(pstate.ld.Segrodata.Fileoff))
+		pstate.ld.Datblk(ctxt, int64(pstate.ld.Segrodata.Vaddr), int64(pstate.ld.Segrodata.Filelen))
 	}
-	if ld.Segrelrodata.Filelen > 0 {
+	if pstate.ld.Segrelrodata.Filelen > 0 {
 		if ctxt.Debugvlog != 0 {
-			ctxt.Logf("%5.2f relrodatblk\n", ld.Cputime())
+			ctxt.Logf("%5.2f relrodatblk\n", pstate.ld.Cputime())
 		}
-		ctxt.Out.SeekSet(int64(ld.Segrelrodata.Fileoff))
-		ld.Datblk(ctxt, int64(ld.Segrelrodata.Vaddr), int64(ld.Segrelrodata.Filelen))
+		ctxt.Out.SeekSet(pstate.ld, int64(pstate.ld.Segrelrodata.Fileoff))
+		pstate.ld.Datblk(ctxt, int64(pstate.ld.Segrelrodata.Vaddr), int64(pstate.ld.Segrelrodata.Filelen))
 	}
 
 	if ctxt.Debugvlog != 0 {
-		ctxt.Logf("%5.2f datblk\n", ld.Cputime())
+		ctxt.Logf("%5.2f datblk\n", pstate.ld.Cputime())
 	}
 
-	ctxt.Out.SeekSet(int64(ld.Segdata.Fileoff))
-	ld.Datblk(ctxt, int64(ld.Segdata.Vaddr), int64(ld.Segdata.Filelen))
+	ctxt.Out.SeekSet(pstate.ld, int64(pstate.ld.Segdata.Fileoff))
+	pstate.ld.Datblk(ctxt, int64(pstate.ld.Segdata.Vaddr), int64(pstate.ld.Segdata.Filelen))
 
-	ctxt.Out.SeekSet(int64(ld.Segdwarf.Fileoff))
-	ld.Dwarfblk(ctxt, int64(ld.Segdwarf.Vaddr), int64(ld.Segdwarf.Filelen))
+	ctxt.Out.SeekSet(pstate.ld, int64(pstate.ld.Segdwarf.Fileoff))
+	pstate.ld.Dwarfblk(ctxt, int64(pstate.ld.Segdwarf.Vaddr), int64(pstate.ld.Segdwarf.Filelen))
 
 	/* output symbol table */
-	ld.Symsize = 0
+	pstate.ld.Symsize = 0
 
-	ld.Lcsize = 0
+	pstate.ld.Lcsize = 0
 	symo := uint32(0)
-	if !*ld.FlagS {
+	if !*pstate.ld.FlagS {
 		// TODO: rationalize
 		if ctxt.Debugvlog != 0 {
-			ctxt.Logf("%5.2f sym\n", ld.Cputime())
+			ctxt.Logf("%5.2f sym\n", pstate.ld.Cputime())
 		}
 		switch ctxt.HeadType {
 		default:
 			if ctxt.IsELF {
-				symo = uint32(ld.Segdwarf.Fileoff + ld.Segdwarf.Filelen)
-				symo = uint32(ld.Rnd(int64(symo), int64(*ld.FlagRound)))
+				symo = uint32(pstate.ld.Segdwarf.Fileoff + pstate.ld.Segdwarf.Filelen)
+				symo = uint32(ld.Rnd(int64(symo), int64(*pstate.ld.FlagRound)))
 			}
 
 		case objabi.Hplan9:
-			symo = uint32(ld.Segdata.Fileoff + ld.Segdata.Filelen)
+			symo = uint32(pstate.ld.Segdata.Fileoff + pstate.ld.Segdata.Filelen)
 		}
 
-		ctxt.Out.SeekSet(int64(symo))
+		ctxt.Out.SeekSet(pstate.ld, int64(symo))
 		switch ctxt.HeadType {
 		default:
 			if ctxt.IsELF {
 				if ctxt.Debugvlog != 0 {
-					ctxt.Logf("%5.2f elfsym\n", ld.Cputime())
+					ctxt.Logf("%5.2f elfsym\n", pstate.ld.Cputime())
 				}
-				ld.Asmelfsym(ctxt)
-				ctxt.Out.Flush()
-				ctxt.Out.Write(ld.Elfstrdat)
+				pstate.ld.Asmelfsym(ctxt)
+				ctxt.Out.Flush(pstate.ld)
+				ctxt.Out.Write(pstate.ld.Elfstrdat)
 
 				if ctxt.LinkMode == ld.LinkExternal {
-					ld.Elfemitreloc(ctxt)
+					pstate.ld.Elfemitreloc(ctxt)
 				}
 			}
 
 		case objabi.Hplan9:
-			ld.Asmplan9sym(ctxt)
-			ctxt.Out.Flush()
+			pstate.ld.Asmplan9sym(ctxt)
+			ctxt.Out.Flush(pstate.ld)
 
 			sym := ctxt.Syms.Lookup("pclntab", 0)
 			if sym != nil {
-				ld.Lcsize = int32(len(sym.P))
+				pstate.ld.Lcsize = int32(len(sym.P))
 				ctxt.Out.Write(sym.P)
-				ctxt.Out.Flush()
+				ctxt.Out.Flush(pstate.ld)
 			}
 		}
 	}
 
 	if ctxt.Debugvlog != 0 {
-		ctxt.Logf("%5.2f header\n", ld.Cputime())
+		ctxt.Logf("%5.2f header\n", pstate.ld.Cputime())
 	}
-	ctxt.Out.SeekSet(0)
+	ctxt.Out.SeekSet(pstate.ld, 0)
 	switch ctxt.HeadType {
 	default:
 	case objabi.Hplan9: /* plan 9 */
-		ctxt.Out.Write32(0x647)                      /* magic */
-		ctxt.Out.Write32(uint32(ld.Segtext.Filelen)) /* sizes */
-		ctxt.Out.Write32(uint32(ld.Segdata.Filelen))
-		ctxt.Out.Write32(uint32(ld.Segdata.Length - ld.Segdata.Filelen))
-		ctxt.Out.Write32(uint32(ld.Symsize))          /* nsyms */
-		ctxt.Out.Write32(uint32(ld.Entryvalue(ctxt))) /* va of entry */
+		ctxt.Out.Write32(0x647)                             /* magic */
+		ctxt.Out.Write32(uint32(pstate.ld.Segtext.Filelen)) /* sizes */
+		ctxt.Out.Write32(uint32(pstate.ld.Segdata.Filelen))
+		ctxt.Out.Write32(uint32(pstate.ld.Segdata.Length - pstate.ld.Segdata.Filelen))
+		ctxt.Out.Write32(uint32(pstate.ld.Symsize))          /* nsyms */
+		ctxt.Out.Write32(uint32(pstate.ld.Entryvalue(ctxt))) /* va of entry */
 		ctxt.Out.Write32(0)
-		ctxt.Out.Write32(uint32(ld.Lcsize))
+		ctxt.Out.Write32(uint32(pstate.ld.Lcsize))
 
 	case objabi.Hlinux,
 		objabi.Hfreebsd,
 		objabi.Hnetbsd,
 		objabi.Hopenbsd,
 		objabi.Hnacl:
-		ld.Asmbelf(ctxt, int64(symo))
+		pstate.ld.Asmbelf(ctxt, int64(symo))
 	}
 
-	ctxt.Out.Flush()
-	if *ld.FlagC {
-		fmt.Printf("textsize=%d\n", ld.Segtext.Filelen)
-		fmt.Printf("datsize=%d\n", ld.Segdata.Filelen)
-		fmt.Printf("bsssize=%d\n", ld.Segdata.Length-ld.Segdata.Filelen)
-		fmt.Printf("symsize=%d\n", ld.Symsize)
-		fmt.Printf("lcsize=%d\n", ld.Lcsize)
-		fmt.Printf("total=%d\n", ld.Segtext.Filelen+ld.Segdata.Length+uint64(ld.Symsize)+uint64(ld.Lcsize))
+	ctxt.Out.Flush(pstate.ld)
+	if *pstate.ld.FlagC {
+		fmt.Printf("textsize=%d\n", pstate.ld.Segtext.Filelen)
+		fmt.Printf("datsize=%d\n", pstate.ld.Segdata.Filelen)
+		fmt.Printf("bsssize=%d\n", pstate.ld.Segdata.Length-pstate.ld.Segdata.Filelen)
+		fmt.Printf("symsize=%d\n", pstate.ld.Symsize)
+		fmt.Printf("lcsize=%d\n", pstate.ld.Lcsize)
+		fmt.Printf("total=%d\n", pstate.ld.Segtext.Filelen+pstate.ld.Segdata.Length+uint64(pstate.ld.Symsize)+uint64(pstate.ld.Lcsize))
 	}
 }

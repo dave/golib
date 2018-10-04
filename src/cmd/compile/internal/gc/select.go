@@ -4,30 +4,30 @@
 
 package gc
 
-import "cmd/compile/internal/types"
+import "github.com/dave/golib/src/cmd/compile/internal/types"
 
 // select
-func typecheckselect(sel *Node) {
+func (pstate *PackageState) typecheckselect(sel *Node) {
 	var def *Node
-	lno := setlineno(sel)
-	typecheckslice(sel.Ninit.Slice(), Etop)
+	lno := pstate.setlineno(sel)
+	pstate.typecheckslice(sel.Ninit.Slice(), Etop)
 	for _, ncase := range sel.List.Slice() {
 		if ncase.Op != OXCASE {
-			setlineno(ncase)
-			Fatalf("typecheckselect %v", ncase.Op)
+			pstate.setlineno(ncase)
+			pstate.Fatalf("typecheckselect %v", ncase.Op)
 		}
 
 		if ncase.List.Len() == 0 {
 			// default
 			if def != nil {
-				yyerrorl(ncase.Pos, "multiple defaults in select (first at %v)", def.Line())
+				pstate.yyerrorl(ncase.Pos, "multiple defaults in select (first at %v)", def.Line(pstate))
 			} else {
 				def = ncase
 			}
 		} else if ncase.List.Len() > 1 {
-			yyerrorl(ncase.Pos, "select cases cannot be lists")
+			pstate.yyerrorl(ncase.Pos, "select cases cannot be lists")
 		} else {
-			ncase.List.SetFirst(typecheck(ncase.List.First(), Etop))
+			ncase.List.SetFirst(pstate.typecheck(ncase.List.First(), Etop))
 			n := ncase.List.First()
 			ncase.Left = n
 			ncase.List.Set(nil)
@@ -41,7 +41,7 @@ func typecheckselect(sel *Node) {
 					// on the same line). This matches the approach before 1.10.
 					pos = ncase.Pos
 				}
-				yyerrorl(pos, "select case must be receive, send or assign recv")
+				pstate.yyerrorl(pos, "select case must be receive, send or assign recv")
 
 			// convert x = <-c into OSELRECV(x, <-c).
 			// remove implicit conversions; the eventual assignment
@@ -52,16 +52,16 @@ func typecheckselect(sel *Node) {
 				}
 
 				if n.Right.Op != ORECV {
-					yyerrorl(n.Pos, "select assignment must have receive on right hand side")
+					pstate.yyerrorl(n.Pos, "select assignment must have receive on right hand side")
 					break
 				}
 
 				n.Op = OSELRECV
 
-				// convert x, ok = <-c into OSELRECV2(x, <-c) with ntest=ok
+			// convert x, ok = <-c into OSELRECV2(x, <-c) with ntest=ok
 			case OAS2RECV:
 				if n.Rlist.First().Op != ORECV {
-					yyerrorl(n.Pos, "select assignment must have receive on right hand side")
+					pstate.yyerrorl(n.Pos, "select assignment must have receive on right hand side")
 					break
 				}
 
@@ -71,9 +71,9 @@ func typecheckselect(sel *Node) {
 				n.Right = n.Rlist.First()
 				n.Rlist.Set(nil)
 
-				// convert <-c into OSELRECV(N, <-c)
+			// convert <-c into OSELRECV(N, <-c)
 			case ORECV:
-				n = nodl(n.Pos, OSELRECV, nil, n)
+				n = pstate.nodl(n.Pos, OSELRECV, nil, n)
 
 				n.SetTypecheck(1)
 				ncase.Left = n
@@ -83,37 +83,37 @@ func typecheckselect(sel *Node) {
 			}
 		}
 
-		typecheckslice(ncase.Nbody.Slice(), Etop)
+		pstate.typecheckslice(ncase.Nbody.Slice(), Etop)
 	}
 
-	lineno = lno
+	pstate.lineno = lno
 }
 
-func walkselect(sel *Node) {
-	lno := setlineno(sel)
+func (pstate *PackageState) walkselect(sel *Node) {
+	lno := pstate.setlineno(sel)
 	if sel.Nbody.Len() != 0 {
-		Fatalf("double walkselect")
+		pstate.Fatalf("double walkselect")
 	}
 
 	init := sel.Ninit.Slice()
 	sel.Ninit.Set(nil)
 
-	init = append(init, walkselectcases(&sel.List)...)
+	init = append(init, pstate.walkselectcases(&sel.List)...)
 	sel.List.Set(nil)
 
 	sel.Nbody.Set(init)
-	walkstmtlist(sel.Nbody.Slice())
+	pstate.walkstmtlist(sel.Nbody.Slice())
 
-	lineno = lno
+	pstate.lineno = lno
 }
 
-func walkselectcases(cases *Nodes) []*Node {
+func (pstate *PackageState) walkselectcases(cases *Nodes) []*Node {
 	n := cases.Len()
-	sellineno := lineno
+	sellineno := pstate.lineno
 
 	// optimization: zero-case select
 	if n == 0 {
-		return []*Node{mkcall("block", nil, nil)}
+		return []*Node{pstate.mkcall("block", nil, nil)}
 	}
 
 	// optimization: one-case select: single op.
@@ -121,7 +121,7 @@ func walkselectcases(cases *Nodes) []*Node {
 	// golang.org/issue/7672.
 	if n == 1 {
 		cas := cases.First()
-		setlineno(cas)
+		pstate.setlineno(cas)
 		l := cas.Ninit.Slice()
 		if cas.Left != nil { // not default:
 			n := cas.Left
@@ -130,9 +130,9 @@ func walkselectcases(cases *Nodes) []*Node {
 			var ch *Node
 			switch n.Op {
 			default:
-				Fatalf("select %v", n.Op)
+				pstate.Fatalf("select %v", n.Op)
 
-				// ok already
+			// ok already
 			case OSEND:
 				ch = n.Left
 
@@ -148,8 +148,8 @@ func walkselectcases(cases *Nodes) []*Node {
 				}
 
 				if n.Left == nil {
-					nblank = typecheck(nblank, Erv|Easgn)
-					n.Left = nblank
+					pstate.nblank = pstate.typecheck(pstate.nblank, Erv|Easgn)
+					n.Left = pstate.nblank
 				}
 
 				n.Op = OAS2
@@ -158,38 +158,38 @@ func walkselectcases(cases *Nodes) []*Node {
 				n.Right = nil
 				n.Left = nil
 				n.SetTypecheck(0)
-				n = typecheck(n, Etop)
+				n = pstate.typecheck(n, Etop)
 			}
 
 			// if ch == nil { block() }; n;
-			a := nod(OIF, nil, nil)
+			a := pstate.nod(OIF, nil, nil)
 
-			a.Left = nod(OEQ, ch, nodnil())
+			a.Left = pstate.nod(OEQ, ch, pstate.nodnil())
 			var ln Nodes
 			ln.Set(l)
-			a.Nbody.Set1(mkcall("block", nil, &ln))
+			a.Nbody.Set1(pstate.mkcall("block", nil, &ln))
 			l = ln.Slice()
-			a = typecheck(a, Etop)
+			a = pstate.typecheck(a, Etop)
 			l = append(l, a, n)
 		}
 
 		l = append(l, cas.Nbody.Slice()...)
-		l = append(l, nod(OBREAK, nil, nil))
+		l = append(l, pstate.nod(OBREAK, nil, nil))
 		return l
 	}
 
 	// convert case value arguments to addresses.
 	// this rewrite is used by both the general code and the next optimization.
 	for _, cas := range cases.Slice() {
-		setlineno(cas)
+		pstate.setlineno(cas)
 		n := cas.Left
 		if n == nil {
 			continue
 		}
 		switch n.Op {
 		case OSEND:
-			n.Right = nod(OADDR, n.Right, nil)
-			n.Right = typecheck(n.Right, Erv)
+			n.Right = pstate.nod(OADDR, n.Right, nil)
+			n.Right = pstate.typecheck(n.Right, Erv)
 
 		case OSELRECV, OSELRECV2:
 			if n.Op == OSELRECV2 && n.List.Len() == 0 {
@@ -197,8 +197,8 @@ func walkselectcases(cases *Nodes) []*Node {
 			}
 
 			if n.Left != nil {
-				n.Left = nod(OADDR, n.Left, nil)
-				n.Left = typecheck(n.Left, Erv)
+				n.Left = pstate.nod(OADDR, n.Left, nil)
+				n.Left = pstate.typecheck(n.Left, Erv)
 			}
 		}
 	}
@@ -216,66 +216,66 @@ func walkselectcases(cases *Nodes) []*Node {
 		}
 
 		n := cas.Left
-		setlineno(n)
-		r := nod(OIF, nil, nil)
+		pstate.setlineno(n)
+		r := pstate.nod(OIF, nil, nil)
 		r.Ninit.Set(cas.Ninit.Slice())
 		switch n.Op {
 		default:
-			Fatalf("select %v", n.Op)
+			pstate.Fatalf("select %v", n.Op)
 
 		case OSEND:
 			// if selectnbsend(c, v) { body } else { default body }
 			ch := n.Left
-			r.Left = mkcall1(chanfn("selectnbsend", 2, ch.Type), types.Types[TBOOL], &r.Ninit, ch, n.Right)
+			r.Left = pstate.mkcall1(pstate.chanfn("selectnbsend", 2, ch.Type), pstate.types.Types[TBOOL], &r.Ninit, ch, n.Right)
 
 		case OSELRECV:
 			// if selectnbrecv(&v, c) { body } else { default body }
-			r = nod(OIF, nil, nil)
+			r = pstate.nod(OIF, nil, nil)
 			r.Ninit.Set(cas.Ninit.Slice())
 			ch := n.Right.Left
 			elem := n.Left
 			if elem == nil {
-				elem = nodnil()
+				elem = pstate.nodnil()
 			}
-			r.Left = mkcall1(chanfn("selectnbrecv", 2, ch.Type), types.Types[TBOOL], &r.Ninit, elem, ch)
+			r.Left = pstate.mkcall1(pstate.chanfn("selectnbrecv", 2, ch.Type), pstate.types.Types[TBOOL], &r.Ninit, elem, ch)
 
 		case OSELRECV2:
 			// if selectnbrecv2(&v, &received, c) { body } else { default body }
-			r = nod(OIF, nil, nil)
+			r = pstate.nod(OIF, nil, nil)
 			r.Ninit.Set(cas.Ninit.Slice())
 			ch := n.Right.Left
 			elem := n.Left
 			if elem == nil {
-				elem = nodnil()
+				elem = pstate.nodnil()
 			}
-			receivedp := nod(OADDR, n.List.First(), nil)
-			receivedp = typecheck(receivedp, Erv)
-			r.Left = mkcall1(chanfn("selectnbrecv2", 2, ch.Type), types.Types[TBOOL], &r.Ninit, elem, receivedp, ch)
+			receivedp := pstate.nod(OADDR, n.List.First(), nil)
+			receivedp = pstate.typecheck(receivedp, Erv)
+			r.Left = pstate.mkcall1(pstate.chanfn("selectnbrecv2", 2, ch.Type), pstate.types.Types[TBOOL], &r.Ninit, elem, receivedp, ch)
 		}
 
-		r.Left = typecheck(r.Left, Erv)
+		r.Left = pstate.typecheck(r.Left, Erv)
 		r.Nbody.Set(cas.Nbody.Slice())
 		r.Rlist.Set(append(dflt.Ninit.Slice(), dflt.Nbody.Slice()...))
-		return []*Node{r, nod(OBREAK, nil, nil)}
+		return []*Node{r, pstate.nod(OBREAK, nil, nil)}
 	}
 
 	var init []*Node
 
 	// generate sel-struct
-	lineno = sellineno
-	selv := temp(types.NewArray(scasetype(), int64(n)))
-	r := nod(OAS, selv, nil)
-	r = typecheck(r, Etop)
+	pstate.lineno = sellineno
+	selv := pstate.temp(pstate.types.NewArray(pstate.scasetype(), int64(n)))
+	r := pstate.nod(OAS, selv, nil)
+	r = pstate.typecheck(r, Etop)
 	init = append(init, r)
 
-	order := temp(types.NewArray(types.Types[TUINT16], 2*int64(n)))
-	r = nod(OAS, order, nil)
-	r = typecheck(r, Etop)
+	order := pstate.temp(pstate.types.NewArray(pstate.types.Types[TUINT16], 2*int64(n)))
+	r = pstate.nod(OAS, order, nil)
+	r = pstate.typecheck(r, Etop)
 	init = append(init, r)
 
 	// register cases
 	for i, cas := range cases.Slice() {
-		setlineno(cas)
+		pstate.setlineno(cas)
 
 		init = append(init, cas.Ninit.Slice()...)
 		cas.Ninit.Set(nil)
@@ -296,7 +296,7 @@ func walkselectcases(cases *Nodes) []*Node {
 
 			switch n.Op {
 			default:
-				Fatalf("select %v", n.Op)
+				pstate.Fatalf("select %v", n.Op)
 			case OSEND:
 				kind = caseSend
 				c = n.Left
@@ -309,64 +309,64 @@ func walkselectcases(cases *Nodes) []*Node {
 		}
 
 		setField := func(f string, val *Node) {
-			r := nod(OAS, nodSym(ODOT, nod(OINDEX, selv, nodintconst(int64(i))), lookup(f)), val)
-			r = typecheck(r, Etop)
+			r := pstate.nod(OAS, pstate.nodSym(ODOT, pstate.nod(OINDEX, selv, pstate.nodintconst(int64(i))), pstate.lookup(f)), val)
+			r = pstate.typecheck(r, Etop)
 			init = append(init, r)
 		}
 
-		setField("kind", nodintconst(kind))
+		setField("kind", pstate.nodintconst(kind))
 		if c != nil {
-			c = nod(OCONVNOP, c, nil)
-			c.Type = types.Types[TUNSAFEPTR]
+			c = pstate.nod(OCONVNOP, c, nil)
+			c.Type = pstate.types.Types[TUNSAFEPTR]
 			setField("c", c)
 		}
 		if elem != nil {
-			elem = nod(OCONVNOP, elem, nil)
-			elem.Type = types.Types[TUNSAFEPTR]
+			elem = pstate.nod(OCONVNOP, elem, nil)
+			elem.Type = pstate.types.Types[TUNSAFEPTR]
 			setField("elem", elem)
 		}
 
 		// TODO(mdempsky): There should be a cleaner way to
 		// handle this.
-		if instrumenting {
-			r = mkcall("selectsetpc", nil, nil, bytePtrToIndex(selv, int64(i)))
+		if pstate.instrumenting {
+			r = pstate.mkcall("selectsetpc", nil, nil, pstate.bytePtrToIndex(selv, int64(i)))
 			init = append(init, r)
 		}
 	}
 
 	// run the select
-	lineno = sellineno
-	chosen := temp(types.Types[TINT])
-	recvOK := temp(types.Types[TBOOL])
-	r = nod(OAS2, nil, nil)
+	pstate.lineno = sellineno
+	chosen := pstate.temp(pstate.types.Types[TINT])
+	recvOK := pstate.temp(pstate.types.Types[TBOOL])
+	r = pstate.nod(OAS2, nil, nil)
 	r.List.Set2(chosen, recvOK)
-	fn := syslook("selectgo")
-	r.Rlist.Set1(mkcall1(fn, fn.Type.Results(), nil, bytePtrToIndex(selv, 0), bytePtrToIndex(order, 0), nodintconst(int64(n))))
-	r = typecheck(r, Etop)
+	fn := pstate.syslook("selectgo")
+	r.Rlist.Set1(pstate.mkcall1(fn, fn.Type.Results(pstate.types), nil, pstate.bytePtrToIndex(selv, 0), pstate.bytePtrToIndex(order, 0), pstate.nodintconst(int64(n))))
+	r = pstate.typecheck(r, Etop)
 	init = append(init, r)
 
 	// selv and order are no longer alive after selectgo.
-	init = append(init, nod(OVARKILL, selv, nil))
-	init = append(init, nod(OVARKILL, order, nil))
+	init = append(init, pstate.nod(OVARKILL, selv, nil))
+	init = append(init, pstate.nod(OVARKILL, order, nil))
 
 	// dispatch cases
 	for i, cas := range cases.Slice() {
-		setlineno(cas)
+		pstate.setlineno(cas)
 
-		cond := nod(OEQ, chosen, nodintconst(int64(i)))
-		cond = typecheck(cond, Erv)
-		cond = defaultlit(cond, nil)
+		cond := pstate.nod(OEQ, chosen, pstate.nodintconst(int64(i)))
+		cond = pstate.typecheck(cond, Erv)
+		cond = pstate.defaultlit(cond, nil)
 
-		r = nod(OIF, cond, nil)
+		r = pstate.nod(OIF, cond, nil)
 
 		if n := cas.Left; n != nil && n.Op == OSELRECV2 {
-			x := nod(OAS, n.List.First(), recvOK)
-			x = typecheck(x, Etop)
+			x := pstate.nod(OAS, n.List.First(), recvOK)
+			x = pstate.typecheck(x, Etop)
 			r.Nbody.Append(x)
 		}
 
 		r.Nbody.AppendNodes(&cas.Nbody)
-		r.Nbody.Append(nod(OBREAK, nil, nil))
+		r.Nbody.Append(pstate.nod(OBREAK, nil, nil))
 		init = append(init, r)
 	}
 
@@ -374,26 +374,24 @@ func walkselectcases(cases *Nodes) []*Node {
 }
 
 // bytePtrToIndex returns a Node representing "(*byte)(&n[i])".
-func bytePtrToIndex(n *Node, i int64) *Node {
-	s := nod(OCONVNOP, nod(OADDR, nod(OINDEX, n, nodintconst(i)), nil), nil)
-	s.Type = types.NewPtr(types.Types[TUINT8])
-	s = typecheck(s, Erv)
+func (pstate *PackageState) bytePtrToIndex(n *Node, i int64) *Node {
+	s := pstate.nod(OCONVNOP, pstate.nod(OADDR, pstate.nod(OINDEX, n, pstate.nodintconst(i)), nil), nil)
+	s.Type = pstate.types.NewPtr(pstate.types.Types[TUINT8])
+	s = pstate.typecheck(s, Erv)
 	return s
 }
 
-var scase *types.Type
-
 // Keep in sync with src/runtime/select.go.
-func scasetype() *types.Type {
-	if scase == nil {
-		scase = tostruct([]*Node{
-			namedfield("c", types.Types[TUNSAFEPTR]),
-			namedfield("elem", types.Types[TUNSAFEPTR]),
-			namedfield("kind", types.Types[TUINT16]),
-			namedfield("pc", types.Types[TUINTPTR]),
-			namedfield("releasetime", types.Types[TUINT64]),
+func (pstate *PackageState) scasetype() *types.Type {
+	if pstate.scase == nil {
+		pstate.scase = pstate.tostruct([]*Node{
+			pstate.namedfield("c", pstate.types.Types[TUNSAFEPTR]),
+			pstate.namedfield("elem", pstate.types.Types[TUNSAFEPTR]),
+			pstate.namedfield("kind", pstate.types.Types[TUINT16]),
+			pstate.namedfield("pc", pstate.types.Types[TUINTPTR]),
+			pstate.namedfield("releasetime", pstate.types.Types[TUINT64]),
 		})
-		scase.SetNoalg(true)
+		pstate.scase.SetNoalg(true)
 	}
-	return scase
+	return pstate.scase
 }

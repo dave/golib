@@ -29,7 +29,7 @@
 
 package s390x
 
-import "cmd/internal/obj"
+import "github.com/dave/golib/src/cmd/internal/obj"
 
 //go:generate go run ../stringer.go -i $GOFILE -o anames.go -p s390x
 
@@ -149,15 +149,11 @@ const (
 	REGSP   = REG_R15 // stack pointer
 )
 
-// LINUX for zSeries ELF Application Binary Interface Supplement
-// https://refspecs.linuxfoundation.org/ELF/zSeries/lzsabi0_zSeries/x1472.html
-var S390XDWARFRegisters = map[int16]int16{}
-
-func init() {
+func (pstate *PackageState) init() {
 	// f assigns dwarfregisters[from:to by step] = (base):((to-from)/step+base)
 	f := func(from, step, to, base int16) {
 		for r := int16(from); r <= to; r += step {
-			S390XDWARFRegisters[r] = (r-from)/step + base
+			pstate.S390XDWARFRegisters[r] = (r-from)/step + base
 		}
 	}
 	f(REG_R0, 1, REG_R15, 0)

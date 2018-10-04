@@ -5,13 +5,13 @@
 package ssa
 
 import (
-	"cmd/internal/src"
+	"github.com/dave/golib/src/cmd/internal/src"
 )
 
 // findlive returns the reachable blocks and live values in f.
-func findlive(f *Func) (reachable []bool, live []bool) {
+func (pstate *PackageState) findlive(f *Func) (reachable []bool, live []bool) {
 	reachable = ReachableBlocks(f)
-	live, _ = liveValues(f, reachable)
+	live, _ = pstate.liveValues(f, reachable)
 	return
 }
 
@@ -48,7 +48,7 @@ func ReachableBlocks(f *Func) []bool {
 // to be statements in reversed data flow order.
 // The second result is used to help conserve statement boundaries for debugging.
 // reachable is a map from block ID to whether the block is reachable.
-func liveValues(f *Func, reachable []bool) (live []bool, liveOrderStmts []*Value) {
+func (pstate *PackageState) liveValues(f *Func, reachable []bool) (live []bool, liveOrderStmts []*Value) {
 	live = make([]bool, f.NumValues())
 
 	// After regalloc, consider all values to be live.
@@ -77,14 +77,14 @@ func liveValues(f *Func, reachable []bool) (live []bool, liveOrderStmts []*Value
 			}
 		}
 		for _, v := range b.Values {
-			if (opcodeTable[v.Op].call || opcodeTable[v.Op].hasSideEffects) && !live[v.ID] {
+			if (pstate.opcodeTable[v.Op].call || pstate.opcodeTable[v.Op].hasSideEffects) && !live[v.ID] {
 				live[v.ID] = true
 				q = append(q, v)
 				if v.Pos.IsStmt() != src.PosNotStmt {
 					liveOrderStmts = append(liveOrderStmts, v)
 				}
 			}
-			if v.Type.IsVoid() && !live[v.ID] {
+			if v.Type.IsVoid(pstate.types) && !live[v.ID] {
 				// The only Void ops are nil checks.  We must keep these.
 				live[v.ID] = true
 				q = append(q, v)
@@ -118,7 +118,7 @@ func liveValues(f *Func, reachable []bool) (live []bool, liveOrderStmts []*Value
 }
 
 // deadcode removes dead code from f.
-func deadcode(f *Func) {
+func (pstate *PackageState) deadcode(f *Func) {
 	// deadcode after regalloc is forbidden for now. Regalloc
 	// doesn't quite generate legal SSA which will lead to some
 	// required moves being eliminated. See the comment at the
@@ -162,7 +162,7 @@ func deadcode(f *Func) {
 	copyelim(f)
 
 	// Find live values.
-	live, order := liveValues(f, reachable)
+	live, order := pstate.liveValues(f, reachable)
 
 	// Remove dead & duplicate entries from namedValues map.
 	s := f.newSparseSet(f.NumValues())
@@ -208,7 +208,7 @@ func deadcode(f *Func) {
 			if !live[v.ID] {
 				v.resetArgs()
 				if v.Pos.IsStmt() == src.PosIsStmt && reachable[b.ID] {
-					pendingLines.set(v.Pos.Line(), int32(i)) // TODO could be more than one pos for a line
+					pendingLines.set(pstate, v.Pos.Line(), int32(i)) // TODO could be more than one pos for a line
 				}
 			}
 		}
@@ -241,7 +241,7 @@ func deadcode(f *Func) {
 				b.Values[i] = v
 				i++
 			} else {
-				f.freeValue(v)
+				f.freeValue(pstate, v)
 			}
 		}
 		// aid GC

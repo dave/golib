@@ -16,7 +16,7 @@ import (
 // TODO(gri) Consider removing the linebreaks flag from this signature.
 // Its likely rarely used in common cases.
 
-func Fprint(w io.Writer, x Node, linebreaks bool) (n int, err error) {
+func (pstate *PackageState) Fprint(w io.Writer, x Node, linebreaks bool) (n int, err error) {
 	p := printer{
 		output:     w,
 		linebreaks: linebreaks,
@@ -29,15 +29,15 @@ func Fprint(w io.Writer, x Node, linebreaks bool) (n int, err error) {
 		}
 	}()
 
-	p.print(x)
-	p.flush(_EOF)
+	p.print(pstate, x)
+	p.flush(pstate, _EOF)
 
 	return
 }
 
-func String(n Node) string {
+func (pstate *PackageState) String(n Node) string {
 	var buf bytes.Buffer
-	_, err := Fprint(&buf, n, false)
+	_, err := pstate.Fprint(&buf, n, false)
 	if err != nil {
 		panic(err) // TODO(gri) print something sensible into buf instead
 	}
@@ -53,8 +53,9 @@ const (
 	newline
 	indent
 	outdent
-	// comment
-	// eolComment
+
+// comment
+// eolComment
 )
 
 type whitespace struct {
@@ -85,31 +86,25 @@ func (p *printer) write(data []byte) {
 	}
 }
 
-var (
-	tabBytes    = []byte("\t\t\t\t\t\t\t\t")
-	newlineByte = []byte("\n")
-	blankByte   = []byte(" ")
-)
-
-func (p *printer) writeBytes(data []byte) {
+func (p *printer) writeBytes(pstate *PackageState, data []byte) {
 	if len(data) == 0 {
 		panic("expected non-empty []byte")
 	}
 	if p.nlcount > 0 && p.indent > 0 {
 		// write indentation
 		n := p.indent
-		for n > len(tabBytes) {
-			p.write(tabBytes)
-			n -= len(tabBytes)
+		for n > len(pstate.tabBytes) {
+			p.write(pstate.tabBytes)
+			n -= len(pstate.tabBytes)
 		}
-		p.write(tabBytes[:n])
+		p.write(pstate.tabBytes[:n])
 	}
 	p.write(data)
 	p.nlcount = 0
 }
 
-func (p *printer) writeString(s string) {
-	p.writeBytes([]byte(s))
+func (p *printer) writeString(pstate *PackageState, s string) {
+	p.writeBytes(pstate, []byte(s))
 }
 
 // If impliesSemi returns true for a non-blank line's final token tok,
@@ -142,7 +137,7 @@ func (p *printer) addWhitespace(kind ctrlSymbol, text string) {
 	}
 }
 
-func (p *printer) flush(next token) {
+func (p *printer) flush(pstate *PackageState, next token) {
 	// eliminate semis and redundant whitespace
 	sawNewline := next == _EOF
 	sawParen := next == _Rparen || next == _Rbrace
@@ -161,7 +156,7 @@ func (p *printer) flush(next token) {
 		case newline:
 			sawNewline = true
 		case blank, indent, outdent:
-			// nothing to do
+		// nothing to do
 		// case comment:
 		// 	// A multi-line comment acts like a newline; and a ""
 		// 	// comment implies by definition at least one newline.
@@ -180,22 +175,22 @@ func (p *printer) flush(next token) {
 	for i := range p.pending {
 		switch p.pending[i].kind {
 		case none:
-			// nothing to do
+		// nothing to do
 		case semi:
-			p.writeString(";")
+			p.writeString(pstate, ";")
 			p.nlcount = 0
 			prev = semi
 		case blank:
 			if prev != blank {
 				// at most one blank
-				p.writeBytes(blankByte)
+				p.writeBytes(pstate, pstate.blankByte)
 				p.nlcount = 0
 				prev = blank
 			}
 		case newline:
 			const maxEmptyLines = 1
 			if p.nlcount <= maxEmptyLines {
-				p.write(newlineByte)
+				p.write(pstate.newlineByte)
 				p.nlcount++
 				prev = newline
 			}
@@ -240,14 +235,14 @@ func mayCombine(prev token, next byte) (b bool) {
 	// return
 }
 
-func (p *printer) print(args ...interface{}) {
+func (p *printer) print(pstate *PackageState, args ...interface{}) {
 	for i := 0; i < len(args); i++ {
 		switch x := args[i].(type) {
 		case nil:
-			// we should not reach here but don't crash
+		// we should not reach here but don't crash
 
 		case Node:
-			p.printNode(x)
+			p.printNode(pstate, x)
 
 		case token:
 			// _Name implies an immediately following string
@@ -260,7 +255,7 @@ func (p *printer) print(args ...interface{}) {
 				}
 				s = args[i].(string)
 			} else {
-				s = x.String()
+				s = x.String(pstate)
 			}
 
 			// TODO(gri) This check seems at the wrong place since it doesn't
@@ -273,16 +268,16 @@ func (p *printer) print(args ...interface{}) {
 				// delay printing of semi
 				p.addWhitespace(semi, "")
 			} else {
-				p.flush(x)
-				p.writeString(s)
+				p.flush(pstate, x)
+				p.writeString(pstate, s)
 				p.nlcount = 0
 				p.lastTok = x
 			}
 
 		case Operator:
 			if x != 0 {
-				p.flush(_Operator)
-				p.writeString(x.String())
+				p.flush(pstate, _Operator)
+				p.writeString(pstate, x.String(pstate))
 			}
 
 		case ctrlSymbol:
@@ -306,7 +301,7 @@ func (p *printer) print(args ...interface{}) {
 	}
 }
 
-func (p *printer) printNode(n Node) {
+func (p *printer) printNode(pstate *PackageState, n Node) {
 	// ncom := *n.Comments()
 	// if ncom != nil {
 	// 	// TODO(gri) in general we cannot make assumptions about whether
@@ -324,7 +319,7 @@ func (p *printer) printNode(n Node) {
 	// 	}
 	// }
 
-	p.printRawNode(n)
+	p.printRawNode(pstate, n)
 
 	// if ncom != nil && len(ncom.After) > 0 {
 	// 	for i, c := range ncom.After {
@@ -339,227 +334,227 @@ func (p *printer) printNode(n Node) {
 	// }
 }
 
-func (p *printer) printRawNode(n Node) {
+func (p *printer) printRawNode(pstate *PackageState, n Node) {
 	switch n := n.(type) {
 	case nil:
-		// we should not reach here but don't crash
+	// we should not reach here but don't crash
 
 	// expressions and types
 	case *BadExpr:
-		p.print(_Name, "<bad expr>")
+		p.print(pstate, _Name, "<bad expr>")
 
 	case *Name:
-		p.print(_Name, n.Value) // _Name requires actual value following immediately
+		p.print(pstate, _Name, n.Value) // _Name requires actual value following immediately
 
 	case *BasicLit:
-		p.print(_Name, n.Value) // _Name requires actual value following immediately
+		p.print(pstate, _Name, n.Value) // _Name requires actual value following immediately
 
 	case *FuncLit:
-		p.print(n.Type, blank, n.Body)
+		p.print(pstate, n.Type, blank, n.Body)
 
 	case *CompositeLit:
 		if n.Type != nil {
-			p.print(n.Type)
+			p.print(pstate, n.Type)
 		}
-		p.print(_Lbrace)
+		p.print(pstate, _Lbrace)
 		if n.NKeys > 0 && n.NKeys == len(n.ElemList) {
-			p.printExprLines(n.ElemList)
+			p.printExprLines(pstate, n.ElemList)
 		} else {
-			p.printExprList(n.ElemList)
+			p.printExprList(pstate, n.ElemList)
 		}
-		p.print(_Rbrace)
+		p.print(pstate, _Rbrace)
 
 	case *ParenExpr:
-		p.print(_Lparen, n.X, _Rparen)
+		p.print(pstate, _Lparen, n.X, _Rparen)
 
 	case *SelectorExpr:
-		p.print(n.X, _Dot, n.Sel)
+		p.print(pstate, n.X, _Dot, n.Sel)
 
 	case *IndexExpr:
-		p.print(n.X, _Lbrack, n.Index, _Rbrack)
+		p.print(pstate, n.X, _Lbrack, n.Index, _Rbrack)
 
 	case *SliceExpr:
-		p.print(n.X, _Lbrack)
+		p.print(pstate, n.X, _Lbrack)
 		if i := n.Index[0]; i != nil {
-			p.printNode(i)
+			p.printNode(pstate, i)
 		}
-		p.print(_Colon)
+		p.print(pstate, _Colon)
 		if j := n.Index[1]; j != nil {
-			p.printNode(j)
+			p.printNode(pstate, j)
 		}
 		if k := n.Index[2]; k != nil {
-			p.print(_Colon, k)
+			p.print(pstate, _Colon, k)
 		}
-		p.print(_Rbrack)
+		p.print(pstate, _Rbrack)
 
 	case *AssertExpr:
-		p.print(n.X, _Dot, _Lparen, n.Type, _Rparen)
+		p.print(pstate, n.X, _Dot, _Lparen, n.Type, _Rparen)
 
 	case *TypeSwitchGuard:
 		if n.Lhs != nil {
-			p.print(n.Lhs, blank, _Define, blank)
+			p.print(pstate, n.Lhs, blank, _Define, blank)
 		}
-		p.print(n.X, _Dot, _Lparen, _Type, _Rparen)
+		p.print(pstate, n.X, _Dot, _Lparen, _Type, _Rparen)
 
 	case *CallExpr:
-		p.print(n.Fun, _Lparen)
-		p.printExprList(n.ArgList)
+		p.print(pstate, n.Fun, _Lparen)
+		p.printExprList(pstate, n.ArgList)
 		if n.HasDots {
-			p.print(_DotDotDot)
+			p.print(pstate, _DotDotDot)
 		}
-		p.print(_Rparen)
+		p.print(pstate, _Rparen)
 
 	case *Operation:
 		if n.Y == nil {
 			// unary expr
-			p.print(n.Op)
+			p.print(pstate, n.Op)
 			// if n.Op == lexical.Range {
 			// 	p.print(blank)
 			// }
-			p.print(n.X)
+			p.print(pstate, n.X)
 		} else {
 			// binary expr
 			// TODO(gri) eventually take precedence into account
 			// to control possibly missing parentheses
-			p.print(n.X, blank, n.Op, blank, n.Y)
+			p.print(pstate, n.X, blank, n.Op, blank, n.Y)
 		}
 
 	case *KeyValueExpr:
-		p.print(n.Key, _Colon, blank, n.Value)
+		p.print(pstate, n.Key, _Colon, blank, n.Value)
 
 	case *ListExpr:
-		p.printExprList(n.ElemList)
+		p.printExprList(pstate, n.ElemList)
 
 	case *ArrayType:
 		var len interface{} = _DotDotDot
 		if n.Len != nil {
 			len = n.Len
 		}
-		p.print(_Lbrack, len, _Rbrack, n.Elem)
+		p.print(pstate, _Lbrack, len, _Rbrack, n.Elem)
 
 	case *SliceType:
-		p.print(_Lbrack, _Rbrack, n.Elem)
+		p.print(pstate, _Lbrack, _Rbrack, n.Elem)
 
 	case *DotsType:
-		p.print(_DotDotDot, n.Elem)
+		p.print(pstate, _DotDotDot, n.Elem)
 
 	case *StructType:
-		p.print(_Struct)
+		p.print(pstate, _Struct)
 		if len(n.FieldList) > 0 && p.linebreaks {
-			p.print(blank)
+			p.print(pstate, blank)
 		}
-		p.print(_Lbrace)
+		p.print(pstate, _Lbrace)
 		if len(n.FieldList) > 0 {
-			p.print(newline, indent)
-			p.printFieldList(n.FieldList, n.TagList)
-			p.print(outdent, newline)
+			p.print(pstate, newline, indent)
+			p.printFieldList(pstate, n.FieldList, n.TagList)
+			p.print(pstate, outdent, newline)
 		}
-		p.print(_Rbrace)
+		p.print(pstate, _Rbrace)
 
 	case *FuncType:
-		p.print(_Func)
-		p.printSignature(n)
+		p.print(pstate, _Func)
+		p.printSignature(pstate, n)
 
 	case *InterfaceType:
-		p.print(_Interface)
+		p.print(pstate, _Interface)
 		if len(n.MethodList) > 0 && p.linebreaks {
-			p.print(blank)
+			p.print(pstate, blank)
 		}
-		p.print(_Lbrace)
+		p.print(pstate, _Lbrace)
 		if len(n.MethodList) > 0 {
-			p.print(newline, indent)
-			p.printMethodList(n.MethodList)
-			p.print(outdent, newline)
+			p.print(pstate, newline, indent)
+			p.printMethodList(pstate, n.MethodList)
+			p.print(pstate, outdent, newline)
 		}
-		p.print(_Rbrace)
+		p.print(pstate, _Rbrace)
 
 	case *MapType:
-		p.print(_Map, _Lbrack, n.Key, _Rbrack, n.Value)
+		p.print(pstate, _Map, _Lbrack, n.Key, _Rbrack, n.Value)
 
 	case *ChanType:
 		if n.Dir == RecvOnly {
-			p.print(_Arrow)
+			p.print(pstate, _Arrow)
 		}
-		p.print(_Chan)
+		p.print(pstate, _Chan)
 		if n.Dir == SendOnly {
-			p.print(_Arrow)
+			p.print(pstate, _Arrow)
 		}
-		p.print(blank, n.Elem)
+		p.print(pstate, blank, n.Elem)
 
 	// statements
 	case *DeclStmt:
-		p.printDecl(n.DeclList)
+		p.printDecl(pstate, n.DeclList)
 
 	case *EmptyStmt:
-		// nothing to print
+	// nothing to print
 
 	case *LabeledStmt:
-		p.print(outdent, n.Label, _Colon, indent, newline, n.Stmt)
+		p.print(pstate, outdent, n.Label, _Colon, indent, newline, n.Stmt)
 
 	case *ExprStmt:
-		p.print(n.X)
+		p.print(pstate, n.X)
 
 	case *SendStmt:
-		p.print(n.Chan, blank, _Arrow, blank, n.Value)
+		p.print(pstate, n.Chan, blank, _Arrow, blank, n.Value)
 
 	case *AssignStmt:
-		p.print(n.Lhs)
-		if n.Rhs == ImplicitOne {
+		p.print(pstate, n.Lhs)
+		if n.Rhs == pstate.ImplicitOne {
 			// TODO(gri) This is going to break the mayCombine
 			//           check once we enable that again.
-			p.print(n.Op, n.Op) // ++ or --
+			p.print(pstate, n.Op, n.Op) // ++ or --
 		} else {
-			p.print(blank, n.Op, _Assign, blank)
-			p.print(n.Rhs)
+			p.print(pstate, blank, n.Op, _Assign, blank)
+			p.print(pstate, n.Rhs)
 		}
 
 	case *CallStmt:
-		p.print(n.Tok, blank, n.Call)
+		p.print(pstate, n.Tok, blank, n.Call)
 
 	case *ReturnStmt:
-		p.print(_Return)
+		p.print(pstate, _Return)
 		if n.Results != nil {
-			p.print(blank, n.Results)
+			p.print(pstate, blank, n.Results)
 		}
 
 	case *BranchStmt:
-		p.print(n.Tok)
+		p.print(pstate, n.Tok)
 		if n.Label != nil {
-			p.print(blank, n.Label)
+			p.print(pstate, blank, n.Label)
 		}
 
 	case *BlockStmt:
-		p.print(_Lbrace)
+		p.print(pstate, _Lbrace)
 		if len(n.List) > 0 {
-			p.print(newline, indent)
-			p.printStmtList(n.List, true)
-			p.print(outdent, newline)
+			p.print(pstate, newline, indent)
+			p.printStmtList(pstate, n.List, true)
+			p.print(pstate, outdent, newline)
 		}
-		p.print(_Rbrace)
+		p.print(pstate, _Rbrace)
 
 	case *IfStmt:
-		p.print(_If, blank)
+		p.print(pstate, _If, blank)
 		if n.Init != nil {
-			p.print(n.Init, _Semi, blank)
+			p.print(pstate, n.Init, _Semi, blank)
 		}
-		p.print(n.Cond, blank, n.Then)
+		p.print(pstate, n.Cond, blank, n.Then)
 		if n.Else != nil {
-			p.print(blank, _Else, blank, n.Else)
+			p.print(pstate, blank, _Else, blank, n.Else)
 		}
 
 	case *SwitchStmt:
-		p.print(_Switch, blank)
+		p.print(pstate, _Switch, blank)
 		if n.Init != nil {
-			p.print(n.Init, _Semi, blank)
+			p.print(pstate, n.Init, _Semi, blank)
 		}
 		if n.Tag != nil {
-			p.print(n.Tag, blank)
+			p.print(pstate, n.Tag, blank)
 		}
-		p.printSwitchBody(n.Body)
+		p.printSwitchBody(pstate, n.Body)
 
 	case *SelectStmt:
-		p.print(_Select, blank) // for now
-		p.printSelectBody(n.Body)
+		p.print(pstate, _Select, blank) // for now
+		p.printSelectBody(pstate, n.Body)
 
 	case *RangeClause:
 		if n.Lhs != nil {
@@ -567,113 +562,113 @@ func (p *printer) printRawNode(n Node) {
 			if n.Def {
 				tok = _Define
 			}
-			p.print(n.Lhs, blank, tok, blank)
+			p.print(pstate, n.Lhs, blank, tok, blank)
 		}
-		p.print(_Range, blank, n.X)
+		p.print(pstate, _Range, blank, n.X)
 
 	case *ForStmt:
-		p.print(_For, blank)
+		p.print(pstate, _For, blank)
 		if n.Init == nil && n.Post == nil {
 			if n.Cond != nil {
-				p.print(n.Cond, blank)
+				p.print(pstate, n.Cond, blank)
 			}
 		} else {
 			if n.Init != nil {
-				p.print(n.Init)
+				p.print(pstate, n.Init)
 				// TODO(gri) clean this up
 				if _, ok := n.Init.(*RangeClause); ok {
-					p.print(blank, n.Body)
+					p.print(pstate, blank, n.Body)
 					break
 				}
 			}
-			p.print(_Semi, blank)
+			p.print(pstate, _Semi, blank)
 			if n.Cond != nil {
-				p.print(n.Cond)
+				p.print(pstate, n.Cond)
 			}
-			p.print(_Semi, blank)
+			p.print(pstate, _Semi, blank)
 			if n.Post != nil {
-				p.print(n.Post, blank)
+				p.print(pstate, n.Post, blank)
 			}
 		}
-		p.print(n.Body)
+		p.print(pstate, n.Body)
 
 	case *ImportDecl:
 		if n.Group == nil {
-			p.print(_Import, blank)
+			p.print(pstate, _Import, blank)
 		}
 		if n.LocalPkgName != nil {
-			p.print(n.LocalPkgName, blank)
+			p.print(pstate, n.LocalPkgName, blank)
 		}
-		p.print(n.Path)
+		p.print(pstate, n.Path)
 
 	case *ConstDecl:
 		if n.Group == nil {
-			p.print(_Const, blank)
+			p.print(pstate, _Const, blank)
 		}
-		p.printNameList(n.NameList)
+		p.printNameList(pstate, n.NameList)
 		if n.Type != nil {
-			p.print(blank, n.Type)
+			p.print(pstate, blank, n.Type)
 		}
 		if n.Values != nil {
-			p.print(blank, _Assign, blank, n.Values)
+			p.print(pstate, blank, _Assign, blank, n.Values)
 		}
 
 	case *TypeDecl:
 		if n.Group == nil {
-			p.print(_Type, blank)
+			p.print(pstate, _Type, blank)
 		}
-		p.print(n.Name, blank)
+		p.print(pstate, n.Name, blank)
 		if n.Alias {
-			p.print(_Assign, blank)
+			p.print(pstate, _Assign, blank)
 		}
-		p.print(n.Type)
+		p.print(pstate, n.Type)
 
 	case *VarDecl:
 		if n.Group == nil {
-			p.print(_Var, blank)
+			p.print(pstate, _Var, blank)
 		}
-		p.printNameList(n.NameList)
+		p.printNameList(pstate, n.NameList)
 		if n.Type != nil {
-			p.print(blank, n.Type)
+			p.print(pstate, blank, n.Type)
 		}
 		if n.Values != nil {
-			p.print(blank, _Assign, blank, n.Values)
+			p.print(pstate, blank, _Assign, blank, n.Values)
 		}
 
 	case *FuncDecl:
-		p.print(_Func, blank)
+		p.print(pstate, _Func, blank)
 		if r := n.Recv; r != nil {
-			p.print(_Lparen)
+			p.print(pstate, _Lparen)
 			if r.Name != nil {
-				p.print(r.Name, blank)
+				p.print(pstate, r.Name, blank)
 			}
-			p.printNode(r.Type)
-			p.print(_Rparen, blank)
+			p.printNode(pstate, r.Type)
+			p.print(pstate, _Rparen, blank)
 		}
-		p.print(n.Name)
-		p.printSignature(n.Type)
+		p.print(pstate, n.Name)
+		p.printSignature(pstate, n.Type)
 		if n.Body != nil {
-			p.print(blank, n.Body)
+			p.print(pstate, blank, n.Body)
 		}
 
 	case *printGroup:
-		p.print(n.Tok, blank, _Lparen)
+		p.print(pstate, n.Tok, blank, _Lparen)
 		if len(n.Decls) > 0 {
-			p.print(newline, indent)
+			p.print(pstate, newline, indent)
 			for _, d := range n.Decls {
-				p.printNode(d)
-				p.print(_Semi, newline)
+				p.printNode(pstate, d)
+				p.print(pstate, _Semi, newline)
 			}
-			p.print(outdent)
+			p.print(pstate, outdent)
 		}
-		p.print(_Rparen)
+		p.print(pstate, _Rparen)
 
 	// files
 	case *File:
-		p.print(_Package, blank, n.PkgName)
+		p.print(pstate, _Package, blank, n.PkgName)
 		if len(n.DeclList) > 0 {
-			p.print(_Semi, newline, newline)
-			p.printDeclList(n.DeclList)
+			p.print(pstate, _Semi, newline, newline)
+			p.printDeclList(pstate, n.DeclList)
 		}
 
 	default:
@@ -681,81 +676,81 @@ func (p *printer) printRawNode(n Node) {
 	}
 }
 
-func (p *printer) printFields(fields []*Field, tags []*BasicLit, i, j int) {
+func (p *printer) printFields(pstate *PackageState, fields []*Field, tags []*BasicLit, i, j int) {
 	if i+1 == j && fields[i].Name == nil {
 		// anonymous field
-		p.printNode(fields[i].Type)
+		p.printNode(pstate, fields[i].Type)
 	} else {
 		for k, f := range fields[i:j] {
 			if k > 0 {
-				p.print(_Comma, blank)
+				p.print(pstate, _Comma, blank)
 			}
-			p.printNode(f.Name)
+			p.printNode(pstate, f.Name)
 		}
-		p.print(blank)
-		p.printNode(fields[i].Type)
+		p.print(pstate, blank)
+		p.printNode(pstate, fields[i].Type)
 	}
 	if i < len(tags) && tags[i] != nil {
-		p.print(blank)
-		p.printNode(tags[i])
+		p.print(pstate, blank)
+		p.printNode(pstate, tags[i])
 	}
 }
 
-func (p *printer) printFieldList(fields []*Field, tags []*BasicLit) {
+func (p *printer) printFieldList(pstate *PackageState, fields []*Field, tags []*BasicLit) {
 	i0 := 0
 	var typ Expr
 	for i, f := range fields {
 		if f.Name == nil || f.Type != typ {
 			if i0 < i {
-				p.printFields(fields, tags, i0, i)
-				p.print(_Semi, newline)
+				p.printFields(pstate, fields, tags, i0, i)
+				p.print(pstate, _Semi, newline)
 				i0 = i
 			}
 			typ = f.Type
 		}
 	}
-	p.printFields(fields, tags, i0, len(fields))
+	p.printFields(pstate, fields, tags, i0, len(fields))
 }
 
-func (p *printer) printMethodList(methods []*Field) {
+func (p *printer) printMethodList(pstate *PackageState, methods []*Field) {
 	for i, m := range methods {
 		if i > 0 {
-			p.print(_Semi, newline)
+			p.print(pstate, _Semi, newline)
 		}
 		if m.Name != nil {
-			p.printNode(m.Name)
-			p.printSignature(m.Type.(*FuncType))
+			p.printNode(pstate, m.Name)
+			p.printSignature(pstate, m.Type.(*FuncType))
 		} else {
-			p.printNode(m.Type)
+			p.printNode(pstate, m.Type)
 		}
 	}
 }
 
-func (p *printer) printNameList(list []*Name) {
+func (p *printer) printNameList(pstate *PackageState, list []*Name) {
 	for i, x := range list {
 		if i > 0 {
-			p.print(_Comma, blank)
+			p.print(pstate, _Comma, blank)
 		}
-		p.printNode(x)
+		p.printNode(pstate, x)
 	}
 }
 
-func (p *printer) printExprList(list []Expr) {
+func (p *printer) printExprList(pstate *PackageState, list []Expr) {
 	for i, x := range list {
 		if i > 0 {
-			p.print(_Comma, blank)
+			p.print(pstate, _Comma, blank)
 		}
-		p.printNode(x)
+		p.printNode(pstate, x)
 	}
 }
 
-func (p *printer) printExprLines(list []Expr) {
+func (p *printer) printExprLines(pstate *PackageState, list []Expr) {
 	if len(list) > 0 {
-		p.print(newline, indent)
+		p.print(pstate, newline, indent)
 		for _, x := range list {
-			p.print(x, _Comma, newline)
+			p.print(pstate, x, _Comma, newline)
 		}
-		p.print(outdent)
+		p.print(pstate, outdent)
 	}
 }
 
@@ -782,14 +777,14 @@ type printGroup struct {
 	Decls []Decl
 }
 
-func (p *printer) printDecl(list []Decl) {
+func (p *printer) printDecl(pstate *PackageState, list []Decl) {
 	tok, group := groupFor(list[0])
 
 	if group == nil {
 		if len(list) != 1 {
 			panic("unreachable")
 		}
-		p.printNode(list[0])
+		p.printNode(pstate, list[0])
 		return
 	}
 
@@ -808,131 +803,131 @@ func (p *printer) printDecl(list []Decl) {
 	// *pg.Comments() = *group.Comments()
 	pg.Tok = tok
 	pg.Decls = list
-	p.printNode(&pg)
+	p.printNode(pstate, &pg)
 }
 
-func (p *printer) printDeclList(list []Decl) {
+func (p *printer) printDeclList(pstate *PackageState, list []Decl) {
 	i0 := 0
 	var tok token
 	var group *Group
 	for i, x := range list {
 		if s, g := groupFor(x); g == nil || g != group {
 			if i0 < i {
-				p.printDecl(list[i0:i])
-				p.print(_Semi, newline)
+				p.printDecl(pstate, list[i0:i])
+				p.print(pstate, _Semi, newline)
 				// print empty line between different declaration groups,
 				// different kinds of declarations, or between functions
 				if g != group || s != tok || s == _Func {
-					p.print(newline)
+					p.print(pstate, newline)
 				}
 				i0 = i
 			}
 			tok, group = s, g
 		}
 	}
-	p.printDecl(list[i0:])
+	p.printDecl(pstate, list[i0:])
 }
 
-func (p *printer) printSignature(sig *FuncType) {
-	p.printParameterList(sig.ParamList)
+func (p *printer) printSignature(pstate *PackageState, sig *FuncType) {
+	p.printParameterList(pstate, sig.ParamList)
 	if list := sig.ResultList; list != nil {
-		p.print(blank)
+		p.print(pstate, blank)
 		if len(list) == 1 && list[0].Name == nil {
-			p.printNode(list[0].Type)
+			p.printNode(pstate, list[0].Type)
 		} else {
-			p.printParameterList(list)
+			p.printParameterList(pstate, list)
 		}
 	}
 }
 
-func (p *printer) printParameterList(list []*Field) {
-	p.print(_Lparen)
+func (p *printer) printParameterList(pstate *PackageState, list []*Field) {
+	p.print(pstate, _Lparen)
 	if len(list) > 0 {
 		for i, f := range list {
 			if i > 0 {
-				p.print(_Comma, blank)
+				p.print(pstate, _Comma, blank)
 			}
 			if f.Name != nil {
-				p.printNode(f.Name)
+				p.printNode(pstate, f.Name)
 				if i+1 < len(list) {
 					f1 := list[i+1]
 					if f1.Name != nil && f1.Type == f.Type {
 						continue // no need to print type
 					}
 				}
-				p.print(blank)
+				p.print(pstate, blank)
 			}
-			p.printNode(f.Type)
+			p.printNode(pstate, f.Type)
 		}
 	}
-	p.print(_Rparen)
+	p.print(pstate, _Rparen)
 }
 
-func (p *printer) printStmtList(list []Stmt, braces bool) {
+func (p *printer) printStmtList(pstate *PackageState, list []Stmt, braces bool) {
 	for i, x := range list {
-		p.print(x, _Semi)
+		p.print(pstate, x, _Semi)
 		if i+1 < len(list) {
-			p.print(newline)
+			p.print(pstate, newline)
 		} else if braces {
 			// Print an extra semicolon if the last statement is
 			// an empty statement and we are in a braced block
 			// because one semicolon is automatically removed.
 			if _, ok := x.(*EmptyStmt); ok {
-				p.print(x, _Semi)
+				p.print(pstate, x, _Semi)
 			}
 		}
 	}
 }
 
-func (p *printer) printSwitchBody(list []*CaseClause) {
-	p.print(_Lbrace)
+func (p *printer) printSwitchBody(pstate *PackageState, list []*CaseClause) {
+	p.print(pstate, _Lbrace)
 	if len(list) > 0 {
-		p.print(newline)
+		p.print(pstate, newline)
 		for i, c := range list {
-			p.printCaseClause(c, i+1 == len(list))
-			p.print(newline)
+			p.printCaseClause(pstate, c, i+1 == len(list))
+			p.print(pstate, newline)
 		}
 	}
-	p.print(_Rbrace)
+	p.print(pstate, _Rbrace)
 }
 
-func (p *printer) printSelectBody(list []*CommClause) {
-	p.print(_Lbrace)
+func (p *printer) printSelectBody(pstate *PackageState, list []*CommClause) {
+	p.print(pstate, _Lbrace)
 	if len(list) > 0 {
-		p.print(newline)
+		p.print(pstate, newline)
 		for i, c := range list {
-			p.printCommClause(c, i+1 == len(list))
-			p.print(newline)
+			p.printCommClause(pstate, c, i+1 == len(list))
+			p.print(pstate, newline)
 		}
 	}
-	p.print(_Rbrace)
+	p.print(pstate, _Rbrace)
 }
 
-func (p *printer) printCaseClause(c *CaseClause, braces bool) {
+func (p *printer) printCaseClause(pstate *PackageState, c *CaseClause, braces bool) {
 	if c.Cases != nil {
-		p.print(_Case, blank, c.Cases)
+		p.print(pstate, _Case, blank, c.Cases)
 	} else {
-		p.print(_Default)
+		p.print(pstate, _Default)
 	}
-	p.print(_Colon)
+	p.print(pstate, _Colon)
 	if len(c.Body) > 0 {
-		p.print(newline, indent)
-		p.printStmtList(c.Body, braces)
-		p.print(outdent)
+		p.print(pstate, newline, indent)
+		p.printStmtList(pstate, c.Body, braces)
+		p.print(pstate, outdent)
 	}
 }
 
-func (p *printer) printCommClause(c *CommClause, braces bool) {
+func (p *printer) printCommClause(pstate *PackageState, c *CommClause, braces bool) {
 	if c.Comm != nil {
-		p.print(_Case, blank)
-		p.print(c.Comm)
+		p.print(pstate, _Case, blank)
+		p.print(pstate, c.Comm)
 	} else {
-		p.print(_Default)
+		p.print(pstate, _Default)
 	}
-	p.print(_Colon)
+	p.print(pstate, _Colon)
 	if len(c.Body) > 0 {
-		p.print(newline, indent)
-		p.printStmtList(c.Body, braces)
-		p.print(outdent)
+		p.print(pstate, newline, indent)
+		p.printStmtList(pstate, c.Body, braces)
+		p.print(pstate, outdent)
 	}
 }

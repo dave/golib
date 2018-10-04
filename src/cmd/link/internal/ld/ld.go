@@ -32,7 +32,7 @@
 package ld
 
 import (
-	"cmd/link/internal/sym"
+	"github.com/dave/golib/src/cmd/link/internal/sym"
 	"io/ioutil"
 	"log"
 	"os"
@@ -75,12 +75,12 @@ func (ctxt *Link) readImportCfg(file string) {
 			log.Fatalf("%s:%d: unknown directive %q", file, lineNum, verb)
 		case "packagefile":
 			if before == "" || after == "" {
-				log.Fatalf(`%s:%d: invalid packagefile: syntax is "packagefile path=filename"`, file, lineNum)
+				log.Fatalf("%s:%d: invalid packagefile: syntax is \"packagefile path=filename\"", file, lineNum)
 			}
 			ctxt.PackageFile[before] = after
 		case "packageshlib":
 			if before == "" || after == "" {
-				log.Fatalf(`%s:%d: invalid packageshlib: syntax is "packageshlib path=filename"`, file, lineNum)
+				log.Fatalf("%s:%d: invalid packageshlib: syntax is \"packageshlib path=filename\"", file, lineNum)
 			}
 			ctxt.PackageShlib[before] = after
 		}
@@ -154,7 +154,7 @@ func findlib(ctxt *Link, lib string) (string, bool) {
 	return pname, isshlib
 }
 
-func addlib(ctxt *Link, src string, obj string, lib string) *sym.Library {
+func (pstate *PackageState) addlib(ctxt *Link, src string, obj string, lib string) *sym.Library {
 	pkg := pkgname(ctxt, lib)
 
 	// already loaded?
@@ -165,13 +165,13 @@ func addlib(ctxt *Link, src string, obj string, lib string) *sym.Library {
 	pname, isshlib := findlib(ctxt, lib)
 
 	if ctxt.Debugvlog > 1 {
-		ctxt.Logf("%5.2f addlib: %s %s pulls in %s isshlib %v\n", elapsed(), obj, src, pname, isshlib)
+		ctxt.Logf("%5.2f addlib: %s %s pulls in %s isshlib %v\n", pstate.elapsed(), obj, src, pname, isshlib)
 	}
 
 	if isshlib {
-		return addlibpath(ctxt, src, obj, "", pkg, pname)
+		return pstate.addlibpath(ctxt, src, obj, "", pkg, pname)
 	}
-	return addlibpath(ctxt, src, obj, pname, pkg, "")
+	return pstate.addlibpath(ctxt, src, obj, pname, pkg, "")
 }
 
 /*
@@ -182,13 +182,13 @@ func addlib(ctxt *Link, src string, obj string, lib string) *sym.Library {
  *	pkg: package import path, e.g. container/vector
  *	shlib: path to shared library, or .shlibname file holding path
  */
-func addlibpath(ctxt *Link, srcref string, objref string, file string, pkg string, shlib string) *sym.Library {
+func (pstate *PackageState) addlibpath(ctxt *Link, srcref string, objref string, file string, pkg string, shlib string) *sym.Library {
 	if l := ctxt.LibraryByPkg[pkg]; l != nil {
 		return l
 	}
 
 	if ctxt.Debugvlog > 1 {
-		ctxt.Logf("%5.2f addlibpath: srcref: %s objref: %s file: %s pkg: %s shlib: %s\n", Cputime(), srcref, objref, file, pkg, shlib)
+		ctxt.Logf("%5.2f addlibpath: srcref: %s objref: %s file: %s pkg: %s shlib: %s\n", pstate.Cputime(), srcref, objref, file, pkg, shlib)
 	}
 
 	l := &sym.Library{}
@@ -202,7 +202,7 @@ func addlibpath(ctxt *Link, srcref string, objref string, file string, pkg strin
 		if strings.HasSuffix(shlib, ".shlibname") {
 			data, err := ioutil.ReadFile(shlib)
 			if err != nil {
-				Errorf(nil, "cannot read %s: %v", shlib, err)
+				pstate.Errorf(nil, "cannot read %s: %v", shlib, err)
 			}
 			shlib = strings.TrimSpace(string(data))
 		}

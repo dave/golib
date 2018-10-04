@@ -11,17 +11,17 @@ import (
 	tracepkg "runtime/trace"
 )
 
-func init() {
-	traceHandler = traceHandlerGo17
+func (pstate *PackageState) init() {
+	pstate.traceHandler = pstate.traceHandlerGo17
 }
 
-func traceHandlerGo17(traceprofile string) {
+func (pstate *PackageState) traceHandlerGo17(traceprofile string) {
 	f, err := os.Create(traceprofile)
 	if err != nil {
-		Fatalf("%v", err)
+		pstate.Fatalf("%v", err)
 	}
 	if err := tracepkg.Start(f); err != nil {
-		Fatalf("%v", err)
+		pstate.Fatalf("%v", err)
 	}
-	atExit(tracepkg.Stop)
+	pstate.atExit(tracepkg.Stop)
 }

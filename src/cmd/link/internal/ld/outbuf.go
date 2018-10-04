@@ -6,8 +6,8 @@ package ld
 
 import (
 	"bufio"
-	"cmd/internal/sys"
 	"encoding/binary"
+	"github.com/dave/golib/src/cmd/internal/sys"
 	"os"
 )
 
@@ -28,13 +28,13 @@ type OutBuf struct {
 	encbuf [8]byte // temp buffer used by WriteN methods
 }
 
-func (out *OutBuf) SeekSet(p int64) {
+func (out *OutBuf) SeekSet(pstate *PackageState, p int64) {
 	if p == out.off {
 		return
 	}
-	out.Flush()
+	out.Flush(pstate)
 	if _, err := out.f.Seek(p, 0); err != nil {
-		Exitf("seeking to %d in %s: %v", p, out.f.Name(), err)
+		pstate.Exitf("seeking to %d in %s: %v", p, out.f.Name(), err)
 	}
 	out.off = p
 }
@@ -98,8 +98,8 @@ func (out *OutBuf) WriteString(s string) {
 
 // WriteStringN writes the first n bytes of s.
 // If n is larger than len(s) then it is padded with zero bytes.
-func (out *OutBuf) WriteStringN(s string, n int) {
-	out.WriteStringPad(s, n, zeros[:])
+func (out *OutBuf) WriteStringN(pstate *PackageState, s string, n int) {
+	out.WriteStringPad(s, n, pstate.zeros[:])
 }
 
 // WriteStringPad writes the first n bytes of s.
@@ -119,8 +119,8 @@ func (out *OutBuf) WriteStringPad(s string, n int, pad []byte) {
 	}
 }
 
-func (out *OutBuf) Flush() {
+func (out *OutBuf) Flush(pstate *PackageState) {
 	if err := out.w.Flush(); err != nil {
-		Exitf("flushing %s: %v", out.f.Name(), err)
+		pstate.Exitf("flushing %s: %v", out.f.Name(), err)
 	}
 }

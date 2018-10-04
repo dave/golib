@@ -7,9 +7,9 @@
 package ssa
 
 import (
-	"cmd/compile/internal/types"
-	"cmd/internal/src"
 	"fmt"
+	"github.com/dave/golib/src/cmd/compile/internal/types"
+	"github.com/dave/golib/src/cmd/internal/src"
 )
 
 type stackAllocState struct {
@@ -35,13 +35,13 @@ type stackAllocState struct {
 	nSelfInterfere int32 // Number of self-interferences
 }
 
-func newStackAllocState(f *Func) *stackAllocState {
+func (pstate *PackageState) newStackAllocState(f *Func) *stackAllocState {
 	s := f.Cache.stackAllocState
 	if s == nil {
 		return new(stackAllocState)
 	}
 	if s.f != nil {
-		f.fe.Fatalf(src.NoXPos, "newStackAllocState called without previous free")
+		f.fe.Fatalf(pstate.src.NoXPos, "newStackAllocState called without previous free")
 	}
 	return s
 }
@@ -78,16 +78,16 @@ type stackValState struct {
 // stackalloc allocates storage in the stack frame for
 // all Values that did not get a register.
 // Returns a map from block ID to the stack values live at the end of that block.
-func stackalloc(f *Func, spillLive [][]ID) [][]ID {
+func (pstate *PackageState) stackalloc(f *Func, spillLive [][]ID) [][]ID {
 	if f.pass.debug > stackDebug {
 		fmt.Println("before stackalloc")
-		fmt.Println(f.String())
+		fmt.Println(f.String(pstate))
 	}
-	s := newStackAllocState(f)
-	s.init(f, spillLive)
+	s := pstate.newStackAllocState(f)
+	s.init(pstate, f, spillLive)
 	defer putStackAllocState(s)
 
-	s.stackalloc()
+	s.stackalloc(pstate)
 	if f.pass.stats > 0 {
 		f.LogStat("stack_alloc_stats",
 			s.nArgSlot, "arg_slots", s.nNotNeed, "slot_not_needed",
@@ -98,7 +98,7 @@ func stackalloc(f *Func, spillLive [][]ID) [][]ID {
 	return s.live
 }
 
-func (s *stackAllocState) init(f *Func, spillLive [][]ID) {
+func (s *stackAllocState) init(pstate *PackageState, f *Func, spillLive [][]ID) {
 	s.f = f
 
 	// Initialize value information.
@@ -110,7 +110,7 @@ func (s *stackAllocState) init(f *Func, spillLive [][]ID) {
 	for _, b := range f.Blocks {
 		for _, v := range b.Values {
 			s.values[v.ID].typ = v.Type
-			s.values[v.ID].needSlot = !v.Type.IsMemory() && !v.Type.IsVoid() && !v.Type.IsFlags() && f.getHome(v.ID) == nil && !v.rematerializeable() && !v.OnWasmStack
+			s.values[v.ID].needSlot = !v.Type.IsMemory(pstate.types) && !v.Type.IsVoid(pstate.types) && !v.Type.IsFlags(pstate.types) && f.getHome(v.ID) == nil && !v.rematerializeable(pstate) && !v.OnWasmStack
 			s.values[v.ID].isArg = v.Op == OpArg
 			if f.pass.debug > stackDebug && s.values[v.ID].needSlot {
 				fmt.Printf("%s needs a stack slot\n", v)
@@ -122,13 +122,13 @@ func (s *stackAllocState) init(f *Func, spillLive [][]ID) {
 	}
 
 	// Compute liveness info for values needing a slot.
-	s.computeLive(spillLive)
+	s.computeLive(pstate, spillLive)
 
 	// Build interference graph among values needing a slot.
-	s.buildInterferenceGraph()
+	s.buildInterferenceGraph(pstate)
 }
 
-func (s *stackAllocState) stackalloc() {
+func (s *stackAllocState) stackalloc(pstate *PackageState) {
 	f := s.f
 
 	// Build map from values to their names, if any.
@@ -207,7 +207,7 @@ func (s *stackAllocState) stackalloc() {
 			} else {
 				name = names[v.ID]
 			}
-			if name.N != nil && v.Type.Compare(name.Type) == types.CMPeq {
+			if name.N != nil && v.Type.Compare(pstate.types, name.Type) == types.CMPeq {
 				for _, id := range s.interfere[v.ID] {
 					h := f.getHome(id)
 					if h != nil && h.(LocalSlot).N == name.N && h.(LocalSlot).Off == name.Off {
@@ -268,7 +268,7 @@ func (s *stackAllocState) stackalloc() {
 // TODO: this could be quadratic if lots of variables are live across lots of
 // basic blocks. Figure out a way to make this function (or, more precisely, the user
 // of this function) require only linear size & time.
-func (s *stackAllocState) computeLive(spillLive [][]ID) {
+func (s *stackAllocState) computeLive(pstate *PackageState, spillLive [][]ID) {
 	s.live = make([][]ID, s.f.NumBlocks())
 	var phis []*Value
 	live := s.f.newSparseSet(s.f.NumValues())
@@ -296,7 +296,7 @@ func (s *stackAllocState) computeLive(spillLive [][]ID) {
 					// Save phi for later.
 					// Note: its args might need a stack slot even though
 					// the phi itself doesn't. So don't use needSlot.
-					if !v.Type.IsMemory() && !v.Type.IsVoid() {
+					if !v.Type.IsMemory(pstate.types) && !v.Type.IsVoid(pstate.types) {
 						phis = append(phis, v)
 					}
 					continue
@@ -360,7 +360,7 @@ func (f *Func) setHome(v *Value, loc Location) {
 	f.RegAlloc[v.ID] = loc
 }
 
-func (s *stackAllocState) buildInterferenceGraph() {
+func (s *stackAllocState) buildInterferenceGraph(pstate *PackageState) {
 	f := s.f
 	if n := f.NumValues(); cap(s.interfere) >= n {
 		s.interfere = s.interfere[:n]
@@ -381,7 +381,7 @@ func (s *stackAllocState) buildInterferenceGraph() {
 				for _, id := range live.contents() {
 					// Note: args can have different types and still interfere
 					// (with each other or with other values). See issue 23522.
-					if s.values[v.ID].typ.Compare(s.values[id].typ) == types.CMPeq || v.Op == OpArg || s.values[id].isArg {
+					if s.values[v.ID].typ.Compare(pstate.types, s.values[id].typ) == types.CMPeq || v.Op == OpArg || s.values[id].isArg {
 						s.interfere[v.ID] = append(s.interfere[v.ID], id)
 						s.interfere[id] = append(s.interfere[id], v.ID)
 					}

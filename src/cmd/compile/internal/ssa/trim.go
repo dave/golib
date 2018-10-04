@@ -6,7 +6,7 @@ package ssa
 
 // trim removes blocks with no code in them.
 // These blocks were inserted to remove critical edges.
-func trim(f *Func) {
+func (pstate *PackageState) trim(f *Func) {
 	n := 0
 	for _, b := range f.Blocks {
 		if !trimmableBlock(b) {
@@ -34,7 +34,7 @@ func trim(f *Func) {
 		if ns > 1 {
 			for _, v := range s.Values {
 				if v.Op == OpPhi {
-					mergePhi(v, j, b)
+					pstate.mergePhi(v, j, b)
 				}
 			}
 			// Remove the phi-ops from `b` if they were merged into the
@@ -122,11 +122,11 @@ func trimmableBlock(b *Block) bool {
 
 // mergePhi adjusts the number of `v`s arguments to account for merge
 // of `b`, which was `i`th predecessor of the `v`s block.
-func mergePhi(v *Value, i int, b *Block) {
+func (pstate *PackageState) mergePhi(v *Value, i int, b *Block) {
 	u := v.Args[i]
 	if u.Block == b {
 		if u.Op != OpPhi {
-			b.Func.Fatalf("value %s is not a phi operation", u.LongString())
+			b.Func.Fatalf("value %s is not a phi operation", u.LongString(pstate))
 		}
 		// If the original block contained u = φ(u0, u1, ..., un) and
 		// the current phi is

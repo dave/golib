@@ -32,7 +32,7 @@
 package obj
 
 import (
-	"cmd/internal/objabi"
+	"github.com/dave/golib/src/cmd/internal/objabi"
 	"log"
 	"math"
 )

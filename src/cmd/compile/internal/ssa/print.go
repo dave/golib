@@ -14,10 +14,10 @@ func printFunc(f *Func) {
 	f.Logf("%s", f)
 }
 
-func (f *Func) String() string {
+func (f *Func) String(pstate *PackageState) string {
 	var buf bytes.Buffer
 	p := stringFuncPrinter{w: &buf}
-	fprintFunc(p, f)
+	pstate.fprintFunc(p, f)
 	return buf.String()
 }
 
@@ -56,15 +56,15 @@ func (p stringFuncPrinter) startBlock(b *Block, reachable bool) {
 	io.WriteString(p.w, "\n")
 }
 
-func (p stringFuncPrinter) endBlock(b *Block) {
-	fmt.Fprintln(p.w, "    "+b.LongString())
+func (p stringFuncPrinter) endBlock(pstate *PackageState, b *Block) {
+	fmt.Fprintln(p.w, "    "+b.LongString(pstate))
 }
 
-func (p stringFuncPrinter) value(v *Value, live bool) {
+func (p stringFuncPrinter) value(pstate *PackageState, v *Value, live bool) {
 	fmt.Fprint(p.w, "    ")
 	//fmt.Fprint(p.w, v.Block.Func.fe.Pos(v.Pos))
 	//fmt.Fprint(p.w, ": ")
-	fmt.Fprint(p.w, v.LongString())
+	fmt.Fprint(p.w, v.LongString(pstate))
 	if !live {
 		fmt.Fprint(p.w, " DEAD")
 	}
@@ -81,8 +81,8 @@ func (p stringFuncPrinter) named(n LocalSlot, vals []*Value) {
 	fmt.Fprintf(p.w, "name %s: %v\n", n, vals)
 }
 
-func fprintFunc(p funcPrinter, f *Func) {
-	reachable, live := findlive(f)
+func (pstate *PackageState) fprintFunc(p funcPrinter, f *Func) {
+	reachable, live := pstate.findlive(f)
 	p.header(f)
 	printed := make([]bool, f.NumValues())
 	for _, b := range f.Blocks {

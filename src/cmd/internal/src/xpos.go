@@ -13,9 +13,6 @@ type XPos struct {
 	lico
 }
 
-// NoXPos is a valid unknown position.
-var NoXPos XPos
-
 // IsKnown reports whether the position p is known.
 // XPos.IsKnown() matches Pos.IsKnown() for corresponding
 // positions.

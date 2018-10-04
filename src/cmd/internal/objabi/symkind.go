@@ -60,6 +60,7 @@ const (
 	SDWARFRANGE
 	SDWARFLOC
 	SDWARFMISC
-	// Update cmd/link/internal/sym/AbiSymKindToSymKind for new SymKind values.
+
+// Update cmd/link/internal/sym/AbiSymKindToSymKind for new SymKind values.
 
 )

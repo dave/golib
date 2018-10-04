@@ -6,7 +6,7 @@ import (
 	"debug/macho"
 	"debug/pe"
 	"fmt"
-	"internal/testenv"
+	"github.com/dave/golib/src/internal/testenv"
 	"io"
 	"runtime"
 	"testing"

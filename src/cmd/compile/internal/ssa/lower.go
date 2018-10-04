@@ -5,19 +5,19 @@
 package ssa
 
 // convert to machine-dependent ops
-func lower(f *Func) {
+func (pstate *PackageState) lower(f *Func) {
 	// repeat rewrites until we find no more rewrites
-	applyRewrite(f, f.Config.lowerBlock, f.Config.lowerValue)
+	pstate.applyRewrite(f, f.Config.lowerBlock, f.Config.lowerValue)
 }
 
 // checkLower checks for unlowered opcodes and fails if we find one.
-func checkLower(f *Func) {
+func (pstate *PackageState) checkLower(f *Func) {
 	// Needs to be a separate phase because it must run after both
 	// lowering and a subsequent dead code elimination (because lowering
 	// rules may leave dead generic ops behind).
 	for _, b := range f.Blocks {
 		for _, v := range b.Values {
-			if !opcodeTable[v.Op].generic {
+			if !pstate.opcodeTable[v.Op].generic {
 				continue // lowered
 			}
 			switch v.Op {
@@ -29,9 +29,9 @@ func checkLower(f *Func) {
 					continue // ok not to lower
 				}
 			}
-			s := "not lowered: " + v.String() + ", " + v.Op.String() + " " + v.Type.SimpleString()
+			s := "not lowered: " + v.String() + ", " + v.Op.String(pstate) + " " + v.Type.SimpleString(pstate.types)
 			for _, a := range v.Args {
-				s += " " + a.Type.SimpleString()
+				s += " " + a.Type.SimpleString(pstate.types)
 			}
 			f.Fatalf("%s", s)
 		}

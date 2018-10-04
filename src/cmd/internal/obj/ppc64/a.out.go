@@ -29,7 +29,7 @@
 
 package ppc64
 
-import "cmd/internal/obj"
+import "github.com/dave/golib/src/cmd/internal/obj"
 
 //go:generate go run ../stringer.go -i $GOFILE -o anames.go -p ppc64
 
@@ -255,15 +255,11 @@ const (
 	FREGEXT = REG_F26 /* first external register */
 )
 
-// OpenPOWER ABI for Linux Supplement Power Architecture 64-Bit ELF V2 ABI
-// https://openpowerfoundation.org/?resource_lib=64-bit-elf-v2-abi-specification-power-architecture
-var PPC64DWARFRegisters = map[int16]int16{}
-
-func init() {
+func (pstate *PackageState) init() {
 	// f assigns dwarfregister[from:to] = (base):(to-from+base)
 	f := func(from, to, base int16) {
 		for r := int16(from); r <= to; r++ {
-			PPC64DWARFRegisters[r] = r - from + base
+			pstate.PPC64DWARFRegisters[r] = r - from + base
 		}
 	}
 	f(REG_R0, REG_R31, 0)
@@ -273,9 +269,9 @@ func init() {
 
 	f(REG_VS0, REG_VS31, 32)  // overlaps F0-F31
 	f(REG_VS32, REG_VS63, 77) // overlaps V0-V31
-	PPC64DWARFRegisters[REG_LR] = 65
-	PPC64DWARFRegisters[REG_CTR] = 66
-	PPC64DWARFRegisters[REG_XER] = 76
+	pstate.PPC64DWARFRegisters[REG_LR] = 65
+	pstate.PPC64DWARFRegisters[REG_CTR] = 66
+	pstate.PPC64DWARFRegisters[REG_XER] = 76
 }
 
 /*
@@ -347,9 +343,9 @@ const (
 
 const (
 	C_COND_LT = iota // 0 result is negative
-	C_COND_GT        // 1 result is positive
-	C_COND_EQ        // 2 result is zero
-	C_COND_SO        // 3 summary overflow or FP compare w/ NaN
+	C_COND_GT // 1 result is positive
+	C_COND_EQ // 2 result is zero
+	C_COND_SO // 3 summary overflow or FP compare w/ NaN
 )
 
 const (

@@ -5,16 +5,16 @@
 package ssa
 
 import (
-	"cmd/compile/internal/types"
-	"cmd/internal/src"
 	"fmt"
+	"github.com/dave/golib/src/cmd/compile/internal/types"
+	"github.com/dave/golib/src/cmd/internal/src"
 	"sort"
 )
 
 // cse does common-subexpression elimination on the Function.
 // Values are just relinked, nothing is deleted. A subsequent deadcode
 // pass is required to actually remove duplicate expressions.
-func cse(f *Func) {
+func (pstate *PackageState) cse(f *Func) {
 	// Two values are equivalent if they satisfy the following definition:
 	// equivalent(v, w):
 	//   v.op == w.op
@@ -37,7 +37,7 @@ func cse(f *Func) {
 	}
 	for _, b := range f.Blocks {
 		for _, v := range b.Values {
-			if v.Type.IsMemory() {
+			if v.Type.IsMemory(pstate.types) {
 				continue // memory values can never cse
 			}
 			if f.auxmap[v.Aux] == 0 {
@@ -46,7 +46,7 @@ func cse(f *Func) {
 			a = append(a, v)
 		}
 	}
-	partition := partitionValues(a, f.auxmap)
+	partition := pstate.partitionValues(a, f.auxmap)
 
 	// map from value id back to eqclass id
 	valueEqClass := make([]ID, f.NumValues())
@@ -61,7 +61,7 @@ func cse(f *Func) {
 		if f.pass.debug > 1 && len(e) > 500 {
 			fmt.Printf("CSE.large partition (%d): ", len(e))
 			for j := 0; j < 3; j++ {
-				fmt.Printf("%s ", e[j].LongString())
+				fmt.Printf("%s ", e[j].LongString(pstate))
 			}
 			fmt.Println()
 		}
@@ -92,7 +92,7 @@ func cse(f *Func) {
 		for i := 0; i < len(partition); i++ {
 			e := partition[i]
 
-			if opcodeTable[e[0].Op].commutative {
+			if pstate.opcodeTable[e[0].Op].commutative {
 				// Order the first two args before comparison.
 				for _, v := range e {
 					if valueEqClass[v.Args[0].ID] > valueEqClass[v.Args[1].ID] {
@@ -208,7 +208,7 @@ func cse(f *Func) {
 				continue
 			}
 			if !v.Args[0].Type.IsTuple() {
-				f.Fatalf("arg of tuple selector %s is not a tuple: %s", v.String(), v.Args[0].LongString())
+				f.Fatalf("arg of tuple selector %s is not a tuple: %s", v.String(), v.Args[0].LongString(pstate))
 			}
 			t := rewrite[v.Args[0].ID]
 			if t != nil && t.Block != b {
@@ -220,7 +220,7 @@ func cse(f *Func) {
 						continue out
 					}
 				}
-				c := v.copyInto(t.Block)
+				c := v.copyInto(pstate, t.Block)
 				rewrite[v.ID] = c
 				copiedSelects[t.ID] = append(copiedSelects[t.ID], c)
 			}
@@ -283,7 +283,7 @@ type eqclass []*Value
 // being a sorted by ID list of *Values. The eqclass slices are
 // backed by the same storage as the input slice.
 // Equivalence classes of size 1 are ignored.
-func partitionValues(a []*Value, auxIDs auxmap) []eqclass {
+func (pstate *PackageState) partitionValues(a []*Value, auxIDs auxmap) []eqclass {
 	sort.Sort(sortvalues{a, auxIDs})
 
 	var partition []eqclass
@@ -292,7 +292,7 @@ func partitionValues(a []*Value, auxIDs auxmap) []eqclass {
 		j := 1
 		for ; j < len(a); j++ {
 			w := a[j]
-			if cmpVal(v, w, auxIDs) != types.CMPeq {
+			if pstate.cmpVal(v, w, auxIDs) != types.CMPeq {
 				break
 			}
 		}
@@ -313,7 +313,7 @@ func lt2Cmp(isLt bool) types.Cmp {
 
 type auxmap map[interface{}]int32
 
-func cmpVal(v, w *Value, auxIDs auxmap) types.Cmp {
+func (pstate *PackageState) cmpVal(v, w *Value, auxIDs auxmap) types.Cmp {
 	// Try to order these comparison by cost (cheaper first)
 	if v.Op != w.Op {
 		return lt2Cmp(v.Op < w.Op)
@@ -327,7 +327,7 @@ func cmpVal(v, w *Value, auxIDs auxmap) types.Cmp {
 	if v.Op == OpPhi && v.Block != w.Block {
 		return lt2Cmp(v.Block.ID < w.Block.ID)
 	}
-	if v.Type.IsMemory() {
+	if v.Type.IsMemory(pstate.types) {
 		// We will never be able to CSE two values
 		// that generate memory.
 		return lt2Cmp(v.ID < w.ID)
@@ -336,7 +336,7 @@ func cmpVal(v, w *Value, auxIDs auxmap) types.Cmp {
 	// regarding CSE to keep multiple OpSelect's of the same
 	// argument from existing.
 	if v.Op != OpSelect0 && v.Op != OpSelect1 {
-		if tc := v.Type.Compare(w.Type); tc != types.CMPeq {
+		if tc := v.Type.Compare(pstate.types, w.Type); tc != types.CMPeq {
 			return tc
 		}
 	}
@@ -362,10 +362,10 @@ type sortvalues struct {
 
 func (sv sortvalues) Len() int      { return len(sv.a) }
 func (sv sortvalues) Swap(i, j int) { sv.a[i], sv.a[j] = sv.a[j], sv.a[i] }
-func (sv sortvalues) Less(i, j int) bool {
+func (sv sortvalues) Less(pstate *PackageState, i, j int) bool {
 	v := sv.a[i]
 	w := sv.a[j]
-	if cmp := cmpVal(v, w, sv.auxIDs); cmp != types.CMPeq {
+	if cmp := pstate.cmpVal(v, w, sv.auxIDs); cmp != types.CMPeq {
 		return cmp == types.CMPlt
 	}
 

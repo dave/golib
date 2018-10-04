@@ -18,19 +18,6 @@ func envOr(key, value string) string {
 	return value
 }
 
-var (
-	defaultGOROOT string // set by linker
-
-	GOROOT   = envOr("GOROOT", defaultGOROOT)
-	GOARCH   = envOr("GOARCH", defaultGOARCH)
-	GOOS     = envOr("GOOS", defaultGOOS)
-	GO386    = envOr("GO386", defaultGO386)
-	GOARM    = goarm()
-	GOMIPS   = gomips()
-	GOMIPS64 = gomips64()
-	Version  = version
-)
-
 func goarm() int {
 	switch v := envOr("GOARM", defaultGOARM); v {
 	case "5":
@@ -67,19 +54,19 @@ func Getgoextlinkenabled() string {
 	return envOr("GO_EXTLINK_ENABLED", defaultGO_EXTLINK_ENABLED)
 }
 
-func init() {
+func (pstate *PackageState) init() {
 	for _, f := range strings.Split(goexperiment, ",") {
 		if f != "" {
-			addexp(f)
+			pstate.addexp(f)
 		}
 	}
 }
 
-func Framepointer_enabled(goos, goarch string) bool {
-	return framepointer_enabled != 0 && goarch == "amd64" && goos != "nacl"
+func (pstate *PackageState) Framepointer_enabled(goos, goarch string) bool {
+	return pstate.framepointer_enabled != 0 && goarch == "amd64" && goos != "nacl"
 }
 
-func addexp(s string) {
+func (pstate *PackageState) addexp(s string) {
 	// Could do general integer parsing here, but the runtime copy doesn't yet.
 	v := 1
 	name := s
@@ -87,10 +74,10 @@ func addexp(s string) {
 		v = 0
 		name = name[2:]
 	}
-	for i := 0; i < len(exper); i++ {
-		if exper[i].name == name {
-			if exper[i].val != nil {
-				*exper[i].val = v
+	for i := 0; i < len(pstate.exper); i++ {
+		if pstate.exper[i].name == name {
+			if pstate.exper[i].val != nil {
+				*pstate.exper[i].val = v
 			}
 			return
 		}
@@ -100,40 +87,15 @@ func addexp(s string) {
 	os.Exit(2)
 }
 
-var (
-	framepointer_enabled     int = 1
-	Fieldtrack_enabled       int
-	Preemptibleloops_enabled int
-	Clobberdead_enabled      int
-	DebugCPU_enabled         int
-)
-
-// Toolchain experiments.
-// These are controlled by the GOEXPERIMENT environment
-// variable recorded when the toolchain is built.
-// This list is also known to cmd/gc.
-var exper = []struct {
-	name string
-	val  *int
-}{
-	{"fieldtrack", &Fieldtrack_enabled},
-	{"framepointer", &framepointer_enabled},
-	{"preemptibleloops", &Preemptibleloops_enabled},
-	{"clobberdead", &Clobberdead_enabled},
-	{"debugcpu", &DebugCPU_enabled},
+func (pstate *PackageState) DefaultExpstring() string {
+	return pstate.defaultExpstring
 }
 
-var defaultExpstring = Expstring()
-
-func DefaultExpstring() string {
-	return defaultExpstring
-}
-
-func Expstring() string {
+func (pstate *PackageState) Expstring() string {
 	buf := "X"
-	for i := range exper {
-		if *exper[i].val != 0 {
-			buf += "," + exper[i].name
+	for i := range pstate.exper {
+		if *pstate.exper[i].val != 0 {
+			buf += "," + pstate.exper[i].name
 		}
 	}
 	if buf == "X" {

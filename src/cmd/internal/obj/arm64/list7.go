@@ -31,34 +31,15 @@
 package arm64
 
 import (
-	"cmd/internal/obj"
 	"fmt"
+	"github.com/dave/golib/src/cmd/internal/obj"
 )
 
-var strcond = [16]string{
-	"EQ",
-	"NE",
-	"HS",
-	"LO",
-	"MI",
-	"PL",
-	"VS",
-	"VC",
-	"HI",
-	"LS",
-	"GE",
-	"LT",
-	"GT",
-	"LE",
-	"AL",
-	"NV",
-}
-
-func init() {
-	obj.RegisterRegister(obj.RBaseARM64, REG_SPECIAL+1024, rconv)
-	obj.RegisterOpcode(obj.ABaseARM64, Anames)
-	obj.RegisterRegisterList(obj.RegListARM64Lo, obj.RegListARM64Hi, rlconv)
-	obj.RegisterOpSuffix("arm64", obj.CConvARM)
+func (pstate *PackageState) init() {
+	pstate.obj.RegisterRegister(obj.RBaseARM64, REG_SPECIAL+1024, pstate.rconv)
+	pstate.obj.RegisterOpcode(obj.ABaseARM64, pstate.Anames)
+	pstate.obj.RegisterRegisterList(obj.RegListARM64Lo, obj.RegListARM64Hi, rlconv)
+	pstate.obj.RegisterOpSuffix("arm64", pstate.obj.CConvARM)
 }
 
 func arrange(a int) string {
@@ -94,7 +75,7 @@ func arrange(a int) string {
 	}
 }
 
-func rconv(r int) string {
+func (pstate *PackageState) rconv(r int) string {
 	ext := (r >> 5) & 7
 	if r == REGG {
 		return "g"
@@ -109,7 +90,7 @@ func rconv(r int) string {
 	case REG_V0 <= r && r <= REG_V31:
 		return fmt.Sprintf("V%d", r-REG_V0)
 	case COND_EQ <= r && r <= COND_NV:
-		return strcond[r-COND_EQ]
+		return pstate.strcond[r-COND_EQ]
 	case r == REGSP:
 		return "RSP"
 	case r == REG_DAIF:
@@ -235,9 +216,9 @@ func rconv(r int) string {
 	return fmt.Sprintf("badreg(%d)", r)
 }
 
-func DRconv(a int) string {
+func (pstate *PackageState) DRconv(a int) string {
 	if a >= C_NONE && a <= C_NCLASS {
-		return cnames7[a]
+		return pstate.cnames7[a]
 	}
 	return "C_??"
 }

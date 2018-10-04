@@ -32,11 +32,11 @@ package obj
 
 import (
 	"bufio"
-	"cmd/internal/dwarf"
-	"cmd/internal/objabi"
-	"cmd/internal/src"
-	"cmd/internal/sys"
 	"fmt"
+	"github.com/dave/golib/src/cmd/internal/dwarf"
+	"github.com/dave/golib/src/cmd/internal/objabi"
+	"github.com/dave/golib/src/cmd/internal/src"
+	"github.com/dave/golib/src/cmd/internal/sys"
 	"sync"
 )
 
@@ -469,30 +469,10 @@ func (a *Attribute) Set(flag Attribute, value bool) {
 	}
 }
 
-var textAttrStrings = [...]struct {
-	bit Attribute
-	s   string
-}{
-	{bit: AttrDuplicateOK, s: "DUPOK"},
-	{bit: AttrMakeTypelink, s: ""},
-	{bit: AttrCFunc, s: "CFUNC"},
-	{bit: AttrNoSplit, s: "NOSPLIT"},
-	{bit: AttrLeaf, s: "LEAF"},
-	{bit: AttrSeenGlobl, s: ""},
-	{bit: AttrOnList, s: ""},
-	{bit: AttrReflectMethod, s: "REFLECTMETHOD"},
-	{bit: AttrLocal, s: "LOCAL"},
-	{bit: AttrWrapper, s: "WRAPPER"},
-	{bit: AttrNeedCtxt, s: "NEEDCTXT"},
-	{bit: AttrNoFrame, s: "NOFRAME"},
-	{bit: AttrStatic, s: "STATIC"},
-	{bit: AttrWasInlined, s: ""},
-}
-
 // TextAttrString formats a for printing in as part of a TEXT prog.
-func (a Attribute) TextAttrString() string {
+func (a Attribute) TextAttrString(pstate *PackageState) string {
 	var s string
-	for _, x := range textAttrStrings {
+	for _, x := range pstate.textAttrStrings {
 		if a&x.bit != 0 {
 			if x.s != "" {
 				s += x.s + "|"

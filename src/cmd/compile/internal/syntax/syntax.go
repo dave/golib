@@ -55,7 +55,7 @@ type PragmaHandler func(pos Pos, text string) Pragma
 //
 // If pragh != nil, it is called with each pragma encountered.
 //
-func Parse(base *PosBase, src io.Reader, errh ErrorHandler, pragh PragmaHandler, mode Mode) (_ *File, first error) {
+func (pstate *PackageState) Parse(base *PosBase, src io.Reader, errh ErrorHandler, pragh PragmaHandler, mode Mode) (_ *File, first error) {
 	defer func() {
 		if p := recover(); p != nil {
 			if err, ok := p.(Error); ok {
@@ -68,12 +68,12 @@ func Parse(base *PosBase, src io.Reader, errh ErrorHandler, pragh PragmaHandler,
 
 	var p parser
 	p.init(base, src, errh, pragh, mode)
-	p.next()
-	return p.fileOrNil(), p.first
+	p.next(pstate)
+	return p.fileOrNil(pstate), p.first
 }
 
 // ParseFile behaves like Parse but it reads the source from the named file.
-func ParseFile(filename string, errh ErrorHandler, pragh PragmaHandler, mode Mode) (*File, error) {
+func (pstate *PackageState) ParseFile(filename string, errh ErrorHandler, pragh PragmaHandler, mode Mode) (*File, error) {
 	f, err := os.Open(filename)
 	if err != nil {
 		if errh != nil {
@@ -82,5 +82,5 @@ func ParseFile(filename string, errh ErrorHandler, pragh PragmaHandler, mode Mod
 		return nil, err
 	}
 	defer f.Close()
-	return Parse(NewFileBase(filename), f, errh, pragh, mode)
+	return pstate.Parse(NewFileBase(filename), f, errh, pragh, mode)
 }

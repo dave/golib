@@ -31,9 +31,9 @@
 package arm
 
 import (
-	"cmd/internal/obj"
-	"cmd/internal/objabi"
 	"fmt"
+	"github.com/dave/golib/src/cmd/internal/obj"
+	"github.com/dave/golib/src/cmd/internal/objabi"
 	"log"
 	"math"
 	"sort"
@@ -81,285 +81,6 @@ const (
 	LPCREL = 1 << 3
 )
 
-var optab = []Optab{
-	/* struct Optab:
-	OPCODE, from, prog->reg, to, type, size, param, flag, extra data size, optional suffix */
-	{obj.ATEXT, C_ADDR, C_NONE, C_TEXTSIZE, 0, 0, 0, 0, 0, 0},
-	{AADD, C_REG, C_REG, C_REG, 1, 4, 0, 0, 0, C_SBIT},
-	{AADD, C_REG, C_NONE, C_REG, 1, 4, 0, 0, 0, C_SBIT},
-	{AAND, C_REG, C_REG, C_REG, 1, 4, 0, 0, 0, C_SBIT},
-	{AAND, C_REG, C_NONE, C_REG, 1, 4, 0, 0, 0, C_SBIT},
-	{AORR, C_REG, C_REG, C_REG, 1, 4, 0, 0, 0, C_SBIT},
-	{AORR, C_REG, C_NONE, C_REG, 1, 4, 0, 0, 0, C_SBIT},
-	{AMOVW, C_REG, C_NONE, C_REG, 1, 4, 0, 0, 0, C_SBIT},
-	{AMVN, C_REG, C_NONE, C_REG, 1, 4, 0, 0, 0, C_SBIT},
-	{ACMP, C_REG, C_REG, C_NONE, 1, 4, 0, 0, 0, 0},
-	{AADD, C_RCON, C_REG, C_REG, 2, 4, 0, 0, 0, C_SBIT},
-	{AADD, C_RCON, C_NONE, C_REG, 2, 4, 0, 0, 0, C_SBIT},
-	{AAND, C_RCON, C_REG, C_REG, 2, 4, 0, 0, 0, C_SBIT},
-	{AAND, C_RCON, C_NONE, C_REG, 2, 4, 0, 0, 0, C_SBIT},
-	{AORR, C_RCON, C_REG, C_REG, 2, 4, 0, 0, 0, C_SBIT},
-	{AORR, C_RCON, C_NONE, C_REG, 2, 4, 0, 0, 0, C_SBIT},
-	{AMOVW, C_RCON, C_NONE, C_REG, 2, 4, 0, 0, 0, 0},
-	{AMVN, C_RCON, C_NONE, C_REG, 2, 4, 0, 0, 0, 0},
-	{ACMP, C_RCON, C_REG, C_NONE, 2, 4, 0, 0, 0, 0},
-	{AADD, C_SHIFT, C_REG, C_REG, 3, 4, 0, 0, 0, C_SBIT},
-	{AADD, C_SHIFT, C_NONE, C_REG, 3, 4, 0, 0, 0, C_SBIT},
-	{AAND, C_SHIFT, C_REG, C_REG, 3, 4, 0, 0, 0, C_SBIT},
-	{AAND, C_SHIFT, C_NONE, C_REG, 3, 4, 0, 0, 0, C_SBIT},
-	{AORR, C_SHIFT, C_REG, C_REG, 3, 4, 0, 0, 0, C_SBIT},
-	{AORR, C_SHIFT, C_NONE, C_REG, 3, 4, 0, 0, 0, C_SBIT},
-	{AMVN, C_SHIFT, C_NONE, C_REG, 3, 4, 0, 0, 0, C_SBIT},
-	{ACMP, C_SHIFT, C_REG, C_NONE, 3, 4, 0, 0, 0, 0},
-	{AMOVW, C_RACON, C_NONE, C_REG, 4, 4, REGSP, 0, 0, C_SBIT},
-	{AB, C_NONE, C_NONE, C_SBRA, 5, 4, 0, LPOOL, 0, 0},
-	{ABL, C_NONE, C_NONE, C_SBRA, 5, 4, 0, 0, 0, 0},
-	{ABX, C_NONE, C_NONE, C_SBRA, 74, 20, 0, 0, 0, 0},
-	{ABEQ, C_NONE, C_NONE, C_SBRA, 5, 4, 0, 0, 0, 0},
-	{ABEQ, C_RCON, C_NONE, C_SBRA, 5, 4, 0, 0, 0, 0}, // prediction hinted form, hint ignored
-	{AB, C_NONE, C_NONE, C_ROREG, 6, 4, 0, LPOOL, 0, 0},
-	{ABL, C_NONE, C_NONE, C_ROREG, 7, 4, 0, 0, 0, 0},
-	{ABL, C_REG, C_NONE, C_ROREG, 7, 4, 0, 0, 0, 0},
-	{ABX, C_NONE, C_NONE, C_ROREG, 75, 12, 0, 0, 0, 0},
-	{ABXRET, C_NONE, C_NONE, C_ROREG, 76, 4, 0, 0, 0, 0},
-	{ASLL, C_RCON, C_REG, C_REG, 8, 4, 0, 0, 0, C_SBIT},
-	{ASLL, C_RCON, C_NONE, C_REG, 8, 4, 0, 0, 0, C_SBIT},
-	{ASLL, C_REG, C_NONE, C_REG, 9, 4, 0, 0, 0, C_SBIT},
-	{ASLL, C_REG, C_REG, C_REG, 9, 4, 0, 0, 0, C_SBIT},
-	{ASWI, C_NONE, C_NONE, C_NONE, 10, 4, 0, 0, 0, 0},
-	{ASWI, C_NONE, C_NONE, C_LCON, 10, 4, 0, 0, 0, 0},
-	{AWORD, C_NONE, C_NONE, C_LCON, 11, 4, 0, 0, 0, 0},
-	{AWORD, C_NONE, C_NONE, C_LCONADDR, 11, 4, 0, 0, 0, 0},
-	{AWORD, C_NONE, C_NONE, C_ADDR, 11, 4, 0, 0, 0, 0},
-	{AWORD, C_NONE, C_NONE, C_TLS_LE, 103, 4, 0, 0, 0, 0},
-	{AWORD, C_NONE, C_NONE, C_TLS_IE, 104, 4, 0, 0, 0, 0},
-	{AMOVW, C_NCON, C_NONE, C_REG, 12, 4, 0, 0, 0, 0},
-	{AMOVW, C_SCON, C_NONE, C_REG, 12, 4, 0, 0, 0, 0},
-	{AMOVW, C_LCON, C_NONE, C_REG, 12, 4, 0, LFROM, 0, 0},
-	{AMOVW, C_LCONADDR, C_NONE, C_REG, 12, 4, 0, LFROM | LPCREL, 4, 0},
-	{AMVN, C_NCON, C_NONE, C_REG, 12, 4, 0, 0, 0, 0},
-	{AADD, C_NCON, C_REG, C_REG, 13, 8, 0, 0, 0, C_SBIT},
-	{AADD, C_NCON, C_NONE, C_REG, 13, 8, 0, 0, 0, C_SBIT},
-	{AAND, C_NCON, C_REG, C_REG, 13, 8, 0, 0, 0, C_SBIT},
-	{AAND, C_NCON, C_NONE, C_REG, 13, 8, 0, 0, 0, C_SBIT},
-	{AORR, C_NCON, C_REG, C_REG, 13, 8, 0, 0, 0, C_SBIT},
-	{AORR, C_NCON, C_NONE, C_REG, 13, 8, 0, 0, 0, C_SBIT},
-	{ACMP, C_NCON, C_REG, C_NONE, 13, 8, 0, 0, 0, 0},
-	{AADD, C_SCON, C_REG, C_REG, 13, 8, 0, 0, 0, C_SBIT},
-	{AADD, C_SCON, C_NONE, C_REG, 13, 8, 0, 0, 0, C_SBIT},
-	{AAND, C_SCON, C_REG, C_REG, 13, 8, 0, 0, 0, C_SBIT},
-	{AAND, C_SCON, C_NONE, C_REG, 13, 8, 0, 0, 0, C_SBIT},
-	{AORR, C_SCON, C_REG, C_REG, 13, 8, 0, 0, 0, C_SBIT},
-	{AORR, C_SCON, C_NONE, C_REG, 13, 8, 0, 0, 0, C_SBIT},
-	{AMVN, C_SCON, C_NONE, C_REG, 13, 8, 0, 0, 0, 0},
-	{ACMP, C_SCON, C_REG, C_NONE, 13, 8, 0, 0, 0, 0},
-	{AADD, C_RCON2A, C_REG, C_REG, 106, 8, 0, 0, 0, 0},
-	{AADD, C_RCON2A, C_NONE, C_REG, 106, 8, 0, 0, 0, 0},
-	{AORR, C_RCON2A, C_REG, C_REG, 106, 8, 0, 0, 0, 0},
-	{AORR, C_RCON2A, C_NONE, C_REG, 106, 8, 0, 0, 0, 0},
-	{AADD, C_RCON2S, C_REG, C_REG, 107, 8, 0, 0, 0, 0},
-	{AADD, C_RCON2S, C_NONE, C_REG, 107, 8, 0, 0, 0, 0},
-	{AADD, C_LCON, C_REG, C_REG, 13, 8, 0, LFROM, 0, C_SBIT},
-	{AADD, C_LCON, C_NONE, C_REG, 13, 8, 0, LFROM, 0, C_SBIT},
-	{AAND, C_LCON, C_REG, C_REG, 13, 8, 0, LFROM, 0, C_SBIT},
-	{AAND, C_LCON, C_NONE, C_REG, 13, 8, 0, LFROM, 0, C_SBIT},
-	{AORR, C_LCON, C_REG, C_REG, 13, 8, 0, LFROM, 0, C_SBIT},
-	{AORR, C_LCON, C_NONE, C_REG, 13, 8, 0, LFROM, 0, C_SBIT},
-	{AMVN, C_LCON, C_NONE, C_REG, 13, 8, 0, LFROM, 0, 0},
-	{ACMP, C_LCON, C_REG, C_NONE, 13, 8, 0, LFROM, 0, 0},
-	{AMOVB, C_REG, C_NONE, C_REG, 1, 4, 0, 0, 0, 0},
-	{AMOVBS, C_REG, C_NONE, C_REG, 14, 8, 0, 0, 0, 0},
-	{AMOVBU, C_REG, C_NONE, C_REG, 58, 4, 0, 0, 0, 0},
-	{AMOVH, C_REG, C_NONE, C_REG, 1, 4, 0, 0, 0, 0},
-	{AMOVHS, C_REG, C_NONE, C_REG, 14, 8, 0, 0, 0, 0},
-	{AMOVHU, C_REG, C_NONE, C_REG, 14, 8, 0, 0, 0, 0},
-	{AMUL, C_REG, C_REG, C_REG, 15, 4, 0, 0, 0, C_SBIT},
-	{AMUL, C_REG, C_NONE, C_REG, 15, 4, 0, 0, 0, C_SBIT},
-	{ADIV, C_REG, C_REG, C_REG, 16, 4, 0, 0, 0, 0},
-	{ADIV, C_REG, C_NONE, C_REG, 16, 4, 0, 0, 0, 0},
-	{ADIVHW, C_REG, C_REG, C_REG, 105, 4, 0, 0, 0, 0},
-	{ADIVHW, C_REG, C_NONE, C_REG, 105, 4, 0, 0, 0, 0},
-	{AMULL, C_REG, C_REG, C_REGREG, 17, 4, 0, 0, 0, C_SBIT},
-	{ABFX, C_LCON, C_REG, C_REG, 18, 4, 0, 0, 0, 0},  // width in From, LSB in From3
-	{ABFX, C_LCON, C_NONE, C_REG, 18, 4, 0, 0, 0, 0}, // width in From, LSB in From3
-	{AMOVW, C_REG, C_NONE, C_SAUTO, 20, 4, REGSP, 0, 0, C_PBIT | C_WBIT | C_UBIT},
-	{AMOVW, C_REG, C_NONE, C_SOREG, 20, 4, 0, 0, 0, C_PBIT | C_WBIT | C_UBIT},
-	{AMOVB, C_REG, C_NONE, C_SAUTO, 20, 4, REGSP, 0, 0, C_PBIT | C_WBIT | C_UBIT},
-	{AMOVB, C_REG, C_NONE, C_SOREG, 20, 4, 0, 0, 0, C_PBIT | C_WBIT | C_UBIT},
-	{AMOVBS, C_REG, C_NONE, C_SAUTO, 20, 4, REGSP, 0, 0, C_PBIT | C_WBIT | C_UBIT},
-	{AMOVBS, C_REG, C_NONE, C_SOREG, 20, 4, 0, 0, 0, C_PBIT | C_WBIT | C_UBIT},
-	{AMOVBU, C_REG, C_NONE, C_SAUTO, 20, 4, REGSP, 0, 0, C_PBIT | C_WBIT | C_UBIT},
-	{AMOVBU, C_REG, C_NONE, C_SOREG, 20, 4, 0, 0, 0, C_PBIT | C_WBIT | C_UBIT},
-	{AMOVW, C_SAUTO, C_NONE, C_REG, 21, 4, REGSP, 0, 0, C_PBIT | C_WBIT | C_UBIT},
-	{AMOVW, C_SOREG, C_NONE, C_REG, 21, 4, 0, 0, 0, C_PBIT | C_WBIT | C_UBIT},
-	{AMOVBU, C_SAUTO, C_NONE, C_REG, 21, 4, REGSP, 0, 0, C_PBIT | C_WBIT | C_UBIT},
-	{AMOVBU, C_SOREG, C_NONE, C_REG, 21, 4, 0, 0, 0, C_PBIT | C_WBIT | C_UBIT},
-	{AXTAB, C_SHIFT, C_REG, C_REG, 22, 4, 0, 0, 0, 0},
-	{AXTAB, C_SHIFT, C_NONE, C_REG, 22, 4, 0, 0, 0, 0},
-	{AMOVW, C_SHIFT, C_NONE, C_REG, 23, 4, 0, 0, 0, C_SBIT},
-	{AMOVB, C_SHIFT, C_NONE, C_REG, 23, 4, 0, 0, 0, 0},
-	{AMOVBS, C_SHIFT, C_NONE, C_REG, 23, 4, 0, 0, 0, 0},
-	{AMOVBU, C_SHIFT, C_NONE, C_REG, 23, 4, 0, 0, 0, 0},
-	{AMOVH, C_SHIFT, C_NONE, C_REG, 23, 4, 0, 0, 0, 0},
-	{AMOVHS, C_SHIFT, C_NONE, C_REG, 23, 4, 0, 0, 0, 0},
-	{AMOVHU, C_SHIFT, C_NONE, C_REG, 23, 4, 0, 0, 0, 0},
-	{AMOVW, C_REG, C_NONE, C_LAUTO, 30, 8, REGSP, LTO, 0, C_PBIT | C_WBIT | C_UBIT},
-	{AMOVW, C_REG, C_NONE, C_LOREG, 30, 8, 0, LTO, 0, C_PBIT | C_WBIT | C_UBIT},
-	{AMOVW, C_REG, C_NONE, C_ADDR, 64, 8, 0, LTO | LPCREL, 4, C_PBIT | C_WBIT | C_UBIT},
-	{AMOVB, C_REG, C_NONE, C_LAUTO, 30, 8, REGSP, LTO, 0, C_PBIT | C_WBIT | C_UBIT},
-	{AMOVB, C_REG, C_NONE, C_LOREG, 30, 8, 0, LTO, 0, C_PBIT | C_WBIT | C_UBIT},
-	{AMOVB, C_REG, C_NONE, C_ADDR, 64, 8, 0, LTO | LPCREL, 4, C_PBIT | C_WBIT | C_UBIT},
-	{AMOVBS, C_REG, C_NONE, C_LAUTO, 30, 8, REGSP, LTO, 0, C_PBIT | C_WBIT | C_UBIT},
-	{AMOVBS, C_REG, C_NONE, C_LOREG, 30, 8, 0, LTO, 0, C_PBIT | C_WBIT | C_UBIT},
-	{AMOVBS, C_REG, C_NONE, C_ADDR, 64, 8, 0, LTO | LPCREL, 4, C_PBIT | C_WBIT | C_UBIT},
-	{AMOVBU, C_REG, C_NONE, C_LAUTO, 30, 8, REGSP, LTO, 0, C_PBIT | C_WBIT | C_UBIT},
-	{AMOVBU, C_REG, C_NONE, C_LOREG, 30, 8, 0, LTO, 0, C_PBIT | C_WBIT | C_UBIT},
-	{AMOVBU, C_REG, C_NONE, C_ADDR, 64, 8, 0, LTO | LPCREL, 4, C_PBIT | C_WBIT | C_UBIT},
-	{AMOVW, C_TLS_LE, C_NONE, C_REG, 101, 4, 0, LFROM, 0, 0},
-	{AMOVW, C_TLS_IE, C_NONE, C_REG, 102, 8, 0, LFROM, 0, 0},
-	{AMOVW, C_LAUTO, C_NONE, C_REG, 31, 8, REGSP, LFROM, 0, C_PBIT | C_WBIT | C_UBIT},
-	{AMOVW, C_LOREG, C_NONE, C_REG, 31, 8, 0, LFROM, 0, C_PBIT | C_WBIT | C_UBIT},
-	{AMOVW, C_ADDR, C_NONE, C_REG, 65, 8, 0, LFROM | LPCREL, 4, C_PBIT | C_WBIT | C_UBIT},
-	{AMOVBU, C_LAUTO, C_NONE, C_REG, 31, 8, REGSP, LFROM, 0, C_PBIT | C_WBIT | C_UBIT},
-	{AMOVBU, C_LOREG, C_NONE, C_REG, 31, 8, 0, LFROM, 0, C_PBIT | C_WBIT | C_UBIT},
-	{AMOVBU, C_ADDR, C_NONE, C_REG, 65, 8, 0, LFROM | LPCREL, 4, C_PBIT | C_WBIT | C_UBIT},
-	{AMOVW, C_LACON, C_NONE, C_REG, 34, 8, REGSP, LFROM, 0, C_SBIT},
-	{AMOVW, C_PSR, C_NONE, C_REG, 35, 4, 0, 0, 0, 0},
-	{AMOVW, C_REG, C_NONE, C_PSR, 36, 4, 0, 0, 0, 0},
-	{AMOVW, C_RCON, C_NONE, C_PSR, 37, 4, 0, 0, 0, 0},
-	{AMOVM, C_REGLIST, C_NONE, C_SOREG, 38, 4, 0, 0, 0, C_PBIT | C_WBIT | C_UBIT},
-	{AMOVM, C_SOREG, C_NONE, C_REGLIST, 39, 4, 0, 0, 0, C_PBIT | C_WBIT | C_UBIT},
-	{ASWPW, C_SOREG, C_REG, C_REG, 40, 4, 0, 0, 0, 0},
-	{ARFE, C_NONE, C_NONE, C_NONE, 41, 4, 0, 0, 0, 0},
-	{AMOVF, C_FREG, C_NONE, C_FAUTO, 50, 4, REGSP, 0, 0, C_PBIT | C_WBIT | C_UBIT},
-	{AMOVF, C_FREG, C_NONE, C_FOREG, 50, 4, 0, 0, 0, C_PBIT | C_WBIT | C_UBIT},
-	{AMOVF, C_FAUTO, C_NONE, C_FREG, 51, 4, REGSP, 0, 0, C_PBIT | C_WBIT | C_UBIT},
-	{AMOVF, C_FOREG, C_NONE, C_FREG, 51, 4, 0, 0, 0, C_PBIT | C_WBIT | C_UBIT},
-	{AMOVF, C_FREG, C_NONE, C_LAUTO, 52, 12, REGSP, LTO, 0, C_PBIT | C_WBIT | C_UBIT},
-	{AMOVF, C_FREG, C_NONE, C_LOREG, 52, 12, 0, LTO, 0, C_PBIT | C_WBIT | C_UBIT},
-	{AMOVF, C_LAUTO, C_NONE, C_FREG, 53, 12, REGSP, LFROM, 0, C_PBIT | C_WBIT | C_UBIT},
-	{AMOVF, C_LOREG, C_NONE, C_FREG, 53, 12, 0, LFROM, 0, C_PBIT | C_WBIT | C_UBIT},
-	{AMOVF, C_FREG, C_NONE, C_ADDR, 68, 8, 0, LTO | LPCREL, 4, C_PBIT | C_WBIT | C_UBIT},
-	{AMOVF, C_ADDR, C_NONE, C_FREG, 69, 8, 0, LFROM | LPCREL, 4, C_PBIT | C_WBIT | C_UBIT},
-	{AADDF, C_FREG, C_NONE, C_FREG, 54, 4, 0, 0, 0, 0},
-	{AADDF, C_FREG, C_FREG, C_FREG, 54, 4, 0, 0, 0, 0},
-	{AMOVF, C_FREG, C_NONE, C_FREG, 55, 4, 0, 0, 0, 0},
-	{ANEGF, C_FREG, C_NONE, C_FREG, 55, 4, 0, 0, 0, 0},
-	{AMOVW, C_REG, C_NONE, C_FCR, 56, 4, 0, 0, 0, 0},
-	{AMOVW, C_FCR, C_NONE, C_REG, 57, 4, 0, 0, 0, 0},
-	{AMOVW, C_SHIFTADDR, C_NONE, C_REG, 59, 4, 0, 0, 0, C_PBIT | C_WBIT | C_UBIT},
-	{AMOVBU, C_SHIFTADDR, C_NONE, C_REG, 59, 4, 0, 0, 0, C_PBIT | C_WBIT | C_UBIT},
-	{AMOVB, C_SHIFTADDR, C_NONE, C_REG, 60, 4, 0, 0, 0, C_PBIT | C_WBIT | C_UBIT},
-	{AMOVBS, C_SHIFTADDR, C_NONE, C_REG, 60, 4, 0, 0, 0, C_PBIT | C_WBIT | C_UBIT},
-	{AMOVH, C_SHIFTADDR, C_NONE, C_REG, 60, 4, 0, 0, 0, C_PBIT | C_WBIT | C_UBIT},
-	{AMOVHS, C_SHIFTADDR, C_NONE, C_REG, 60, 4, 0, 0, 0, C_PBIT | C_WBIT | C_UBIT},
-	{AMOVHU, C_SHIFTADDR, C_NONE, C_REG, 60, 4, 0, 0, 0, C_PBIT | C_WBIT | C_UBIT},
-	{AMOVW, C_REG, C_NONE, C_SHIFTADDR, 61, 4, 0, 0, 0, C_PBIT | C_WBIT | C_UBIT},
-	{AMOVB, C_REG, C_NONE, C_SHIFTADDR, 61, 4, 0, 0, 0, C_PBIT | C_WBIT | C_UBIT},
-	{AMOVBS, C_REG, C_NONE, C_SHIFTADDR, 61, 4, 0, 0, 0, C_PBIT | C_WBIT | C_UBIT},
-	{AMOVBU, C_REG, C_NONE, C_SHIFTADDR, 61, 4, 0, 0, 0, C_PBIT | C_WBIT | C_UBIT},
-	{AMOVH, C_REG, C_NONE, C_SHIFTADDR, 62, 4, 0, 0, 0, C_PBIT | C_WBIT | C_UBIT},
-	{AMOVHS, C_REG, C_NONE, C_SHIFTADDR, 62, 4, 0, 0, 0, C_PBIT | C_WBIT | C_UBIT},
-	{AMOVHU, C_REG, C_NONE, C_SHIFTADDR, 62, 4, 0, 0, 0, C_PBIT | C_WBIT | C_UBIT},
-	{AMOVH, C_REG, C_NONE, C_HAUTO, 70, 4, REGSP, 0, 0, C_PBIT | C_WBIT | C_UBIT},
-	{AMOVH, C_REG, C_NONE, C_HOREG, 70, 4, 0, 0, 0, C_PBIT | C_WBIT | C_UBIT},
-	{AMOVHS, C_REG, C_NONE, C_HAUTO, 70, 4, REGSP, 0, 0, C_PBIT | C_WBIT | C_UBIT},
-	{AMOVHS, C_REG, C_NONE, C_HOREG, 70, 4, 0, 0, 0, C_PBIT | C_WBIT | C_UBIT},
-	{AMOVHU, C_REG, C_NONE, C_HAUTO, 70, 4, REGSP, 0, 0, C_PBIT | C_WBIT | C_UBIT},
-	{AMOVHU, C_REG, C_NONE, C_HOREG, 70, 4, 0, 0, 0, C_PBIT | C_WBIT | C_UBIT},
-	{AMOVB, C_HAUTO, C_NONE, C_REG, 71, 4, REGSP, 0, 0, C_PBIT | C_WBIT | C_UBIT},
-	{AMOVB, C_HOREG, C_NONE, C_REG, 71, 4, 0, 0, 0, C_PBIT | C_WBIT | C_UBIT},
-	{AMOVBS, C_HAUTO, C_NONE, C_REG, 71, 4, REGSP, 0, 0, C_PBIT | C_WBIT | C_UBIT},
-	{AMOVBS, C_HOREG, C_NONE, C_REG, 71, 4, 0, 0, 0, C_PBIT | C_WBIT | C_UBIT},
-	{AMOVH, C_HAUTO, C_NONE, C_REG, 71, 4, REGSP, 0, 0, C_PBIT | C_WBIT | C_UBIT},
-	{AMOVH, C_HOREG, C_NONE, C_REG, 71, 4, 0, 0, 0, C_PBIT | C_WBIT | C_UBIT},
-	{AMOVHS, C_HAUTO, C_NONE, C_REG, 71, 4, REGSP, 0, 0, C_PBIT | C_WBIT | C_UBIT},
-	{AMOVHS, C_HOREG, C_NONE, C_REG, 71, 4, 0, 0, 0, C_PBIT | C_WBIT | C_UBIT},
-	{AMOVHU, C_HAUTO, C_NONE, C_REG, 71, 4, REGSP, 0, 0, C_PBIT | C_WBIT | C_UBIT},
-	{AMOVHU, C_HOREG, C_NONE, C_REG, 71, 4, 0, 0, 0, C_PBIT | C_WBIT | C_UBIT},
-	{AMOVH, C_REG, C_NONE, C_LAUTO, 72, 8, REGSP, LTO, 0, C_PBIT | C_WBIT | C_UBIT},
-	{AMOVH, C_REG, C_NONE, C_LOREG, 72, 8, 0, LTO, 0, C_PBIT | C_WBIT | C_UBIT},
-	{AMOVH, C_REG, C_NONE, C_ADDR, 94, 8, 0, LTO | LPCREL, 4, C_PBIT | C_WBIT | C_UBIT},
-	{AMOVHS, C_REG, C_NONE, C_LAUTO, 72, 8, REGSP, LTO, 0, C_PBIT | C_WBIT | C_UBIT},
-	{AMOVHS, C_REG, C_NONE, C_LOREG, 72, 8, 0, LTO, 0, C_PBIT | C_WBIT | C_UBIT},
-	{AMOVHS, C_REG, C_NONE, C_ADDR, 94, 8, 0, LTO | LPCREL, 4, C_PBIT | C_WBIT | C_UBIT},
-	{AMOVHU, C_REG, C_NONE, C_LAUTO, 72, 8, REGSP, LTO, 0, C_PBIT | C_WBIT | C_UBIT},
-	{AMOVHU, C_REG, C_NONE, C_LOREG, 72, 8, 0, LTO, 0, C_PBIT | C_WBIT | C_UBIT},
-	{AMOVHU, C_REG, C_NONE, C_ADDR, 94, 8, 0, LTO | LPCREL, 4, C_PBIT | C_WBIT | C_UBIT},
-	{AMOVB, C_LAUTO, C_NONE, C_REG, 73, 8, REGSP, LFROM, 0, C_PBIT | C_WBIT | C_UBIT},
-	{AMOVB, C_LOREG, C_NONE, C_REG, 73, 8, 0, LFROM, 0, C_PBIT | C_WBIT | C_UBIT},
-	{AMOVB, C_ADDR, C_NONE, C_REG, 93, 8, 0, LFROM | LPCREL, 4, C_PBIT | C_WBIT | C_UBIT},
-	{AMOVBS, C_LAUTO, C_NONE, C_REG, 73, 8, REGSP, LFROM, 0, C_PBIT | C_WBIT | C_UBIT},
-	{AMOVBS, C_LOREG, C_NONE, C_REG, 73, 8, 0, LFROM, 0, C_PBIT | C_WBIT | C_UBIT},
-	{AMOVBS, C_ADDR, C_NONE, C_REG, 93, 8, 0, LFROM | LPCREL, 4, C_PBIT | C_WBIT | C_UBIT},
-	{AMOVH, C_LAUTO, C_NONE, C_REG, 73, 8, REGSP, LFROM, 0, C_PBIT | C_WBIT | C_UBIT},
-	{AMOVH, C_LOREG, C_NONE, C_REG, 73, 8, 0, LFROM, 0, C_PBIT | C_WBIT | C_UBIT},
-	{AMOVH, C_ADDR, C_NONE, C_REG, 93, 8, 0, LFROM | LPCREL, 4, C_PBIT | C_WBIT | C_UBIT},
-	{AMOVHS, C_LAUTO, C_NONE, C_REG, 73, 8, REGSP, LFROM, 0, C_PBIT | C_WBIT | C_UBIT},
-	{AMOVHS, C_LOREG, C_NONE, C_REG, 73, 8, 0, LFROM, 0, C_PBIT | C_WBIT | C_UBIT},
-	{AMOVHS, C_ADDR, C_NONE, C_REG, 93, 8, 0, LFROM | LPCREL, 4, C_PBIT | C_WBIT | C_UBIT},
-	{AMOVHU, C_LAUTO, C_NONE, C_REG, 73, 8, REGSP, LFROM, 0, C_PBIT | C_WBIT | C_UBIT},
-	{AMOVHU, C_LOREG, C_NONE, C_REG, 73, 8, 0, LFROM, 0, C_PBIT | C_WBIT | C_UBIT},
-	{AMOVHU, C_ADDR, C_NONE, C_REG, 93, 8, 0, LFROM | LPCREL, 4, C_PBIT | C_WBIT | C_UBIT},
-	{ALDREX, C_SOREG, C_NONE, C_REG, 77, 4, 0, 0, 0, 0},
-	{ASTREX, C_SOREG, C_REG, C_REG, 78, 4, 0, 0, 0, 0},
-	{ADMB, C_NONE, C_NONE, C_NONE, 110, 4, 0, 0, 0, 0},
-	{ADMB, C_LCON, C_NONE, C_NONE, 110, 4, 0, 0, 0, 0},
-	{ADMB, C_SPR, C_NONE, C_NONE, 110, 4, 0, 0, 0, 0},
-	{AMOVF, C_ZFCON, C_NONE, C_FREG, 80, 8, 0, 0, 0, 0},
-	{AMOVF, C_SFCON, C_NONE, C_FREG, 81, 4, 0, 0, 0, 0},
-	{ACMPF, C_FREG, C_FREG, C_NONE, 82, 8, 0, 0, 0, 0},
-	{ACMPF, C_FREG, C_NONE, C_NONE, 83, 8, 0, 0, 0, 0},
-	{AMOVFW, C_FREG, C_NONE, C_FREG, 84, 4, 0, 0, 0, C_UBIT},
-	{AMOVWF, C_FREG, C_NONE, C_FREG, 85, 4, 0, 0, 0, C_UBIT},
-	{AMOVFW, C_FREG, C_NONE, C_REG, 86, 8, 0, 0, 0, C_UBIT},
-	{AMOVWF, C_REG, C_NONE, C_FREG, 87, 8, 0, 0, 0, C_UBIT},
-	{AMOVW, C_REG, C_NONE, C_FREG, 88, 4, 0, 0, 0, 0},
-	{AMOVW, C_FREG, C_NONE, C_REG, 89, 4, 0, 0, 0, 0},
-	{ALDREXD, C_SOREG, C_NONE, C_REG, 91, 4, 0, 0, 0, 0},
-	{ASTREXD, C_SOREG, C_REG, C_REG, 92, 4, 0, 0, 0, 0},
-	{APLD, C_SOREG, C_NONE, C_NONE, 95, 4, 0, 0, 0, 0},
-	{obj.AUNDEF, C_NONE, C_NONE, C_NONE, 96, 4, 0, 0, 0, 0},
-	{ACLZ, C_REG, C_NONE, C_REG, 97, 4, 0, 0, 0, 0},
-	{AMULWT, C_REG, C_REG, C_REG, 98, 4, 0, 0, 0, 0},
-	{AMULA, C_REG, C_REG, C_REGREG2, 99, 4, 0, 0, 0, C_SBIT},
-	{AMULAWT, C_REG, C_REG, C_REGREG2, 99, 4, 0, 0, 0, 0},
-	{obj.APCDATA, C_LCON, C_NONE, C_LCON, 0, 0, 0, 0, 0, 0},
-	{obj.AFUNCDATA, C_LCON, C_NONE, C_ADDR, 0, 0, 0, 0, 0, 0},
-	{obj.ANOP, C_NONE, C_NONE, C_NONE, 0, 0, 0, 0, 0, 0},
-	{obj.ADUFFZERO, C_NONE, C_NONE, C_SBRA, 5, 4, 0, 0, 0, 0}, // same as ABL
-	{obj.ADUFFCOPY, C_NONE, C_NONE, C_SBRA, 5, 4, 0, 0, 0, 0}, // same as ABL
-	{ADATABUNDLE, C_NONE, C_NONE, C_NONE, 100, 4, 0, 0, 0, 0},
-	{ADATABUNDLEEND, C_NONE, C_NONE, C_NONE, 100, 0, 0, 0, 0, 0},
-	{obj.AXXX, C_NONE, C_NONE, C_NONE, 0, 4, 0, 0, 0, 0},
-}
-
-var mbOp = []struct {
-	reg int16
-	enc uint32
-}{
-	{REG_MB_SY, 15},
-	{REG_MB_ST, 14},
-	{REG_MB_ISH, 11},
-	{REG_MB_ISHST, 10},
-	{REG_MB_NSH, 7},
-	{REG_MB_NSHST, 6},
-	{REG_MB_OSH, 3},
-	{REG_MB_OSHST, 2},
-}
-
-var oprange [ALAST & obj.AMask][]Optab
-
-var xcmp [C_GOK + 1][C_GOK + 1]bool
-
-var (
-	deferreturn *obj.LSym
-	symdiv      *obj.LSym
-	symdivu     *obj.LSym
-	symmod      *obj.LSym
-	symmodu     *obj.LSym
-)
-
 // Note about encoding: Prog.scond holds the condition encoding,
 // but XOR'ed with C_SCOND_XOR, so that C_SCOND_NONE == 0.
 // The code that shifts the value << 28 has the responsibility
@@ -370,14 +91,14 @@ var (
 // p->pc if extra padding is necessary.
 // In rare cases, asmoutnacl might split p into two instructions.
 // origPC is the PC for this Prog (no padding is taken into account).
-func (c *ctxt5) asmoutnacl(origPC int32, p *obj.Prog, o *Optab, out []uint32) int {
+func (c *ctxt5) asmoutnacl(pstate *PackageState, origPC int32, p *obj.Prog, o *Optab, out []uint32) int {
 	size := int(o.size)
 
 	// instruction specific
 	switch p.As {
 	default:
 		if out != nil {
-			c.asmout(p, o, out)
+			c.asmout(pstate, p, o, out)
 		}
 
 	case ADATABUNDLE, // align to 16-byte boundary
@@ -385,7 +106,7 @@ func (c *ctxt5) asmoutnacl(origPC int32, p *obj.Prog, o *Optab, out []uint32) in
 		p.Pc = (p.Pc + 15) &^ 15
 
 		if out != nil {
-			c.asmout(p, o, out)
+			c.asmout(pstate, p, o, out)
 		}
 
 	case obj.AUNDEF,
@@ -404,7 +125,7 @@ func (c *ctxt5) asmoutnacl(origPC int32, p *obj.Prog, o *Optab, out []uint32) in
 	case AB, ABL:
 		if p.To.Type != obj.TYPE_MEM {
 			if out != nil {
-				c.asmout(p, o, out)
+				c.asmout(pstate, p, o, out)
 			}
 		} else {
 			if p.To.Offset != 0 || size != 4 || p.To.Reg > REG_R15 || p.To.Reg < REG_R0 {
@@ -427,7 +148,7 @@ func (c *ctxt5) asmoutnacl(origPC int32, p *obj.Prog, o *Optab, out []uint32) in
 
 		// align the last instruction (the actual BL) to the last instruction in a bundle
 		if p.As == ABL {
-			if p.To.Sym == deferreturn {
+			if p.To.Sym == pstate.deferreturn {
 				p.Pc = ((int64(origPC) + 15) &^ 15) + 16 - int64(size)
 			} else {
 				p.Pc += (16 - ((p.Pc + int64(size)) & 15)) & 15
@@ -450,7 +171,7 @@ func (c *ctxt5) asmoutnacl(origPC int32, p *obj.Prog, o *Optab, out []uint32) in
 		ASTREXD:
 		if p.To.Type == obj.TYPE_REG && p.To.Reg == REG_R15 && p.From.Reg == REG_R13 { // MOVW.W x(R13), PC
 			if out != nil {
-				c.asmout(p, o, out)
+				c.asmout(pstate, p, o, out)
 			}
 			if size == 4 {
 				if out != nil {
@@ -532,7 +253,7 @@ func (c *ctxt5) asmoutnacl(origPC int32, p *obj.Prog, o *Optab, out []uint32) in
 			a2.Reg = REG_R13
 			a2.Sym = nil
 			a2.Offset = 0
-			size = int(c.oplook(p).size)
+			size = int(c.oplook(pstate, p).size)
 			break
 		}
 
@@ -549,7 +270,7 @@ func (c *ctxt5) asmoutnacl(origPC int32, p *obj.Prog, o *Optab, out []uint32) in
 				// if addr.reg == 0, then it is probably load from x(FP) with small x, no need to modify.
 				if reg == 0 {
 					if out != nil {
-						c.asmout(p, o, out)
+						c.asmout(pstate, p, o, out)
 					}
 				} else {
 					if out != nil {
@@ -560,7 +281,7 @@ func (c *ctxt5) asmoutnacl(origPC int32, p *obj.Prog, o *Optab, out []uint32) in
 					}
 					size += 4
 					if out != nil {
-						c.asmout(p, o, out[1:])
+						c.asmout(pstate, p, o, out[1:])
 					}
 				}
 
@@ -607,11 +328,11 @@ func (c *ctxt5) asmoutnacl(origPC int32, p *obj.Prog, o *Optab, out []uint32) in
 				a2.Reg = REG_R11
 				a2.Sym = nil
 				a2.Offset = 0
-				size = int(c.oplook(p).size)
+				size = int(c.oplook(pstate, p).size)
 				break
 			}
 		} else if out != nil {
-			c.asmout(p, o, out)
+			c.asmout(pstate, p, o, out)
 		}
 	}
 
@@ -650,7 +371,7 @@ func checkSuffix(c *ctxt5, p *obj.Prog, o *Optab) {
 	}
 }
 
-func span5(ctxt *obj.Link, cursym *obj.LSym, newprog obj.ProgAlloc) {
+func (pstate *PackageState) span5(ctxt *obj.Link, cursym *obj.LSym, newprog obj.ProgAlloc) {
 	var p *obj.Prog
 	var op *obj.Prog
 
@@ -659,7 +380,7 @@ func span5(ctxt *obj.Link, cursym *obj.LSym, newprog obj.ProgAlloc) {
 		return
 	}
 
-	if oprange[AAND&obj.AMask] == nil {
+	if pstate.oprange[AAND&obj.AMask] == nil {
 		ctxt.Diag("arm ops not initialized, call arm.buildop first")
 	}
 
@@ -684,13 +405,13 @@ func span5(ctxt *obj.Link, cursym *obj.LSym, newprog obj.ProgAlloc) {
 		}
 
 		p.Pc = int64(pc)
-		o = c.oplook(p)
+		o = c.oplook(pstate, p)
 		if ctxt.Headtype != objabi.Hnacl {
 			m = int(o.size)
 		} else {
-			m = c.asmoutnacl(pc, p, o, nil)
-			pc = int32(p.Pc) // asmoutnacl might change pc for alignment
-			o = c.oplook(p)  // asmoutnacl might change p in rare cases
+			m = c.asmoutnacl(pstate, pc, p, o, nil)
+			pc = int32(p.Pc)        // asmoutnacl might change pc for alignment
+			o = c.oplook(pstate, p) // asmoutnacl might change p in rare cases
 		}
 
 		if m%4 != 0 || p.Pc%4 != 0 {
@@ -717,10 +438,10 @@ func span5(ctxt *obj.Link, cursym *obj.LSym, newprog obj.ProgAlloc) {
 
 		switch o.flag & (LFROM | LTO | LPOOL) {
 		case LFROM:
-			c.addpool(p, &p.From)
+			c.addpool(pstate, p, &p.From)
 
 		case LTO:
-			c.addpool(p, &p.To)
+			c.addpool(pstate, p, &p.To)
 
 		case LPOOL:
 			if p.Scond&C_SCOND == C_SCOND_NONE {
@@ -754,7 +475,7 @@ func span5(ctxt *obj.Link, cursym *obj.LSym, newprog obj.ProgAlloc) {
 		times++
 		c.cursym.Func.Text.Pc = 0 // force re-layout the code.
 		for p = c.cursym.Func.Text; p != nil; p = p.Link {
-			o = c.oplook(p)
+			o = c.oplook(pstate, p)
 			if int64(pc) > p.Pc {
 				p.Pc = int64(pc)
 			}
@@ -787,7 +508,7 @@ func span5(ctxt *obj.Link, cursym *obj.LSym, newprog obj.ProgAlloc) {
 			if ctxt.Headtype != objabi.Hnacl {
 				m = int(o.size)
 			} else {
-				m = c.asmoutnacl(pc, p, o, nil)
+				m = c.asmoutnacl(pstate, pc, p, o, nil)
 			}
 			if p.Pc != int64(opc) {
 				bflag = 1
@@ -842,13 +563,13 @@ func span5(ctxt *obj.Link, cursym *obj.LSym, newprog obj.ProgAlloc) {
 	var v int
 	for p = p.Link; p != nil; p = p.Link {
 		c.pc = p.Pc
-		o = c.oplook(p)
+		o = c.oplook(pstate, p)
 		opc = int32(p.Pc)
 		if ctxt.Headtype != objabi.Hnacl {
-			c.asmout(p, o, out[:])
+			c.asmout(pstate, p, o, out[:])
 			m = int(o.size)
 		} else {
-			m = c.asmoutnacl(pc, p, o, out[:])
+			m = c.asmoutnacl(pstate, pc, p, o, out[:])
 			if int64(opc) != p.Pc {
 				ctxt.Diag("asmoutnacl broken: pc changed (%d->%d) in last stage: %v", opc, int32(p.Pc), p)
 			}
@@ -964,11 +685,11 @@ func (c *ctxt5) flushpool(p *obj.Prog, skip int, force int) bool {
 	return false
 }
 
-func (c *ctxt5) addpool(p *obj.Prog, a *obj.Addr) {
+func (c *ctxt5) addpool(pstate *PackageState, p *obj.Prog, a *obj.Addr) {
 	t := c.newprog()
 	t.As = AWORD
 
-	switch c.aclass(a) {
+	switch c.aclass(pstate, a) {
 	default:
 		t.To.Offset = a.Offset
 		t.To.Sym = a.Sym
@@ -1035,9 +756,9 @@ func (c *ctxt5) addpool(p *obj.Prog, a *obj.Addr) {
 	p.Pcond = q
 }
 
-func (c *ctxt5) regoff(a *obj.Addr) int32 {
+func (c *ctxt5) regoff(pstate *PackageState, a *obj.Addr) int32 {
 	c.instoffset = 0
-	c.aclass(a)
+	c.aclass(pstate, a)
 	return int32(c.instoffset)
 }
 
@@ -1117,7 +838,7 @@ func immhalf(v int32) bool {
 	return false
 }
 
-func (c *ctxt5) aclass(a *obj.Addr) int {
+func (c *ctxt5) aclass(pstate *PackageState, a *obj.Addr) int {
 	switch a.Type {
 	case obj.TYPE_NONE:
 		return C_NONE
@@ -1257,10 +978,10 @@ func (c *ctxt5) aclass(a *obj.Addr) int {
 		return C_GOK
 
 	case obj.TYPE_FCONST:
-		if c.chipzero5(a.Val.(float64)) >= 0 {
+		if c.chipzero5(pstate, a.Val.(float64)) >= 0 {
 			return C_ZFCON
 		}
-		if c.chipfloat5(a.Val.(float64)) >= 0 {
+		if c.chipfloat5(pstate, a.Val.(float64)) >= 0 {
 			return C_SFCON
 		}
 		return C_LFCON
@@ -1283,7 +1004,7 @@ func (c *ctxt5) aclass(a *obj.Addr) int {
 			if immrot(^uint32(c.instoffset)) != 0 {
 				return C_NCON
 			}
-			if uint32(c.instoffset) <= 0xffff && objabi.GOARM == 7 {
+			if uint32(c.instoffset) <= 0xffff && pstate.objabi.GOARM == 7 {
 				return C_SCON
 			}
 			if c.ctxt.Headtype != objabi.Hnacl {
@@ -1346,21 +1067,21 @@ func (c *ctxt5) aconsize() int {
 	return C_LACON
 }
 
-func (c *ctxt5) oplook(p *obj.Prog) *Optab {
+func (c *ctxt5) oplook(pstate *PackageState, p *obj.Prog) *Optab {
 	a1 := int(p.Optab)
 	if a1 != 0 {
-		return &optab[a1-1]
+		return &pstate.optab[a1-1]
 	}
 	a1 = int(p.From.Class)
 	if a1 == 0 {
-		a1 = c.aclass(&p.From) + 1
+		a1 = c.aclass(pstate, &p.From) + 1
 		p.From.Class = int8(a1)
 	}
 
 	a1--
 	a3 := int(p.To.Class)
 	if a3 == 0 {
-		a3 = c.aclass(&p.To) + 1
+		a3 = c.aclass(pstate, &p.To) + 1
 		p.To.Class = int8(a3)
 	}
 
@@ -1403,25 +1124,25 @@ func (c *ctxt5) oplook(p *obj.Prog) *Optab {
 	}
 
 	if false { /*debug['O']*/
-		fmt.Printf("oplook %v %v %v %v\n", p.As, DRconv(a1), DRconv(a2), DRconv(a3))
+		fmt.Printf("oplook %v %v %v %v\n", p.As, pstate.DRconv(a1), pstate.DRconv(a2), pstate.DRconv(a3))
 		fmt.Printf("\t\t%d %d\n", p.From.Type, p.To.Type)
 	}
 
-	ops := oprange[p.As&obj.AMask]
-	c1 := &xcmp[a1]
-	c3 := &xcmp[a3]
+	ops := pstate.oprange[p.As&obj.AMask]
+	c1 := &pstate.xcmp[a1]
+	c3 := &pstate.xcmp[a3]
 	for i := range ops {
 		op := &ops[i]
 		if int(op.a2) == a2 && c1[op.a1] && c3[op.a3] {
-			p.Optab = uint16(cap(optab) - cap(ops) + i + 1)
+			p.Optab = uint16(cap(pstate.optab) - cap(ops) + i + 1)
 			checkSuffix(c, p, op)
 			return op
 		}
 	}
 
-	c.ctxt.Diag("illegal combination %v; %v %v %v; from %d %d; to %d %d", p, DRconv(a1), DRconv(a2), DRconv(a3), p.From.Type, p.From.Name, p.To.Type, p.To.Name)
+	c.ctxt.Diag("illegal combination %v; %v %v %v; from %d %d; to %d %d", p, pstate.DRconv(a1), pstate.DRconv(a2), pstate.DRconv(a3), p.From.Type, p.From.Name, p.To.Type, p.To.Name)
 	if ops == nil {
-		ops = optab
+		ops = pstate.optab
 	}
 	return &ops[0]
 }
@@ -1517,53 +1238,53 @@ func (x ocmp) Less(i, j int) bool {
 	return false
 }
 
-func opset(a, b0 obj.As) {
-	oprange[a&obj.AMask] = oprange[b0]
+func (pstate *PackageState) opset(a, b0 obj.As) {
+	pstate.oprange[a&obj.AMask] = pstate.oprange[b0]
 }
 
-func buildop(ctxt *obj.Link) {
-	if oprange[AAND&obj.AMask] != nil {
+func (pstate *PackageState) buildop(ctxt *obj.Link) {
+	if pstate.oprange[AAND&obj.AMask] != nil {
 		// Already initialized; stop now.
 		// This happens in the cmd/asm tests,
 		// each of which re-initializes the arch.
 		return
 	}
 
-	deferreturn = ctxt.Lookup("runtime.deferreturn")
+	pstate.deferreturn = ctxt.Lookup("runtime.deferreturn")
 
-	symdiv = ctxt.Lookup("runtime._div")
-	symdivu = ctxt.Lookup("runtime._divu")
-	symmod = ctxt.Lookup("runtime._mod")
-	symmodu = ctxt.Lookup("runtime._modu")
+	pstate.symdiv = ctxt.Lookup("runtime._div")
+	pstate.symdivu = ctxt.Lookup("runtime._divu")
+	pstate.symmod = ctxt.Lookup("runtime._mod")
+	pstate.symmodu = ctxt.Lookup("runtime._modu")
 
 	var n int
 
 	for i := 0; i < C_GOK; i++ {
 		for n = 0; n < C_GOK; n++ {
 			if cmp(n, i) {
-				xcmp[i][n] = true
+				pstate.xcmp[i][n] = true
 			}
 		}
 	}
-	for n = 0; optab[n].as != obj.AXXX; n++ {
-		if optab[n].flag&LPCREL != 0 {
+	for n = 0; pstate.optab[n].as != obj.AXXX; n++ {
+		if pstate.optab[n].flag&LPCREL != 0 {
 			if ctxt.Flag_shared {
-				optab[n].size += int8(optab[n].pcrelsiz)
+				pstate.optab[n].size += int8(pstate.optab[n].pcrelsiz)
 			} else {
-				optab[n].flag &^= LPCREL
+				pstate.optab[n].flag &^= LPCREL
 			}
 		}
 	}
 
-	sort.Sort(ocmp(optab[:n]))
+	sort.Sort(ocmp(pstate.optab[:n]))
 	for i := 0; i < n; i++ {
-		r := optab[i].as
+		r := pstate.optab[i].as
 		r0 := r & obj.AMask
 		start := i
-		for optab[i].as == r {
+		for pstate.optab[i].as == r {
 			i++
 		}
-		oprange[r0] = optab[start:i]
+		pstate.oprange[r0] = pstate.optab[start:i]
 		i--
 
 		switch r {
@@ -1573,55 +1294,55 @@ func buildop(ctxt *obj.Link) {
 			log.Fatalf("bad code")
 
 		case AADD:
-			opset(ASUB, r0)
-			opset(ARSB, r0)
-			opset(AADC, r0)
-			opset(ASBC, r0)
-			opset(ARSC, r0)
+			pstate.opset(ASUB, r0)
+			pstate.opset(ARSB, r0)
+			pstate.opset(AADC, r0)
+			pstate.opset(ASBC, r0)
+			pstate.opset(ARSC, r0)
 
 		case AORR:
-			opset(AEOR, r0)
-			opset(ABIC, r0)
+			pstate.opset(AEOR, r0)
+			pstate.opset(ABIC, r0)
 
 		case ACMP:
-			opset(ATEQ, r0)
-			opset(ACMN, r0)
-			opset(ATST, r0)
+			pstate.opset(ATEQ, r0)
+			pstate.opset(ACMN, r0)
+			pstate.opset(ATST, r0)
 
 		case AMVN:
 			break
 
 		case ABEQ:
-			opset(ABNE, r0)
-			opset(ABCS, r0)
-			opset(ABHS, r0)
-			opset(ABCC, r0)
-			opset(ABLO, r0)
-			opset(ABMI, r0)
-			opset(ABPL, r0)
-			opset(ABVS, r0)
-			opset(ABVC, r0)
-			opset(ABHI, r0)
-			opset(ABLS, r0)
-			opset(ABGE, r0)
-			opset(ABLT, r0)
-			opset(ABGT, r0)
-			opset(ABLE, r0)
+			pstate.opset(ABNE, r0)
+			pstate.opset(ABCS, r0)
+			pstate.opset(ABHS, r0)
+			pstate.opset(ABCC, r0)
+			pstate.opset(ABLO, r0)
+			pstate.opset(ABMI, r0)
+			pstate.opset(ABPL, r0)
+			pstate.opset(ABVS, r0)
+			pstate.opset(ABVC, r0)
+			pstate.opset(ABHI, r0)
+			pstate.opset(ABLS, r0)
+			pstate.opset(ABGE, r0)
+			pstate.opset(ABLT, r0)
+			pstate.opset(ABGT, r0)
+			pstate.opset(ABLE, r0)
 
 		case ASLL:
-			opset(ASRL, r0)
-			opset(ASRA, r0)
+			pstate.opset(ASRL, r0)
+			pstate.opset(ASRA, r0)
 
 		case AMUL:
-			opset(AMULU, r0)
+			pstate.opset(AMULU, r0)
 
 		case ADIV:
-			opset(AMOD, r0)
-			opset(AMODU, r0)
-			opset(ADIVU, r0)
+			pstate.opset(AMOD, r0)
+			pstate.opset(AMODU, r0)
+			pstate.opset(ADIVU, r0)
 
 		case ADIVHW:
-			opset(ADIVUHW, r0)
+			pstate.opset(ADIVUHW, r0)
 
 		case AMOVW,
 			AMOVB,
@@ -1633,7 +1354,7 @@ func buildop(ctxt *obj.Link) {
 			break
 
 		case ASWPW:
-			opset(ASWPBU, r0)
+			pstate.opset(ASWPBU, r0)
 
 		case AB,
 			ABL,
@@ -1649,85 +1370,85 @@ func buildop(ctxt *obj.Link) {
 			break
 
 		case AADDF:
-			opset(AADDD, r0)
-			opset(ASUBF, r0)
-			opset(ASUBD, r0)
-			opset(AMULF, r0)
-			opset(AMULD, r0)
-			opset(ANMULF, r0)
-			opset(ANMULD, r0)
-			opset(AMULAF, r0)
-			opset(AMULAD, r0)
-			opset(AMULSF, r0)
-			opset(AMULSD, r0)
-			opset(ANMULAF, r0)
-			opset(ANMULAD, r0)
-			opset(ANMULSF, r0)
-			opset(ANMULSD, r0)
-			opset(AFMULAF, r0)
-			opset(AFMULAD, r0)
-			opset(AFMULSF, r0)
-			opset(AFMULSD, r0)
-			opset(AFNMULAF, r0)
-			opset(AFNMULAD, r0)
-			opset(AFNMULSF, r0)
-			opset(AFNMULSD, r0)
-			opset(ADIVF, r0)
-			opset(ADIVD, r0)
+			pstate.opset(AADDD, r0)
+			pstate.opset(ASUBF, r0)
+			pstate.opset(ASUBD, r0)
+			pstate.opset(AMULF, r0)
+			pstate.opset(AMULD, r0)
+			pstate.opset(ANMULF, r0)
+			pstate.opset(ANMULD, r0)
+			pstate.opset(AMULAF, r0)
+			pstate.opset(AMULAD, r0)
+			pstate.opset(AMULSF, r0)
+			pstate.opset(AMULSD, r0)
+			pstate.opset(ANMULAF, r0)
+			pstate.opset(ANMULAD, r0)
+			pstate.opset(ANMULSF, r0)
+			pstate.opset(ANMULSD, r0)
+			pstate.opset(AFMULAF, r0)
+			pstate.opset(AFMULAD, r0)
+			pstate.opset(AFMULSF, r0)
+			pstate.opset(AFMULSD, r0)
+			pstate.opset(AFNMULAF, r0)
+			pstate.opset(AFNMULAD, r0)
+			pstate.opset(AFNMULSF, r0)
+			pstate.opset(AFNMULSD, r0)
+			pstate.opset(ADIVF, r0)
+			pstate.opset(ADIVD, r0)
 
 		case ANEGF:
-			opset(ANEGD, r0)
-			opset(ASQRTF, r0)
-			opset(ASQRTD, r0)
-			opset(AMOVFD, r0)
-			opset(AMOVDF, r0)
-			opset(AABSF, r0)
-			opset(AABSD, r0)
+			pstate.opset(ANEGD, r0)
+			pstate.opset(ASQRTF, r0)
+			pstate.opset(ASQRTD, r0)
+			pstate.opset(AMOVFD, r0)
+			pstate.opset(AMOVDF, r0)
+			pstate.opset(AABSF, r0)
+			pstate.opset(AABSD, r0)
 
 		case ACMPF:
-			opset(ACMPD, r0)
+			pstate.opset(ACMPD, r0)
 
 		case AMOVF:
-			opset(AMOVD, r0)
+			pstate.opset(AMOVD, r0)
 
 		case AMOVFW:
-			opset(AMOVDW, r0)
+			pstate.opset(AMOVDW, r0)
 
 		case AMOVWF:
-			opset(AMOVWD, r0)
+			pstate.opset(AMOVWD, r0)
 
 		case AMULL:
-			opset(AMULAL, r0)
-			opset(AMULLU, r0)
-			opset(AMULALU, r0)
+			pstate.opset(AMULAL, r0)
+			pstate.opset(AMULLU, r0)
+			pstate.opset(AMULALU, r0)
 
 		case AMULWT:
-			opset(AMULWB, r0)
-			opset(AMULBB, r0)
-			opset(AMMUL, r0)
+			pstate.opset(AMULWB, r0)
+			pstate.opset(AMULBB, r0)
+			pstate.opset(AMMUL, r0)
 
 		case AMULAWT:
-			opset(AMULAWB, r0)
-			opset(AMULABB, r0)
-			opset(AMULS, r0)
-			opset(AMMULA, r0)
-			opset(AMMULS, r0)
+			pstate.opset(AMULAWB, r0)
+			pstate.opset(AMULABB, r0)
+			pstate.opset(AMULS, r0)
+			pstate.opset(AMMULA, r0)
+			pstate.opset(AMMULS, r0)
 
 		case ABFX:
-			opset(ABFXU, r0)
-			opset(ABFC, r0)
-			opset(ABFI, r0)
+			pstate.opset(ABFXU, r0)
+			pstate.opset(ABFC, r0)
+			pstate.opset(ABFI, r0)
 
 		case ACLZ:
-			opset(AREV, r0)
-			opset(AREV16, r0)
-			opset(AREVSH, r0)
-			opset(ARBIT, r0)
+			pstate.opset(AREV, r0)
+			pstate.opset(AREV16, r0)
+			pstate.opset(AREVSH, r0)
+			pstate.opset(ARBIT, r0)
 
 		case AXTAB:
-			opset(AXTAH, r0)
-			opset(AXTABU, r0)
-			opset(AXTAHU, r0)
+			pstate.opset(AXTAH, r0)
+			pstate.opset(AXTABU, r0)
+			pstate.opset(AXTAHU, r0)
 
 		case ALDREX,
 			ASTREX,
@@ -1748,7 +1469,7 @@ func buildop(ctxt *obj.Link) {
 	}
 }
 
-func (c *ctxt5) asmout(p *obj.Prog, o *Optab, out []uint32) {
+func (c *ctxt5) asmout(pstate *PackageState, p *obj.Prog, o *Optab, out []uint32) {
 	c.printp = p
 	o1 := uint32(0)
 	o2 := uint32(0)
@@ -1785,7 +1506,7 @@ func (c *ctxt5) asmout(p *obj.Prog, o *Optab, out []uint32) {
 		o1 |= (uint32(rf)&15)<<0 | (uint32(r)&15)<<16 | (uint32(rt)&15)<<12
 
 	case 2: /* movbu $I,[R],R */
-		c.aclass(&p.From)
+		c.aclass(pstate, &p.From)
 
 		o1 = c.oprrr(p, p.As, int(p.Scond))
 		o1 |= uint32(immrot(uint32(c.instoffset)))
@@ -1802,7 +1523,7 @@ func (c *ctxt5) asmout(p *obj.Prog, o *Optab, out []uint32) {
 		o1 |= (uint32(r)&15)<<16 | (uint32(rt)&15)<<12
 
 	case 106: /* op $I,R,R where I can be decomposed into 2 immediates */
-		c.aclass(&p.From)
+		c.aclass(pstate, &p.From)
 		r := int(p.Reg)
 		rt := int(p.To.Reg)
 		if r == 0 {
@@ -1832,7 +1553,7 @@ func (c *ctxt5) asmout(p *obj.Prog, o *Optab, out []uint32) {
 		o2 |= y
 
 	case 107: /* op $I,R,R where I can be decomposed into 2 immediates */
-		c.aclass(&p.From)
+		c.aclass(pstate, &p.From)
 		r := int(p.Reg)
 		rt := int(p.To.Reg)
 		if r == 0 {
@@ -1864,10 +1585,10 @@ func (c *ctxt5) asmout(p *obj.Prog, o *Optab, out []uint32) {
 		o2 |= x
 
 	case 3: /* add R<<[IR],[R],R */
-		o1 = c.mov(p)
+		o1 = c.mov(pstate, p)
 
 	case 4: /* MOVW $off(R), R -> add $off,[R],R */
-		c.aclass(&p.From)
+		c.aclass(pstate, &p.From)
 		if c.instoffset < 0 {
 			o1 = c.oprrr(p, ASUB, int(p.Scond))
 			o1 |= uint32(immrot(uint32(-c.instoffset)))
@@ -1903,7 +1624,7 @@ func (c *ctxt5) asmout(p *obj.Prog, o *Optab, out []uint32) {
 		o1 |= (uint32(v) >> 2) & 0xffffff
 
 	case 6: /* b ,O(R) -> add $O,R,PC */
-		c.aclass(&p.To)
+		c.aclass(pstate, &p.To)
 
 		o1 = c.oprrr(p, AADD, int(p.Scond))
 		o1 |= uint32(immrot(uint32(c.instoffset)))
@@ -1911,7 +1632,7 @@ func (c *ctxt5) asmout(p *obj.Prog, o *Optab, out []uint32) {
 		o1 |= (REGPC & 15) << 12
 
 	case 7: /* bl (R) -> blx R */
-		c.aclass(&p.To)
+		c.aclass(pstate, &p.To)
 
 		if c.instoffset != 0 {
 			c.ctxt.Diag("%v: doesn't support BL offset(REG) with non-zero offset %d", p, c.instoffset)
@@ -1924,7 +1645,7 @@ func (c *ctxt5) asmout(p *obj.Prog, o *Optab, out []uint32) {
 		rel.Type = objabi.R_CALLIND
 
 	case 8: /* sll $c,[R],R -> mov (R<<$c),R */
-		c.aclass(&p.From)
+		c.aclass(pstate, &p.From)
 
 		o1 = c.oprrr(p, p.As, int(p.Scond))
 		r := int(p.Reg)
@@ -1950,12 +1671,12 @@ func (c *ctxt5) asmout(p *obj.Prog, o *Optab, out []uint32) {
 		o1 = c.oprrr(p, p.As, int(p.Scond))
 
 		if p.To.Type != obj.TYPE_NONE {
-			c.aclass(&p.To)
+			c.aclass(pstate, &p.To)
 			o1 |= uint32(c.instoffset & 0xffffff)
 		}
 
 	case 11: /* word */
-		c.aclass(&p.To)
+		c.aclass(pstate, &p.To)
 
 		o1 = uint32(c.instoffset)
 		if p.To.Sym != nil {
@@ -1987,7 +1708,7 @@ func (c *ctxt5) asmout(p *obj.Prog, o *Optab, out []uint32) {
 		} else if p.As == AMVN {
 			o1 = c.omvr(p, &p.From, int(p.To.Reg))
 		} else {
-			o1 = c.omvl(p, &p.From, int(p.To.Reg))
+			o1 = c.omvl(pstate, p, &p.From, int(p.To.Reg))
 		}
 
 		if o.flag&LPCREL != 0 {
@@ -1998,7 +1719,7 @@ func (c *ctxt5) asmout(p *obj.Prog, o *Optab, out []uint32) {
 		if o.a1 == C_SCON {
 			o1 = c.omvs(p, &p.From, REGTMP)
 		} else {
-			o1 = c.omvl(p, &p.From, REGTMP)
+			o1 = c.omvl(pstate, p, &p.From, REGTMP)
 		}
 
 		if o1 == 0 {
@@ -2090,7 +1811,7 @@ func (c *ctxt5) asmout(p *obj.Prog, o *Optab, out []uint32) {
 		}
 
 	case 20: /* mov/movb/movbu R,O(R) */
-		c.aclass(&p.To)
+		c.aclass(pstate, &p.To)
 
 		r := int(p.To.Reg)
 		if r == 0 {
@@ -2099,7 +1820,7 @@ func (c *ctxt5) asmout(p *obj.Prog, o *Optab, out []uint32) {
 		o1 = c.osr(p.As, int(p.From.Reg), int32(c.instoffset), r, int(p.Scond))
 
 	case 21: /* mov/movbu O(R),R -> lr */
-		c.aclass(&p.From)
+		c.aclass(pstate, &p.From)
 
 		r := int(p.From.Reg)
 		if r == 0 {
@@ -2129,7 +1850,7 @@ func (c *ctxt5) asmout(p *obj.Prog, o *Optab, out []uint32) {
 	case 23: /* MOVW/MOVB/MOVH R@>i, R */
 		switch p.As {
 		case AMOVW:
-			o1 = c.mov(p)
+			o1 = c.mov(pstate, p)
 		case AMOVBU, AMOVBS, AMOVB, AMOVHU, AMOVHS, AMOVH:
 			o1 = c.movxt(p)
 		default:
@@ -2137,7 +1858,7 @@ func (c *ctxt5) asmout(p *obj.Prog, o *Optab, out []uint32) {
 		}
 
 	case 30: /* mov/movb/movbu R,L(R) */
-		o1 = c.omvl(p, &p.To, REGTMP)
+		o1 = c.omvl(pstate, p, &p.To, REGTMP)
 
 		if o1 == 0 {
 			break
@@ -2152,7 +1873,7 @@ func (c *ctxt5) asmout(p *obj.Prog, o *Optab, out []uint32) {
 		}
 
 	case 31: /* mov/movbu L(R),R -> lr[b] */
-		o1 = c.omvl(p, &p.From, REGTMP)
+		o1 = c.omvl(pstate, p, &p.From, REGTMP)
 
 		if o1 == 0 {
 			break
@@ -2167,7 +1888,7 @@ func (c *ctxt5) asmout(p *obj.Prog, o *Optab, out []uint32) {
 		}
 
 	case 34: /* mov $lacon,R */
-		o1 = c.omvl(p, &p.From, REGTMP)
+		o1 = c.omvl(pstate, p, &p.From, REGTMP)
 
 		if o1 == 0 {
 			break
@@ -2202,7 +1923,7 @@ func (c *ctxt5) asmout(p *obj.Prog, o *Optab, out []uint32) {
 		o1 |= (uint32(p.From.Reg) & 15) << 0
 
 	case 37: /* mov $con,PSR */
-		c.aclass(&p.From)
+		c.aclass(pstate, &p.From)
 
 		o1 = 2<<23 | 0x2cf<<12 | 0<<4
 		if p.Scond&C_FBIT != 0 {
@@ -2220,14 +1941,14 @@ func (c *ctxt5) asmout(p *obj.Prog, o *Optab, out []uint32) {
 
 			o1 |= uint32(p.From.Offset & 0xffff)
 			o1 |= (uint32(p.To.Reg) & 15) << 16
-			c.aclass(&p.To)
+			c.aclass(pstate, &p.To)
 
 		case 39: /* movm oreg,$con -> ldm */
 			o1 = 0x4<<25 | 1<<20
 
 			o1 |= uint32(p.To.Offset & 0xffff)
 			o1 |= (uint32(p.From.Reg) & 15) << 16
-			c.aclass(&p.From)
+			c.aclass(pstate, &p.From)
 		}
 
 		if c.instoffset != 0 {
@@ -2245,7 +1966,7 @@ func (c *ctxt5) asmout(p *obj.Prog, o *Optab, out []uint32) {
 		}
 
 	case 40: /* swp oreg,reg,reg */
-		c.aclass(&p.From)
+		c.aclass(pstate, &p.From)
 
 		if c.instoffset != 0 {
 			c.ctxt.Diag("offset must be zero in SWP")
@@ -2263,7 +1984,7 @@ func (c *ctxt5) asmout(p *obj.Prog, o *Optab, out []uint32) {
 		o1 = 0xe8fd8000
 
 	case 50: /* floating point store */
-		v := c.regoff(&p.To)
+		v := c.regoff(pstate, &p.To)
 
 		r := int(p.To.Reg)
 		if r == 0 {
@@ -2272,7 +1993,7 @@ func (c *ctxt5) asmout(p *obj.Prog, o *Optab, out []uint32) {
 		o1 = c.ofsr(p.As, int(p.From.Reg), v, r, int(p.Scond), p)
 
 	case 51: /* floating point load */
-		v := c.regoff(&p.From)
+		v := c.regoff(pstate, &p.From)
 
 		r := int(p.From.Reg)
 		if r == 0 {
@@ -2281,7 +2002,7 @@ func (c *ctxt5) asmout(p *obj.Prog, o *Optab, out []uint32) {
 		o1 = c.ofsr(p.As, int(p.To.Reg), v, r, int(p.Scond), p) | 1<<20
 
 	case 52: /* floating point store, int32 offset UGLY */
-		o1 = c.omvl(p, &p.To, REGTMP)
+		o1 = c.omvl(pstate, p, &p.To, REGTMP)
 
 		if o1 == 0 {
 			break
@@ -2294,7 +2015,7 @@ func (c *ctxt5) asmout(p *obj.Prog, o *Optab, out []uint32) {
 		o3 = c.ofsr(p.As, int(p.From.Reg), 0, REGTMP, int(p.Scond), p)
 
 	case 53: /* floating point load, int32 offset UGLY */
-		o1 = c.omvl(p, &p.From, REGTMP)
+		o1 = c.omvl(pstate, p, &p.From, REGTMP)
 
 		if o1 == 0 {
 			break
@@ -2413,9 +2134,9 @@ func (c *ctxt5) asmout(p *obj.Prog, o *Optab, out []uint32) {
 			o1 &^= 1 << 23
 		}
 
-		/* reloc ops */
+	/* reloc ops */
 	case 64: /* mov/movb/movbu R,addr */
-		o1 = c.omvl(p, &p.To, REGTMP)
+		o1 = c.omvl(pstate, p, &p.To, REGTMP)
 
 		if o1 == 0 {
 			break
@@ -2427,7 +2148,7 @@ func (c *ctxt5) asmout(p *obj.Prog, o *Optab, out []uint32) {
 		}
 
 	case 65: /* mov/movbu addr,R */
-		o1 = c.omvl(p, &p.From, REGTMP)
+		o1 = c.omvl(pstate, p, &p.From, REGTMP)
 
 		if o1 == 0 {
 			break
@@ -2442,10 +2163,10 @@ func (c *ctxt5) asmout(p *obj.Prog, o *Optab, out []uint32) {
 		}
 
 	case 101: /* movw tlsvar,R, local exec*/
-		o1 = c.omvl(p, &p.From, int(p.To.Reg))
+		o1 = c.omvl(pstate, p, &p.From, int(p.To.Reg))
 
 	case 102: /* movw tlsvar,R, initial exec*/
-		o1 = c.omvl(p, &p.From, int(p.To.Reg))
+		o1 = c.omvl(pstate, p, &p.From, int(p.To.Reg))
 		o2 = c.olrr(int(p.To.Reg)&15, (REGPC & 15), int(p.To.Reg), int(p.Scond))
 
 	case 103: /* word tlsvar, local exec */
@@ -2480,7 +2201,7 @@ func (c *ctxt5) asmout(p *obj.Prog, o *Optab, out []uint32) {
 		rel.Add = c.pc - p.Rel.Pc - 8 - int64(rel.Siz)
 
 	case 68: /* floating point store -> ADDR */
-		o1 = c.omvl(p, &p.To, REGTMP)
+		o1 = c.omvl(pstate, p, &p.To, REGTMP)
 
 		if o1 == 0 {
 			break
@@ -2492,7 +2213,7 @@ func (c *ctxt5) asmout(p *obj.Prog, o *Optab, out []uint32) {
 		}
 
 	case 69: /* floating point load <- ADDR */
-		o1 = c.omvl(p, &p.From, REGTMP)
+		o1 = c.omvl(pstate, p, &p.From, REGTMP)
 
 		if o1 == 0 {
 			break
@@ -2503,9 +2224,9 @@ func (c *ctxt5) asmout(p *obj.Prog, o *Optab, out []uint32) {
 			o2 = c.oprrr(p, AADD, int(p.Scond)) | REGTMP&15 | (REGPC&15)<<16 | (REGTMP&15)<<12
 		}
 
-		/* ArmV4 ops: */
+	/* ArmV4 ops: */
 	case 70: /* movh/movhu R,O(R) -> strh */
-		c.aclass(&p.To)
+		c.aclass(pstate, &p.To)
 
 		r := int(p.To.Reg)
 		if r == 0 {
@@ -2514,7 +2235,7 @@ func (c *ctxt5) asmout(p *obj.Prog, o *Optab, out []uint32) {
 		o1 = c.oshr(int(p.From.Reg), int32(c.instoffset), r, int(p.Scond))
 
 	case 71: /* movb/movh/movhu O(R),R -> ldrsb/ldrsh/ldrh */
-		c.aclass(&p.From)
+		c.aclass(pstate, &p.From)
 
 		r := int(p.From.Reg)
 		if r == 0 {
@@ -2528,7 +2249,7 @@ func (c *ctxt5) asmout(p *obj.Prog, o *Optab, out []uint32) {
 		}
 
 	case 72: /* movh/movhu R,L(R) -> strh */
-		o1 = c.omvl(p, &p.To, REGTMP)
+		o1 = c.omvl(pstate, p, &p.To, REGTMP)
 
 		if o1 == 0 {
 			break
@@ -2540,7 +2261,7 @@ func (c *ctxt5) asmout(p *obj.Prog, o *Optab, out []uint32) {
 		o2 = c.oshrr(int(p.From.Reg), REGTMP&15, r, int(p.Scond))
 
 	case 73: /* movb/movh/movhu L(R),R -> ldrsb/ldrsh/ldrh */
-		o1 = c.omvl(p, &p.From, REGTMP)
+		o1 = c.omvl(pstate, p, &p.From, REGTMP)
 
 		if o1 == 0 {
 			break
@@ -2560,7 +2281,7 @@ func (c *ctxt5) asmout(p *obj.Prog, o *Optab, out []uint32) {
 		c.ctxt.Diag("ABX $I")
 
 	case 75: /* bx O(R) */
-		c.aclass(&p.To)
+		c.aclass(pstate, &p.To)
 
 		if c.instoffset != 0 {
 			c.ctxt.Diag("non-zero offset in ABX")
@@ -2583,7 +2304,7 @@ func (c *ctxt5) asmout(p *obj.Prog, o *Optab, out []uint32) {
 		c.ctxt.Diag("ABXRET")
 
 	case 77: /* ldrex oreg,reg */
-		c.aclass(&p.From)
+		c.aclass(pstate, &p.From)
 
 		if c.instoffset != 0 {
 			c.ctxt.Diag("offset must be zero in LDREX")
@@ -2594,7 +2315,7 @@ func (c *ctxt5) asmout(p *obj.Prog, o *Optab, out []uint32) {
 		o1 |= ((uint32(p.Scond) & C_SCOND) ^ C_SCOND_XOR) << 28
 
 	case 78: /* strex reg,oreg,reg */
-		c.aclass(&p.From)
+		c.aclass(pstate, &p.From)
 
 		if c.instoffset != 0 {
 			c.ctxt.Diag("offset must be zero in STREX")
@@ -2637,7 +2358,7 @@ func (c *ctxt5) asmout(p *obj.Prog, o *Optab, out []uint32) {
 		}
 		o1 |= ((uint32(p.Scond) & C_SCOND) ^ C_SCOND_XOR) << 28
 		o1 |= (uint32(p.To.Reg) & 15) << 12
-		v := int32(c.chipfloat5(p.From.Val.(float64)))
+		v := int32(c.chipfloat5(pstate, p.From.Val.(float64)))
 		o1 |= (uint32(v) & 0xf) << 0
 		o1 |= (uint32(v) & 0xf0) << 12
 
@@ -2667,7 +2388,7 @@ func (c *ctxt5) asmout(p *obj.Prog, o *Optab, out []uint32) {
 		o1 |= (uint32(p.From.Reg) & 15) << 0
 		o1 |= (uint32(p.To.Reg) & 15) << 12
 
-		// macro for movfw freg,FTMP; movw FTMP,reg
+	// macro for movfw freg,FTMP; movw FTMP,reg
 	case 86: /* movfw freg,reg - truncate float-to-fix */
 		o1 = c.oprrr(p, p.As, int(p.Scond))
 
@@ -2677,7 +2398,7 @@ func (c *ctxt5) asmout(p *obj.Prog, o *Optab, out []uint32) {
 		o2 |= (FREGTMP & 15) << 16
 		o2 |= (uint32(p.To.Reg) & 15) << 12
 
-		// macro for movw reg,FTMP; movwf FTMP,freg
+	// macro for movw reg,FTMP; movwf FTMP,freg
 	case 87: /* movwf reg,freg - fix-to-float */
 		o1 = c.oprrr(p, -AMOVWF, int(p.Scond))
 
@@ -2700,7 +2421,7 @@ func (c *ctxt5) asmout(p *obj.Prog, o *Optab, out []uint32) {
 		o1 |= (uint32(p.To.Reg) & 15) << 12
 
 	case 91: /* ldrexd oreg,reg */
-		c.aclass(&p.From)
+		c.aclass(pstate, &p.From)
 
 		if c.instoffset != 0 {
 			c.ctxt.Diag("offset must be zero in LDREX")
@@ -2711,7 +2432,7 @@ func (c *ctxt5) asmout(p *obj.Prog, o *Optab, out []uint32) {
 		o1 |= ((uint32(p.Scond) & C_SCOND) ^ C_SCOND_XOR) << 28
 
 	case 92: /* strexd reg,oreg,reg */
-		c.aclass(&p.From)
+		c.aclass(pstate, &p.From)
 
 		if c.instoffset != 0 {
 			c.ctxt.Diag("offset must be zero in STREX")
@@ -2729,7 +2450,7 @@ func (c *ctxt5) asmout(p *obj.Prog, o *Optab, out []uint32) {
 		o1 |= ((uint32(p.Scond) & C_SCOND) ^ C_SCOND_XOR) << 28
 
 	case 93: /* movb/movh/movhu addr,R -> ldrsb/ldrsh/ldrh */
-		o1 = c.omvl(p, &p.From, REGTMP)
+		o1 = c.omvl(pstate, p, &p.From, REGTMP)
 
 		if o1 == 0 {
 			break
@@ -2746,7 +2467,7 @@ func (c *ctxt5) asmout(p *obj.Prog, o *Optab, out []uint32) {
 		}
 
 	case 94: /* movh/movhu R,addr -> strh */
-		o1 = c.omvl(p, &p.To, REGTMP)
+		o1 = c.omvl(pstate, p, &p.To, REGTMP)
 
 		if o1 == 0 {
 			break
@@ -2818,16 +2539,16 @@ func (c *ctxt5) asmout(p *obj.Prog, o *Optab, out []uint32) {
 		o1 = 0xf57ff050
 		mbop := uint32(0)
 
-		switch c.aclass(&p.From) {
+		switch c.aclass(pstate, &p.From) {
 		case C_SPR:
-			for _, f := range mbOp {
+			for _, f := range pstate.mbOp {
 				if f.reg == p.From.Reg {
 					mbop = f.enc
 					break
 				}
 			}
 		case C_RCON:
-			for _, f := range mbOp {
+			for _, f := range pstate.mbOp {
 				enc := uint32(c.instoffset)
 				if f.enc == enc {
 					mbop = enc
@@ -2877,8 +2598,8 @@ func (c *ctxt5) movxt(p *obj.Prog) uint32 {
 	return o1
 }
 
-func (c *ctxt5) mov(p *obj.Prog) uint32 {
-	c.aclass(&p.From)
+func (c *ctxt5) mov(pstate *PackageState, p *obj.Prog) uint32 {
+	c.aclass(pstate, &p.From)
 	o1 := c.oprrr(p, p.As, int(p.Scond))
 	o1 |= uint32(p.From.Offset)
 	rt := int(p.To.Reg)
@@ -3106,7 +2827,7 @@ func (c *ctxt5) oprrr(p *obj.Prog, a obj.As, sc int) uint32 {
 	case AXTAHU:
 		return o | 0x6f<<20 | 0x7<<4
 
-		// CLZ doesn't support .nil
+	// CLZ doesn't support .nil
 	case ACLZ:
 		return o&(0xf<<28) | 0x16f<<16 | 0xf1<<4
 
@@ -3341,10 +3062,10 @@ func (c *ctxt5) omvr(p *obj.Prog, a *obj.Addr, dr int) uint32 {
 	return o1
 }
 
-func (c *ctxt5) omvl(p *obj.Prog, a *obj.Addr, dr int) uint32 {
+func (c *ctxt5) omvl(pstate *PackageState, p *obj.Prog, a *obj.Addr, dr int) uint32 {
 	var o1 uint32
 	if p.Pcond == nil {
-		c.aclass(a)
+		c.aclass(pstate, a)
 		v := immrot(^uint32(c.instoffset))
 		if v == 0 {
 			c.ctxt.Diag("%v: missing literal", p)
@@ -3362,17 +3083,17 @@ func (c *ctxt5) omvl(p *obj.Prog, a *obj.Addr, dr int) uint32 {
 	return o1
 }
 
-func (c *ctxt5) chipzero5(e float64) int {
+func (c *ctxt5) chipzero5(pstate *PackageState, e float64) int {
 	// We use GOARM=7 to gate the use of VFPv3 vmov (imm) instructions.
-	if objabi.GOARM < 7 || math.Float64bits(e) != 0 {
+	if pstate.objabi.GOARM < 7 || math.Float64bits(e) != 0 {
 		return -1
 	}
 	return 0
 }
 
-func (c *ctxt5) chipfloat5(e float64) int {
+func (c *ctxt5) chipfloat5(pstate *PackageState, e float64) int {
 	// We use GOARM=7 to gate the use of VFPv3 vmov (imm) instructions.
-	if objabi.GOARM < 7 {
+	if pstate.objabi.GOARM < 7 {
 		return -1
 	}
 

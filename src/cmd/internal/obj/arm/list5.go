@@ -31,15 +31,15 @@
 package arm
 
 import (
-	"cmd/internal/obj"
 	"fmt"
+	"github.com/dave/golib/src/cmd/internal/obj"
 )
 
-func init() {
-	obj.RegisterRegister(obj.RBaseARM, MAXREG, rconv)
-	obj.RegisterOpcode(obj.ABaseARM, Anames)
-	obj.RegisterRegisterList(obj.RegListARMLo, obj.RegListARMHi, rlconv)
-	obj.RegisterOpSuffix("arm", obj.CConvARM)
+func (pstate *PackageState) init() {
+	pstate.obj.RegisterRegister(obj.RBaseARM, MAXREG, rconv)
+	pstate.obj.RegisterOpcode(obj.ABaseARM, pstate.Anames)
+	pstate.obj.RegisterRegisterList(obj.RegListARMLo, obj.RegListARMHi, rlconv)
+	pstate.obj.RegisterOpSuffix("arm", pstate.obj.CConvARM)
 }
 
 func rconv(r int) string {
@@ -91,10 +91,10 @@ func rconv(r int) string {
 	return fmt.Sprintf("Rgok(%d)", r-obj.RBaseARM)
 }
 
-func DRconv(a int) string {
+func (pstate *PackageState) DRconv(a int) string {
 	s := "C_??"
 	if a >= C_NONE && a <= C_NCLASS {
-		s = cnames5[a]
+		s = pstate.cnames5[a]
 	}
 	var fp string
 	fp += s

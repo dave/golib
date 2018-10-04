@@ -5,9 +5,9 @@
 package ld
 
 import (
-	"cmd/internal/objabi"
-	"cmd/internal/src"
-	"cmd/link/internal/sym"
+	"github.com/dave/golib/src/cmd/internal/objabi"
+	"github.com/dave/golib/src/cmd/internal/src"
+	"github.com/dave/golib/src/cmd/link/internal/sym"
 	"log"
 	"os"
 	"path/filepath"
@@ -112,20 +112,20 @@ func ftabaddstring(ctxt *Link, ftab *sym.Symbol, s string) int32 {
 }
 
 // numberfile assigns a file number to the file if it hasn't been assigned already.
-func numberfile(ctxt *Link, file *sym.Symbol) {
+func (pstate *PackageState) numberfile(ctxt *Link, file *sym.Symbol) {
 	if file.Type != sym.SFILEPATH {
 		ctxt.Filesyms = append(ctxt.Filesyms, file)
 		file.Value = int64(len(ctxt.Filesyms))
 		file.Type = sym.SFILEPATH
 		path := file.Name[len(src.FileSymPrefix):]
-		file.Name = expandGoroot(path)
+		file.Name = pstate.expandGoroot(path)
 	}
 }
 
-func renumberfiles(ctxt *Link, files []*sym.Symbol, d *sym.Pcdata) {
+func (pstate *PackageState) renumberfiles(ctxt *Link, files []*sym.Symbol, d *sym.Pcdata) {
 	// Give files numbers.
 	for _, f := range files {
-		numberfile(ctxt, f)
+		pstate.numberfile(ctxt, f)
 	}
 
 	newval := int32(-1)
@@ -187,19 +187,7 @@ func emitPcln(ctxt *Link, s *sym.Symbol) bool {
 	return true
 }
 
-// pclntab initializes the pclntab symbol with
-// runtime function and file name information.
-
-var pclntabZpcln sym.FuncInfo
-
-// These variables are used to initialize runtime.firstmoduledata, see symtab.go:symtab.
-var pclntabNfunc int32
-var pclntabFiletabOffset int32
-var pclntabPclntabOffset int32
-var pclntabFirstFunc *sym.Symbol
-var pclntabLastFunc *sym.Symbol
-
-func (ctxt *Link) pclntab() {
+func (ctxt *Link) pclntab(pstate *PackageState) {
 	funcdataBytes := int64(0)
 	ftab := ctxt.Syms.Lookup("runtime.pclntab", 0)
 	ftab.Type = sym.SPCLNTAB
@@ -226,13 +214,13 @@ func (ctxt *Link) pclntab() {
 		}
 	}
 
-	pclntabNfunc = nfunc
+	pstate.pclntabNfunc = nfunc
 	ftab.Grow(8 + int64(ctxt.Arch.PtrSize) + int64(nfunc)*2*int64(ctxt.Arch.PtrSize) + int64(ctxt.Arch.PtrSize) + 4)
 	ftab.SetUint32(ctxt.Arch, 0, 0xfffffffb)
 	ftab.SetUint8(ctxt.Arch, 6, uint8(ctxt.Arch.MinLC))
 	ftab.SetUint8(ctxt.Arch, 7, uint8(ctxt.Arch.PtrSize))
 	ftab.SetUint(ctxt.Arch, 8, uint64(nfunc))
-	pclntabPclntabOffset = int32(8 + ctxt.Arch.PtrSize)
+	pstate.pclntabPclntabOffset = int32(8 + ctxt.Arch.PtrSize)
 
 	funcnameoff := make(map[string]int32)
 	nameToOffset := func(name string) int32 {
@@ -253,11 +241,11 @@ func (ctxt *Link) pclntab() {
 		}
 		pcln := s.FuncInfo
 		if pcln == nil {
-			pcln = &pclntabZpcln
+			pcln = &pstate.pclntabZpcln
 		}
 
-		if pclntabFirstFunc == nil {
-			pclntabFirstFunc = s
+		if pstate.pclntabFirstFunc == nil {
+			pstate.pclntabFirstFunc = s
 		}
 
 		if len(pcln.InlTree) > 0 {
@@ -352,15 +340,15 @@ func (ctxt *Link) pclntab() {
 		}
 		off = int32(ftab.SetUint32(ctxt.Arch, int64(off), uint32(funcID)))
 
-		if pcln != &pclntabZpcln {
-			renumberfiles(ctxt, pcln.File, &pcln.Pcfile)
+		if pcln != &pstate.pclntabZpcln {
+			pstate.renumberfiles(ctxt, pcln.File, &pcln.Pcfile)
 			if false {
 				// Sanity check the new numbering
 				var it Pciter
 				for pciterinit(ctxt, &it, &pcln.Pcfile); it.done == 0; pciternext(&it) {
 					if it.value < 1 || it.value > int32(len(ctxt.Filesyms)) {
-						Errorf(s, "bad file number in pcfile: %d not in range [1, %d]\n", it.value, len(ctxt.Filesyms))
-						errorexit()
+						pstate.Errorf(s, "bad file number in pcfile: %d not in range [1, %d]\n", it.value, len(ctxt.Filesyms))
+						pstate.errorexit()
 					}
 				}
 			}
@@ -377,7 +365,7 @@ func (ctxt *Link) pclntab() {
 				// might overlap exactly so that only the innermost file
 				// appears in the Pcfile table. In that case, this assigns
 				// the outer file a number.
-				numberfile(ctxt, call.File)
+				pstate.numberfile(ctxt, call.File)
 				nameoff := nameToOffset(call.Func.Name)
 
 				inlTreeSym.SetUint32(ctxt.Arch, int64(i*16+0), uint32(call.Parent))
@@ -422,14 +410,14 @@ func (ctxt *Link) pclntab() {
 		}
 
 		if off != end {
-			Errorf(s, "bad math in functab: funcstart=%d off=%d but end=%d (npcdata=%d nfuncdata=%d ptrsize=%d)", funcstart, off, end, len(pcln.Pcdata), len(pcln.Funcdata), ctxt.Arch.PtrSize)
-			errorexit()
+			pstate.Errorf(s, "bad math in functab: funcstart=%d off=%d but end=%d (npcdata=%d nfuncdata=%d ptrsize=%d)", funcstart, off, end, len(pcln.Pcdata), len(pcln.Funcdata), ctxt.Arch.PtrSize)
+			pstate.errorexit()
 		}
 
 		nfunc++
 	}
 
-	pclntabLastFunc = last
+	pstate.pclntabLastFunc = last
 	// Final entry of table is just end pc.
 	ftab.SetAddrPlus(ctxt.Arch, 8+int64(ctxt.Arch.PtrSize)+int64(nfunc)*2*int64(ctxt.Arch.PtrSize), last, last.Size)
 
@@ -437,7 +425,7 @@ func (ctxt *Link) pclntab() {
 	start := int32(len(ftab.P))
 
 	start += int32(-len(ftab.P)) & (int32(ctxt.Arch.PtrSize) - 1)
-	pclntabFiletabOffset = start
+	pstate.pclntabFiletabOffset = start
 	ftab.SetUint32(ctxt.Arch, 8+int64(ctxt.Arch.PtrSize)+int64(nfunc)*2*int64(ctxt.Arch.PtrSize)+int64(ctxt.Arch.PtrSize), uint32(start))
 
 	ftab.Grow(int64(start) + (int64(len(ctxt.Filesyms))+1)*4)
@@ -450,22 +438,22 @@ func (ctxt *Link) pclntab() {
 	ftab.Size = int64(len(ftab.P))
 
 	if ctxt.Debugvlog != 0 {
-		ctxt.Logf("%5.2f pclntab=%d bytes, funcdata total %d bytes\n", Cputime(), ftab.Size, funcdataBytes)
+		ctxt.Logf("%5.2f pclntab=%d bytes, funcdata total %d bytes\n", pstate.Cputime(), ftab.Size, funcdataBytes)
 	}
 }
 
-func gorootFinal() string {
-	root := objabi.GOROOT
+func (pstate *PackageState) gorootFinal() string {
+	root := pstate.objabi.GOROOT
 	if final := os.Getenv("GOROOT_FINAL"); final != "" {
 		root = final
 	}
 	return root
 }
 
-func expandGoroot(s string) string {
+func (pstate *PackageState) expandGoroot(s string) string {
 	const n = len("$GOROOT")
 	if len(s) >= n+1 && s[:n] == "$GOROOT" && (s[n] == '/' || s[n] == '\\') {
-		return filepath.ToSlash(filepath.Join(gorootFinal(), s[n:]))
+		return filepath.ToSlash(filepath.Join(pstate.gorootFinal(), s[n:]))
 	}
 	return s
 }
@@ -479,7 +467,7 @@ const (
 
 // findfunctab generates a lookup table to quickly find the containing
 // function for a pc. See src/runtime/symtab.go:findfunc for details.
-func (ctxt *Link) findfunctab() {
+func (ctxt *Link) findfunctab(pstate *PackageState) {
 	t := ctxt.Syms.Lookup("runtime.findfunctab", 0)
 	t.Type = sym.SRODATA
 	t.Attr |= sym.AttrReachable
@@ -544,16 +532,16 @@ func (ctxt *Link) findfunctab() {
 	for i := int32(0); i < nbuckets; i++ {
 		base := indexes[i*SUBBUCKETS]
 		if base == NOIDX {
-			Errorf(nil, "hole in findfunctab")
+			pstate.Errorf(nil, "hole in findfunctab")
 		}
 		t.SetUint32(ctxt.Arch, int64(i)*(4+SUBBUCKETS), uint32(base))
 		for j := int32(0); j < SUBBUCKETS && i*SUBBUCKETS+j < n; j++ {
 			idx = indexes[i*SUBBUCKETS+j]
 			if idx == NOIDX {
-				Errorf(nil, "hole in findfunctab")
+				pstate.Errorf(nil, "hole in findfunctab")
 			}
 			if idx-base >= 256 {
-				Errorf(nil, "too many functions in a findfunc bucket! %d/%d %d %d", i, nbuckets, j, idx-base)
+				pstate.Errorf(nil, "too many functions in a findfunc bucket! %d/%d %d %d", i, nbuckets, j, idx-base)
 			}
 
 			t.SetUint8(ctxt.Arch, int64(i)*(4+SUBBUCKETS)+4+int64(j), uint8(idx-base))

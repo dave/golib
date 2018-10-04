@@ -5,10 +5,10 @@
 package sym
 
 import (
-	"cmd/internal/objabi"
-	"cmd/internal/sys"
 	"debug/elf"
 	"fmt"
+	"github.com/dave/golib/src/cmd/internal/objabi"
+	"github.com/dave/golib/src/cmd/internal/sys"
 	"log"
 )
 

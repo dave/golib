@@ -5,8 +5,8 @@
 package ld
 
 import (
-	"cmd/internal/objabi"
-	"cmd/link/internal/sym"
+	"github.com/dave/golib/src/cmd/internal/objabi"
+	"github.com/dave/golib/src/cmd/link/internal/sym"
 	"sort"
 )
 

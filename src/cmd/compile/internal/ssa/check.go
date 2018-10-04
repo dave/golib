@@ -9,7 +9,7 @@ import (
 )
 
 // checkFunc checks invariants of f.
-func checkFunc(f *Func) {
+func (pstate *PackageState) checkFunc(f *Func) {
 	blockMark := make([]bool, f.NumBlocks())
 	valueMark := make([]bool, f.NumValues())
 
@@ -41,8 +41,8 @@ func checkFunc(f *Func) {
 			if b.Control == nil {
 				f.Fatalf("exit block %s has no control value", b)
 			}
-			if !b.Control.Type.IsMemory() {
-				f.Fatalf("exit block %s has non-memory control value %s", b, b.Control.LongString())
+			if !b.Control.Type.IsMemory(pstate.types) {
+				f.Fatalf("exit block %s has non-memory control value %s", b, b.Control.LongString(pstate))
 			}
 		case BlockRet:
 			if len(b.Succs) != 0 {
@@ -51,8 +51,8 @@ func checkFunc(f *Func) {
 			if b.Control == nil {
 				f.Fatalf("ret block %s has nil control", b)
 			}
-			if !b.Control.Type.IsMemory() {
-				f.Fatalf("ret block %s has non-memory control value %s", b, b.Control.LongString())
+			if !b.Control.Type.IsMemory(pstate.types) {
+				f.Fatalf("ret block %s has non-memory control value %s", b, b.Control.LongString(pstate))
 			}
 		case BlockRetJmp:
 			if len(b.Succs) != 0 {
@@ -61,8 +61,8 @@ func checkFunc(f *Func) {
 			if b.Control == nil {
 				f.Fatalf("retjmp block %s has nil control", b)
 			}
-			if !b.Control.Type.IsMemory() {
-				f.Fatalf("retjmp block %s has non-memory control value %s", b, b.Control.LongString())
+			if !b.Control.Type.IsMemory(pstate.types) {
+				f.Fatalf("retjmp block %s has non-memory control value %s", b, b.Control.LongString(pstate))
 			}
 			if b.Aux == nil {
 				f.Fatalf("retjmp block %s has nil Aux field", b)
@@ -72,7 +72,7 @@ func checkFunc(f *Func) {
 				f.Fatalf("plain block %s len(Succs)==%d, want 1", b, len(b.Succs))
 			}
 			if b.Control != nil {
-				f.Fatalf("plain block %s has non-nil control %s", b, b.Control.LongString())
+				f.Fatalf("plain block %s has non-nil control %s", b, b.Control.LongString(pstate))
 			}
 		case BlockIf:
 			if len(b.Succs) != 2 {
@@ -82,7 +82,7 @@ func checkFunc(f *Func) {
 				f.Fatalf("if block %s has no control value", b)
 			}
 			if !b.Control.Type.IsBoolean() {
-				f.Fatalf("if block %s has non-bool control value %s", b, b.Control.LongString())
+				f.Fatalf("if block %s has non-bool control value %s", b, b.Control.LongString(pstate))
 			}
 		case BlockDefer:
 			if len(b.Succs) != 2 {
@@ -91,8 +91,8 @@ func checkFunc(f *Func) {
 			if b.Control == nil {
 				f.Fatalf("defer block %s has no control value", b)
 			}
-			if !b.Control.Type.IsMemory() {
-				f.Fatalf("defer block %s has non-memory control value %s", b, b.Control.LongString())
+			if !b.Control.Type.IsMemory(pstate.types) {
+				f.Fatalf("defer block %s has non-memory control value %s", b, b.Control.LongString(pstate))
 			}
 		case BlockFirst:
 			if len(b.Succs) != 2 {
@@ -109,16 +109,16 @@ func checkFunc(f *Func) {
 		for _, v := range b.Values {
 			// Check to make sure argument count makes sense (argLen of -1 indicates
 			// variable length args)
-			nArgs := opcodeTable[v.Op].argLen
+			nArgs := pstate.opcodeTable[v.Op].argLen
 			if nArgs != -1 && int32(len(v.Args)) != nArgs {
-				f.Fatalf("value %s has %d args, expected %d", v.LongString(),
+				f.Fatalf("value %s has %d args, expected %d", v.LongString(pstate),
 					len(v.Args), nArgs)
 			}
 
 			// Check to make sure aux values make sense.
 			canHaveAux := false
 			canHaveAuxInt := false
-			switch opcodeTable[v.Op].auxType {
+			switch pstate.opcodeTable[v.Op].auxType {
 			case auxNone:
 			case auxBool:
 				if v.AuxInt < 0 || v.AuxInt > 1 {
@@ -143,10 +143,10 @@ func checkFunc(f *Func) {
 			case auxInt64, auxFloat64:
 				canHaveAuxInt = true
 			case auxInt128:
-				// AuxInt must be zero, so leave canHaveAuxInt set to false.
+			// AuxInt must be zero, so leave canHaveAuxInt set to false.
 			case auxFloat32:
 				canHaveAuxInt = true
-				if !isExactFloat32(v) {
+				if !pstate.isExactFloat32(v) {
 					f.Fatalf("value %v has an AuxInt value that is not an exact float32", v)
 				}
 			case auxString, auxSym, auxTyp:
@@ -169,26 +169,26 @@ func checkFunc(f *Func) {
 				f.Fatalf("unknown aux type for %s", v.Op)
 			}
 			if !canHaveAux && v.Aux != nil {
-				f.Fatalf("value %s has an Aux value %v but shouldn't", v.LongString(), v.Aux)
+				f.Fatalf("value %s has an Aux value %v but shouldn't", v.LongString(pstate), v.Aux)
 			}
 			if !canHaveAuxInt && v.AuxInt != 0 {
-				f.Fatalf("value %s has an AuxInt value %d but shouldn't", v.LongString(), v.AuxInt)
+				f.Fatalf("value %s has an AuxInt value %d but shouldn't", v.LongString(pstate), v.AuxInt)
 			}
 
 			for i, arg := range v.Args {
 				if arg == nil {
-					f.Fatalf("value %s has nil arg", v.LongString())
+					f.Fatalf("value %s has nil arg", v.LongString(pstate))
 				}
 				if v.Op != OpPhi {
 					// For non-Phi ops, memory args must be last, if present
-					if arg.Type.IsMemory() && i != len(v.Args)-1 {
-						f.Fatalf("value %s has non-final memory arg (%d < %d)", v.LongString(), i, len(v.Args)-1)
+					if arg.Type.IsMemory(pstate.types) && i != len(v.Args)-1 {
+						f.Fatalf("value %s has non-final memory arg (%d < %d)", v.LongString(pstate), i, len(v.Args)-1)
 					}
 				}
 			}
 
 			if valueMark[v.ID] {
-				f.Fatalf("value %s appears twice!", v.LongString())
+				f.Fatalf("value %s appears twice!", v.LongString(pstate))
 			}
 			valueMark[v.ID] = true
 
@@ -196,12 +196,12 @@ func checkFunc(f *Func) {
 				f.Fatalf("%s.block != %s", v, b)
 			}
 			if v.Op == OpPhi && len(v.Args) != len(b.Preds) {
-				f.Fatalf("phi length %s does not match pred length %d for block %s", v.LongString(), len(b.Preds), b)
+				f.Fatalf("phi length %s does not match pred length %d for block %s", v.LongString(pstate), len(b.Preds), b)
 			}
 
 			if v.Op == OpAddr {
 				if len(v.Args) == 0 {
-					f.Fatalf("no args for OpAddr %s", v.LongString())
+					f.Fatalf("no args for OpAddr %s", v.LongString(pstate))
 				}
 				if v.Args[0].Op != OpSP && v.Args[0].Op != OpSB {
 					f.Fatalf("bad arg to OpAddr %v", v)
@@ -209,7 +209,7 @@ func checkFunc(f *Func) {
 			}
 
 			if f.RegAlloc != nil && f.Config.SoftFloat && v.Type.IsFloat() {
-				f.Fatalf("unexpected floating-point type %v", v.LongString())
+				f.Fatalf("unexpected floating-point type %v", v.LongString(pstate))
 			}
 
 			// Check types.
@@ -218,7 +218,7 @@ func checkFunc(f *Func) {
 			case OpSP, OpSB:
 				if v.Type != c.Types.Uintptr {
 					f.Fatalf("bad %s type: want uintptr, have %s",
-						v.Op, v.Type.String())
+						v.Op, v.Type.String(pstate.types))
 				}
 			}
 
@@ -252,7 +252,7 @@ func checkFunc(f *Func) {
 		for _, v := range b.Values {
 			for i, a := range v.Args {
 				if !valueMark[a.ID] {
-					f.Fatalf("%v, arg %d of %s, is missing", a, i, v.LongString())
+					f.Fatalf("%v, arg %d of %s, is missing", a, i, v.LongString(pstate))
 				}
 			}
 		}
@@ -285,7 +285,7 @@ func checkFunc(f *Func) {
 						y = b.Preds[i].b
 					}
 					if !domCheck(f, sdom, x, y) {
-						f.Fatalf("arg %d of value %s does not dominate, arg=%s", i, v.LongString(), arg.LongString())
+						f.Fatalf("arg %d of value %s does not dominate, arg=%s", i, v.LongString(pstate), arg.LongString(pstate))
 					}
 				}
 			}
@@ -297,7 +297,7 @@ func checkFunc(f *Func) {
 
 	// Check loop construction
 	if f.RegAlloc == nil && f.pass != nil { // non-nil pass allows better-targeted debug printing
-		ln := f.loopnest()
+		ln := f.loopnest(pstate)
 		if !ln.hasIrreducible {
 			po := f.postorder() // use po to avoid unreachable blocks.
 			for _, b := range po {
@@ -334,15 +334,15 @@ func checkFunc(f *Func) {
 		}
 	}
 
-	memCheck(f)
+	pstate.memCheck(f)
 }
 
-func memCheck(f *Func) {
+func (pstate *PackageState) memCheck(f *Func) {
 	// Check that if a tuple has a memory type, it is second.
 	for _, b := range f.Blocks {
 		for _, v := range b.Values {
-			if v.Type.IsTuple() && v.Type.FieldType(0).IsMemory() {
-				f.Fatalf("memory is first in a tuple: %s\n", v.LongString())
+			if v.Type.IsTuple() && v.Type.FieldType(pstate.types, 0).IsMemory(pstate.types) {
+				f.Fatalf("memory is first in a tuple: %s\n", v.LongString(pstate))
 			}
 		}
 	}
@@ -354,7 +354,7 @@ func memCheck(f *Func) {
 	// For the same reason, disable this check if some memory ops are unused.
 	for _, b := range f.Blocks {
 		for _, v := range b.Values {
-			if (v.Op == OpCopy || v.Uses == 0) && v.Type.IsMemory() {
+			if (v.Op == OpCopy || v.Uses == 0) && v.Type.IsMemory(pstate.types) {
 				return
 			}
 		}
@@ -371,16 +371,16 @@ func memCheck(f *Func) {
 		// ops that generate memory values.
 		ss.clear()
 		for _, v := range b.Values {
-			if v.Op == OpPhi || !v.Type.IsMemory() {
+			if v.Op == OpPhi || !v.Type.IsMemory(pstate.types) {
 				continue
 			}
-			if m := v.MemoryArg(); m != nil {
+			if m := v.MemoryArg(pstate); m != nil {
 				ss.add(m.ID)
 			}
 		}
 		// There should be at most one remaining unoverwritten memory value.
 		for _, v := range b.Values {
-			if !v.Type.IsMemory() {
+			if !v.Type.IsMemory(pstate.types) {
 				continue
 			}
 			if ss.contains(v.ID) {
@@ -398,7 +398,7 @@ func memCheck(f *Func) {
 				if v.Op == OpPhi {
 					continue
 				}
-				m := v.MemoryArg()
+				m := v.MemoryArg(pstate)
 				if m == nil {
 					continue
 				}
@@ -432,10 +432,10 @@ func memCheck(f *Func) {
 	// Check merge points.
 	for _, b := range f.Blocks {
 		for _, v := range b.Values {
-			if v.Op == OpPhi && v.Type.IsMemory() {
+			if v.Op == OpPhi && v.Type.IsMemory(pstate.types) {
 				for i, a := range v.Args {
 					if a != lastmem[b.Preds[i].b.ID] {
-						f.Fatalf("inconsistent memory phi %s %d %s %s", v.LongString(), i, a, lastmem[b.Preds[i].b.ID])
+						f.Fatalf("inconsistent memory phi %s %d %s %s", v.LongString(pstate), i, a, lastmem[b.Preds[i].b.ID])
 					}
 				}
 			}
@@ -448,7 +448,7 @@ func memCheck(f *Func) {
 			var mem *Value // the current live memory in the block
 			for _, v := range b.Values {
 				if v.Op == OpPhi {
-					if v.Type.IsMemory() {
+					if v.Type.IsMemory(pstate.types) {
 						mem = v
 					}
 					continue
@@ -458,11 +458,11 @@ func memCheck(f *Func) {
 					mem = lastmem[b.Preds[0].b.ID]
 				}
 				for _, a := range v.Args {
-					if a.Type.IsMemory() && a != mem {
+					if a.Type.IsMemory(pstate.types) && a != mem {
 						f.Fatalf("two live mems @ %s: %s and %s", v, mem, a)
 					}
 				}
-				if v.Type.IsMemory() {
+				if v.Type.IsMemory(pstate.types) {
 					mem = v
 				}
 			}
@@ -497,7 +497,7 @@ func domCheck(f *Func, sdom SparseTree, x, y *Block) bool {
 }
 
 // isExactFloat32 reports whether v has an AuxInt that can be exactly represented as a float32.
-func isExactFloat32(v *Value) bool {
-	x := v.AuxFloat()
+func (pstate *PackageState) isExactFloat32(v *Value) bool {
+	x := v.AuxFloat(pstate)
 	return math.Float64bits(x) == math.Float64bits(float64(float32(x)))
 }

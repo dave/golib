@@ -17,11 +17,11 @@ package ssa
 //
 // where the intermediate blocks are mostly empty (with no side-effects);
 // rewrite Phis in the postdominator as CondSelects.
-func branchelim(f *Func) {
+func (pstate *PackageState) branchelim(f *Func) {
 	// FIXME: add support for lowering CondSelects on more architectures
 	switch f.Config.arch {
 	case "arm64", "amd64":
-		// implemented
+	// implemented
 	default:
 		return
 	}
@@ -30,20 +30,20 @@ func branchelim(f *Func) {
 	for change {
 		change = false
 		for _, b := range f.Blocks {
-			change = elimIf(f, b) || elimIfElse(f, b) || change
+			change = pstate.elimIf(f, b) || pstate.elimIfElse(f, b) || change
 		}
 	}
 }
 
-func canCondSelect(v *Value, arch string) bool {
+func (pstate *PackageState) canCondSelect(v *Value, arch string) bool {
 	// For now, stick to simple scalars that fit in registers
 	switch {
-	case v.Type.Size() > v.Block.Func.Config.RegSize:
+	case v.Type.Size(pstate.types) > v.Block.Func.Config.RegSize:
 		return false
 	case v.Type.IsPtrShaped():
 		return true
 	case v.Type.IsInteger():
-		if arch == "amd64" && v.Type.Size() < 2 {
+		if arch == "amd64" && v.Type.Size(pstate.types) < 2 {
 			// amd64 doesn't support CMOV with byte registers
 			return false
 		}
@@ -53,7 +53,7 @@ func canCondSelect(v *Value, arch string) bool {
 	}
 }
 
-func elimIf(f *Func, dom *Block) bool {
+func (pstate *PackageState) elimIf(f *Func, dom *Block) bool {
 	// See if dom is an If with one arm that
 	// is trivial and succeeded by the other
 	// successor of dom.
@@ -83,7 +83,7 @@ func elimIf(f *Func, dom *Block) bool {
 	for _, v := range post.Values {
 		if v.Op == OpPhi {
 			hasphis = true
-			if !canCondSelect(v, f.Config.arch) {
+			if !pstate.canCondSelect(v, f.Config.arch) {
 				return false
 			}
 		}
@@ -98,7 +98,7 @@ func elimIf(f *Func, dom *Block) bool {
 	// the number of useless instructions executed.
 	const maxfuseinsts = 2
 
-	if len(simple.Values) > maxfuseinsts || !allTrivial(simple) {
+	if len(simple.Values) > maxfuseinsts || !pstate.allTrivial(simple) {
 		return false
 	}
 
@@ -158,7 +158,7 @@ func clobberBlock(b *Block) {
 	b.Kind = BlockInvalid
 }
 
-func elimIfElse(f *Func, b *Block) bool {
+func (pstate *PackageState) elimIfElse(f *Func, b *Block) bool {
 	// See if 'b' ends in an if/else: it should
 	// have two successors, both of which are BlockPlain
 	// and succeeded by the same block.
@@ -166,10 +166,10 @@ func elimIfElse(f *Func, b *Block) bool {
 		return false
 	}
 	yes, no := b.Succs[0].Block(), b.Succs[1].Block()
-	if !isLeafPlain(yes) || len(yes.Values) > 1 || !allTrivial(yes) {
+	if !isLeafPlain(yes) || len(yes.Values) > 1 || !pstate.allTrivial(yes) {
 		return false
 	}
-	if !isLeafPlain(no) || len(no.Values) > 1 || !allTrivial(no) {
+	if !isLeafPlain(no) || len(no.Values) > 1 || !pstate.allTrivial(no) {
 		return false
 	}
 	if b.Succs[0].Block().Succs[0].Block() != b.Succs[1].Block().Succs[0].Block() {
@@ -184,7 +184,7 @@ func elimIfElse(f *Func, b *Block) bool {
 	for _, v := range post.Values {
 		if v.Op == OpPhi {
 			hasphis = true
-			if !canCondSelect(v, f.Config.arch) {
+			if !pstate.canCondSelect(v, f.Config.arch) {
 				return false
 			}
 		}
@@ -276,12 +276,12 @@ func shouldElimIfElse(no, yes, post *Block, arch string) bool {
 	}
 }
 
-func allTrivial(b *Block) bool {
+func (pstate *PackageState) allTrivial(b *Block) bool {
 	// don't fuse memory ops, Phi ops, divides (can panic),
 	// or anything else with side-effects
 	for _, v := range b.Values {
-		if v.Op == OpPhi || isDivMod(v.Op) || v.Type.IsMemory() ||
-			v.MemoryArg() != nil || opcodeTable[v.Op].hasSideEffects {
+		if v.Op == OpPhi || isDivMod(v.Op) || v.Type.IsMemory(pstate.types) ||
+			v.MemoryArg(pstate) != nil || pstate.opcodeTable[v.Op].hasSideEffects {
 			return false
 		}
 	}

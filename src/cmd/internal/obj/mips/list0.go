@@ -30,13 +30,13 @@
 package mips
 
 import (
-	"cmd/internal/obj"
 	"fmt"
+	"github.com/dave/golib/src/cmd/internal/obj"
 )
 
-func init() {
-	obj.RegisterRegister(obj.RBaseMIPS, REG_LAST+1, rconv)
-	obj.RegisterOpcode(obj.ABaseMIPS, Anames)
+func (pstate *PackageState) init() {
+	pstate.obj.RegisterRegister(obj.RBaseMIPS, REG_LAST+1, rconv)
+	pstate.obj.RegisterOpcode(obj.ABaseMIPS, pstate.Anames)
 }
 
 func rconv(r int) string {
@@ -69,10 +69,10 @@ func rconv(r int) string {
 	return fmt.Sprintf("Rgok(%d)", r-obj.RBaseMIPS)
 }
 
-func DRconv(a int) string {
+func (pstate *PackageState) DRconv(a int) string {
 	s := "C_??"
 	if a >= C_NONE && a <= C_NCLASS {
-		s = cnames0[a]
+		s = pstate.cnames0[a]
 	}
 	var fp string
 	fp += s

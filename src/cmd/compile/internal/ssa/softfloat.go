@@ -6,7 +6,7 @@ package ssa
 
 import "math"
 
-func softfloat(f *Func) {
+func (pstate *PackageState) softfloat(f *Func) {
 	if !f.Config.SoftFloat {
 		return
 	}
@@ -17,7 +17,7 @@ func softfloat(f *Func) {
 			if v.Type.IsFloat() {
 				switch v.Op {
 				case OpPhi, OpLoad, OpArg:
-					if v.Type.Size() == 4 {
+					if v.Type.Size(pstate.types) == 4 {
 						v.Type = f.Config.Types.UInt32
 					} else {
 						v.Type = f.Config.Types.UInt64
@@ -52,15 +52,15 @@ func softfloat(f *Func) {
 					v.Op = OpCopy
 					v.Type = f.Config.Types.UInt64
 				}
-				newInt64 = newInt64 || v.Type.Size() == 8
+				newInt64 = newInt64 || v.Type.Size(pstate.types) == 8
 			}
 		}
 	}
 
 	if newInt64 && f.Config.RegSize == 4 {
 		// On 32bit arch, decompose Uint64 introduced in the switch above.
-		decomposeBuiltIn(f)
-		applyRewrite(f, rewriteBlockdec64, rewriteValuedec64)
+		pstate.decomposeBuiltIn(f)
+		pstate.applyRewrite(f, rewriteBlockdec64, pstate.rewriteValuedec64)
 	}
 
 }

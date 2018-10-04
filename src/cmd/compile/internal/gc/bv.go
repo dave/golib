@@ -27,11 +27,11 @@ type bulkBvec struct {
 	nword int32
 }
 
-func bvbulkalloc(nbit int32, count int32) bulkBvec {
+func (pstate *PackageState) bvbulkalloc(nbit int32, count int32) bulkBvec {
 	nword := (nbit + wordBits - 1) / wordBits
 	size := int64(nword) * int64(count)
 	if int64(int32(size*4)) != size*4 {
-		Fatalf("bvbulkalloc too big: nbit=%d count=%d nword=%d size=%d", nbit, count, nword, size)
+		pstate.Fatalf("bvbulkalloc too big: nbit=%d count=%d nword=%d size=%d", nbit, count, nword, size)
 	}
 	return bulkBvec{
 		words: make([]uint32, size),
@@ -46,9 +46,9 @@ func (b *bulkBvec) next() bvec {
 	return out
 }
 
-func (bv1 bvec) Eq(bv2 bvec) bool {
+func (bv1 bvec) Eq(pstate *PackageState, bv2 bvec) bool {
 	if bv1.n != bv2.n {
-		Fatalf("bvequal: lengths %d and %d are not equal", bv1.n, bv2.n)
+		pstate.Fatalf("bvequal: lengths %d and %d are not equal", bv1.n, bv2.n)
 	}
 	for i, x := range bv1.b {
 		if x != bv2.b[i] {
@@ -62,25 +62,25 @@ func (dst bvec) Copy(src bvec) {
 	copy(dst.b, src.b)
 }
 
-func (bv bvec) Get(i int32) bool {
+func (bv bvec) Get(pstate *PackageState, i int32) bool {
 	if i < 0 || i >= bv.n {
-		Fatalf("bvget: index %d is out of bounds with length %d\n", i, bv.n)
+		pstate.Fatalf("bvget: index %d is out of bounds with length %d\n", i, bv.n)
 	}
 	mask := uint32(1 << uint(i%wordBits))
 	return bv.b[i>>wordShift]&mask != 0
 }
 
-func (bv bvec) Set(i int32) {
+func (bv bvec) Set(pstate *PackageState, i int32) {
 	if i < 0 || i >= bv.n {
-		Fatalf("bvset: index %d is out of bounds with length %d\n", i, bv.n)
+		pstate.Fatalf("bvset: index %d is out of bounds with length %d\n", i, bv.n)
 	}
 	mask := uint32(1 << uint(i%wordBits))
 	bv.b[i/wordBits] |= mask
 }
 
-func (bv bvec) Unset(i int32) {
+func (bv bvec) Unset(pstate *PackageState, i int32) {
 	if i < 0 || i >= bv.n {
-		Fatalf("bvunset: index %d is out of bounds with length %d\n", i, bv.n)
+		pstate.Fatalf("bvunset: index %d is out of bounds with length %d\n", i, bv.n)
 	}
 	mask := uint32(1 << uint(i%wordBits))
 	bv.b[i/wordBits] &^= mask
@@ -183,12 +183,12 @@ func (dst bvec) AndNot(src1, src2 bvec) {
 	}
 }
 
-func (bv bvec) String() string {
+func (bv bvec) String(pstate *PackageState) string {
 	s := make([]byte, 2+bv.n)
 	copy(s, "#*")
 	for i := int32(0); i < bv.n; i++ {
 		ch := byte('0')
-		if bv.Get(i) {
+		if bv.Get(pstate, i) {
 			ch = '1'
 		}
 		s[2+i] = ch
@@ -269,7 +269,7 @@ func (m *bvecSet) grow() {
 
 // add adds bv to the set and returns its index in m.extractUniqe.
 // The caller must not modify bv after this.
-func (m *bvecSet) add(bv bvec) int {
+func (m *bvecSet) add(pstate *PackageState, bv bvec) int {
 	if len(m.uniq)*4 >= len(m.index) {
 		m.grow()
 	}
@@ -285,7 +285,7 @@ func (m *bvecSet) add(bv bvec) int {
 			return len(m.uniq) - 1
 		}
 		jlive := m.uniq[j]
-		if bv.Eq(jlive) {
+		if bv.Eq(pstate, jlive) {
 			// Existing bvec.
 			return j
 		}

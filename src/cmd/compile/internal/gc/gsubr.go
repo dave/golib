@@ -31,14 +31,12 @@
 package gc
 
 import (
-	"cmd/compile/internal/ssa"
-	"cmd/compile/internal/types"
-	"cmd/internal/obj"
-	"cmd/internal/objabi"
-	"cmd/internal/src"
+	"github.com/dave/golib/src/cmd/compile/internal/ssa"
+	"github.com/dave/golib/src/cmd/compile/internal/types"
+	"github.com/dave/golib/src/cmd/internal/obj"
+	"github.com/dave/golib/src/cmd/internal/objabi"
+	"github.com/dave/golib/src/cmd/internal/src"
 )
-
-var sharedProgArray = new([10000]obj.Prog) // *T instead of T to work around issue 19839
 
 // Progs accumulates Progs for a function and converts them into machine code.
 type Progs struct {
@@ -56,26 +54,26 @@ type Progs struct {
 
 // newProgs returns a new Progs for fn.
 // worker indicates which of the backend workers will use the Progs.
-func newProgs(fn *Node, worker int) *Progs {
+func (pstate *PackageState) newProgs(fn *Node, worker int) *Progs {
 	pp := new(Progs)
-	if Ctxt.CanReuseProgs() {
-		sz := len(sharedProgArray) / nBackendWorkers
-		pp.progcache = sharedProgArray[sz*worker : sz*(worker+1)]
+	if pstate.Ctxt.CanReuseProgs() {
+		sz := len(pstate.sharedProgArray) / pstate.nBackendWorkers
+		pp.progcache = pstate.sharedProgArray[sz*worker : sz*(worker+1)]
 	}
 	pp.curfn = fn
 
 	// prime the pump
-	pp.next = pp.NewProg()
+	pp.next = pp.NewProg(pstate)
 	pp.clearp(pp.next)
 
 	pp.pos = fn.Pos
-	pp.settext(fn)
-	pp.nextLive = LivenessInvalid
-	pp.prevLive = LivenessInvalid
+	pp.settext(pstate, fn)
+	pp.nextLive = pstate.LivenessInvalid
+	pp.prevLive = pstate.LivenessInvalid
 	return pp
 }
 
-func (pp *Progs) NewProg() *obj.Prog {
+func (pp *Progs) NewProg(pstate *PackageState) *obj.Prog {
 	var p *obj.Prog
 	if pp.cacheidx < len(pp.progcache) {
 		p = &pp.progcache[pp.cacheidx]
@@ -83,19 +81,19 @@ func (pp *Progs) NewProg() *obj.Prog {
 	} else {
 		p = new(obj.Prog)
 	}
-	p.Ctxt = Ctxt
+	p.Ctxt = pstate.Ctxt
 	return p
 }
 
 // Flush converts from pp to machine code.
-func (pp *Progs) Flush() {
+func (pp *Progs) Flush(pstate *PackageState) {
 	plist := &obj.Plist{Firstpc: pp.Text, Curfn: pp.curfn}
-	obj.Flushplist(Ctxt, plist, pp.NewProg, myimportpath)
+	pstate.obj.Flushplist(pstate.Ctxt, plist, pp.NewProg, pstate.myimportpath)
 }
 
 // Free clears pp and any associated resources.
-func (pp *Progs) Free() {
-	if Ctxt.CanReuseProgs() {
+func (pp *Progs) Free(pstate *PackageState) {
+	if pstate.Ctxt.CanReuseProgs() {
 		// Clear progs to enable GC and avoid abuse.
 		s := pp.progcache[:pp.cacheidx]
 		for i := range s {
@@ -107,12 +105,12 @@ func (pp *Progs) Free() {
 }
 
 // Prog adds a Prog with instruction As to pp.
-func (pp *Progs) Prog(as obj.As) *obj.Prog {
+func (pp *Progs) Prog(pstate *PackageState, as obj.As) *obj.Prog {
 	if pp.nextLive.stackMapIndex != pp.prevLive.stackMapIndex {
 		// Emit stack map index change.
 		idx := pp.nextLive.stackMapIndex
 		pp.prevLive.stackMapIndex = idx
-		p := pp.Prog(obj.APCDATA)
+		p := pp.Prog(pstate, obj.APCDATA)
 		Addrconst(&p.From, objabi.PCDATA_StackMapIndex)
 		Addrconst(&p.To, int64(idx))
 	}
@@ -120,18 +118,18 @@ func (pp *Progs) Prog(as obj.As) *obj.Prog {
 		// Emit register map index change.
 		idx := pp.nextLive.regMapIndex
 		pp.prevLive.regMapIndex = idx
-		p := pp.Prog(obj.APCDATA)
+		p := pp.Prog(pstate, obj.APCDATA)
 		Addrconst(&p.From, objabi.PCDATA_RegMapIndex)
 		Addrconst(&p.To, int64(idx))
 	}
 
 	p := pp.next
-	pp.next = pp.NewProg()
+	pp.next = pp.NewProg(pstate)
 	pp.clearp(pp.next)
 	p.Link = pp.next
 
-	if !pp.pos.IsKnown() && Debug['K'] != 0 {
-		Warn("prog: unknown position (line 0)")
+	if !pp.pos.IsKnown() && pstate.Debug['K'] != 0 {
+		pstate.Warn("prog: unknown position (line 0)")
 	}
 
 	p.As = as
@@ -153,8 +151,8 @@ func (pp *Progs) clearp(p *obj.Prog) {
 	pp.pc++
 }
 
-func (pp *Progs) Appendpp(p *obj.Prog, as obj.As, ftype obj.AddrType, freg int16, foffset int64, ttype obj.AddrType, treg int16, toffset int64) *obj.Prog {
-	q := pp.NewProg()
+func (pp *Progs) Appendpp(pstate *PackageState, p *obj.Prog, as obj.As, ftype obj.AddrType, freg int16, foffset int64, ttype obj.AddrType, treg int16, toffset int64) *obj.Prog {
+	q := pp.NewProg(pstate)
 	pp.clearp(q)
 	q.As = as
 	q.Pos = p.Pos
@@ -169,11 +167,11 @@ func (pp *Progs) Appendpp(p *obj.Prog, as obj.As, ftype obj.AddrType, freg int16
 	return q
 }
 
-func (pp *Progs) settext(fn *Node) {
+func (pp *Progs) settext(pstate *PackageState, fn *Node) {
 	if pp.Text != nil {
-		Fatalf("Progs.settext called twice")
+		pstate.Fatalf("Progs.settext called twice")
 	}
-	ptxt := pp.Prog(obj.ATEXT)
+	ptxt := pp.Prog(pstate, obj.ATEXT)
 	pp.Text = ptxt
 
 	if fn.Func.lsym == nil {
@@ -186,32 +184,32 @@ func (pp *Progs) settext(fn *Node) {
 	ptxt.From.Name = obj.NAME_EXTERN
 	ptxt.From.Sym = fn.Func.lsym
 
-	p := pp.Prog(obj.AFUNCDATA)
+	p := pp.Prog(pstate, obj.AFUNCDATA)
 	Addrconst(&p.From, objabi.FUNCDATA_ArgsPointerMaps)
 	p.To.Type = obj.TYPE_MEM
 	p.To.Name = obj.NAME_EXTERN
 	p.To.Sym = &fn.Func.lsym.Func.GCArgs
 
-	p = pp.Prog(obj.AFUNCDATA)
+	p = pp.Prog(pstate, obj.AFUNCDATA)
 	Addrconst(&p.From, objabi.FUNCDATA_LocalsPointerMaps)
 	p.To.Type = obj.TYPE_MEM
 	p.To.Name = obj.NAME_EXTERN
 	p.To.Sym = &fn.Func.lsym.Func.GCLocals
 
-	p = pp.Prog(obj.AFUNCDATA)
+	p = pp.Prog(pstate, obj.AFUNCDATA)
 	Addrconst(&p.From, objabi.FUNCDATA_RegPointerMaps)
 	p.To.Type = obj.TYPE_MEM
 	p.To.Name = obj.NAME_EXTERN
 	p.To.Sym = &fn.Func.lsym.Func.GCRegs
 }
 
-func (f *Func) initLSym() {
+func (f *Func) initLSym(pstate *PackageState) {
 	if f.lsym != nil {
-		Fatalf("Func.initLSym called twice")
+		pstate.Fatalf("Func.initLSym called twice")
 	}
 
 	if nam := f.Nname; !nam.isBlank() {
-		f.lsym = nam.Sym.Linksym()
+		f.lsym = nam.Sym.Linksym(pstate.types)
 		if f.Pragma&Systemstack != 0 {
 			f.lsym.Set(obj.AttrCFunc, true)
 		}
@@ -237,35 +235,35 @@ func (f *Func) initLSym() {
 	// Clumsy but important.
 	// See test/recover.go for test cases and src/reflect/value.go
 	// for the actual functions being considered.
-	if myimportpath == "reflect" {
+	if pstate.myimportpath == "reflect" {
 		switch f.Nname.Sym.Name {
 		case "callReflect", "callMethod":
 			flag |= obj.WRAPPER
 		}
 	}
 
-	Ctxt.InitTextSym(f.lsym, flag)
+	pstate.Ctxt.InitTextSym(f.lsym, flag)
 }
 
-func ggloblnod(nam *Node) {
-	s := nam.Sym.Linksym()
-	s.Gotype = ngotype(nam).Linksym()
+func (pstate *PackageState) ggloblnod(nam *Node) {
+	s := nam.Sym.Linksym(pstate.types)
+	s.Gotype = pstate.ngotype(nam).Linksym(pstate.types)
 	flags := 0
 	if nam.Name.Readonly() {
 		flags = obj.RODATA
 	}
-	if nam.Type != nil && !types.Haspointers(nam.Type) {
+	if nam.Type != nil && !pstate.types.Haspointers(nam.Type) {
 		flags |= obj.NOPTR
 	}
-	Ctxt.Globl(s, nam.Type.Width, flags)
+	pstate.Ctxt.Globl(s, nam.Type.Width, flags)
 }
 
-func ggloblsym(s *obj.LSym, width int32, flags int16) {
+func (pstate *PackageState) ggloblsym(s *obj.LSym, width int32, flags int16) {
 	if flags&obj.LOCAL != 0 {
 		s.Set(obj.AttrLocal, true)
 		flags &^= obj.LOCAL
 	}
-	Ctxt.Globl(s, int64(width), int(flags))
+	pstate.Ctxt.Globl(s, int64(width), int(flags))
 }
 
 func isfat(t *types.Type) bool {
@@ -286,9 +284,9 @@ func Addrconst(a *obj.Addr, v int64) {
 	a.Offset = v
 }
 
-func Patch(p *obj.Prog, to *obj.Prog) {
+func (pstate *PackageState) Patch(p *obj.Prog, to *obj.Prog) {
 	if p.To.Type != obj.TYPE_BRANCH {
-		Fatalf("patch: not a branch")
+		pstate.Fatalf("patch: not a branch")
 	}
 	p.To.Val = to
 	p.To.Offset = to.Pc

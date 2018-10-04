@@ -5,7 +5,7 @@
 package obj
 
 import (
-	"cmd/internal/src"
+	"github.com/dave/golib/src/cmd/internal/src"
 	"log"
 )
 
@@ -134,11 +134,11 @@ func funcpctab(ctxt *Link, dst *Pcdata, func_ *LSym, desc string, valfunc func(*
 // or the line number (arg == 1) to use at p.
 // Because p.Pos applies to p, phase == 0 (before p)
 // takes care of the update.
-func pctofileline(ctxt *Link, sym *LSym, oldval int32, p *Prog, phase int32, arg interface{}) int32 {
+func (pstate *PackageState) pctofileline(ctxt *Link, sym *LSym, oldval int32, p *Prog, phase int32, arg interface{}) int32 {
 	if p.As == ATEXT || p.As == ANOP || p.Pos.Line() == 0 || phase == 1 {
 		return oldval
 	}
-	f, l := linkgetlineFromPos(ctxt, p.Pos)
+	f, l := pstate.linkgetlineFromPos(ctxt, p.Pos)
 	if arg == nil {
 		return l
 	}
@@ -291,7 +291,7 @@ func stmtData(ctxt *Link, cursym *LSym) {
 	cursym.Func.dwarfIsStmtSym.P = pctostmtData.P
 }
 
-func linkpcln(ctxt *Link, cursym *LSym) {
+func (pstate *PackageState) linkpcln(ctxt *Link, cursym *LSym) {
 	pcln := &cursym.Func.Pcln
 
 	npcdata := 0
@@ -318,8 +318,8 @@ func linkpcln(ctxt *Link, cursym *LSym) {
 	pcln.Funcdataoff = pcln.Funcdataoff[:nfuncdata]
 
 	funcpctab(ctxt, &pcln.Pcsp, cursym, "pctospadj", pctospadj, nil)
-	funcpctab(ctxt, &pcln.Pcfile, cursym, "pctofile", pctofileline, pcln)
-	funcpctab(ctxt, &pcln.Pcline, cursym, "pctoline", pctofileline, nil)
+	funcpctab(ctxt, &pcln.Pcfile, cursym, "pctofile", pstate.pctofileline, pcln)
+	funcpctab(ctxt, &pcln.Pcline, cursym, "pctoline", pstate.pctofileline, nil)
 
 	pcinlineState := new(pcinlineState)
 	funcpctab(ctxt, &pcln.Pcinline, cursym, "pctoinline", pcinlineState.pctoinline, nil)

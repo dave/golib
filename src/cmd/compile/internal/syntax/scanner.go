@@ -67,7 +67,7 @@ func (s *scanner) init(src io.Reader, errh func(line, col uint, msg string), mod
 // //-style comments are only recognized if they are at the beginning
 // of a line.
 //
-func (s *scanner) next() {
+func (s *scanner) next(pstate *PackageState) {
 	nlsemi := s.nlsemi
 	s.nlsemi = false
 
@@ -82,7 +82,7 @@ redo:
 	s.line, s.col = s.source.line0, s.source.col0
 
 	if isLetter(c) || c >= utf8.RuneSelf && s.isIdentRune(c, true) {
-		s.ident()
+		s.ident(pstate)
 		return
 	}
 
@@ -327,7 +327,7 @@ func isDigit(c rune) bool {
 	return '0' <= c && c <= '9'
 }
 
-func (s *scanner) ident() {
+func (s *scanner) ident(pstate *PackageState) {
 	s.startLit()
 
 	// accelerate common case (7bit ASCII)
@@ -348,7 +348,7 @@ func (s *scanner) ident() {
 
 	// possibly a keyword
 	if len(lit) >= 2 {
-		if tok := keywordMap[hash(lit)]; tok != 0 && tokStrFast(tok) == string(lit) {
+		if tok := pstate.keywordMap[pstate.hash(lit)]; tok != 0 && pstate.tokStrFast(tok) == string(lit) {
 			s.nlsemi = contains(1<<_Break|1<<_Continue|1<<_Fallthrough|1<<_Return, tok)
 			s.tok = tok
 			return
@@ -362,14 +362,14 @@ func (s *scanner) ident() {
 
 // tokStrFast is a faster version of token.String, which assumes that tok
 // is one of the valid tokens - and can thus skip bounds checks.
-func tokStrFast(tok token) string {
-	return _token_name[_token_index[tok-1]:_token_index[tok]]
+func (pstate *PackageState) tokStrFast(tok token) string {
+	return _token_name[pstate._token_index[tok-1]:pstate._token_index[tok]]
 }
 
 func (s *scanner) isIdentRune(c rune, first bool) bool {
 	switch {
 	case unicode.IsLetter(c) || c == '_':
-		// ok
+	// ok
 	case unicode.IsDigit(c):
 		if first {
 			s.error(fmt.Sprintf("identifier cannot begin with digit %#U", c))
@@ -384,20 +384,18 @@ func (s *scanner) isIdentRune(c rune, first bool) bool {
 
 // hash is a perfect hash function for keywords.
 // It assumes that s has at least length 2.
-func hash(s []byte) uint {
-	return (uint(s[0])<<4 ^ uint(s[1]) + uint(len(s))) & uint(len(keywordMap)-1)
+func (pstate *PackageState) hash(s []byte) uint {
+	return (uint(s[0])<<4 ^ uint(s[1]) + uint(len(s))) & uint(len(pstate.keywordMap)-1)
 }
 
-var keywordMap [1 << 6]token // size must be power of two
-
-func init() {
+func (pstate *PackageState) init() {
 	// populate keywordMap
 	for tok := _Break; tok <= _Var; tok++ {
-		h := hash([]byte(tok.String()))
-		if keywordMap[h] != 0 {
+		h := pstate.hash([]byte(tok.String(pstate)))
+		if pstate.keywordMap[h] != 0 {
 			panic("imperfect hash")
 		}
-		keywordMap[h] = tok
+		pstate.keywordMap[h] = tok
 	}
 }
 

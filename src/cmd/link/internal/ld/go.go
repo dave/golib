@@ -8,11 +8,11 @@ package ld
 
 import (
 	"bytes"
-	"cmd/internal/bio"
-	"cmd/internal/objabi"
-	"cmd/link/internal/sym"
 	"encoding/json"
 	"fmt"
+	"github.com/dave/golib/src/cmd/internal/bio"
+	"github.com/dave/golib/src/cmd/internal/objabi"
+	"github.com/dave/golib/src/cmd/link/internal/sym"
 	"io"
 	"os"
 	"strings"
@@ -22,7 +22,7 @@ import (
 
 // replace all "". with pkg.
 func expandpkg(t0 string, pkg string) string {
-	return strings.Replace(t0, `"".`, pkg+".", -1)
+	return strings.Replace(t0, "\"\".", pkg+".", -1)
 }
 
 // TODO:
@@ -30,15 +30,15 @@ func expandpkg(t0 string, pkg string) string {
 //	once the dust settles, try to move some code to
 //		libmach, so that other linkers and ar can share.
 
-func ldpkg(ctxt *Link, f *bio.Reader, lib *sym.Library, length int64, filename string) {
-	if *flagG {
+func (pstate *PackageState) ldpkg(ctxt *Link, f *bio.Reader, lib *sym.Library, length int64, filename string) {
+	if *pstate.flagG {
 		return
 	}
 
 	if int64(int(length)) != length {
 		fmt.Fprintf(os.Stderr, "%s: too much pkg data in %s\n", os.Args[0], filename)
-		if *flagU {
-			errorexit()
+		if *pstate.flagU {
+			pstate.errorexit()
 		}
 		return
 	}
@@ -46,8 +46,8 @@ func ldpkg(ctxt *Link, f *bio.Reader, lib *sym.Library, length int64, filename s
 	bdata := make([]byte, length)
 	if _, err := io.ReadFull(f, bdata); err != nil {
 		fmt.Fprintf(os.Stderr, "%s: short pkg read %s\n", os.Args[0], filename)
-		if *flagU {
-			errorexit()
+		if *pstate.flagU {
+			pstate.errorexit()
 		}
 		return
 	}
@@ -80,8 +80,8 @@ func ldpkg(ctxt *Link, f *bio.Reader, lib *sym.Library, length int64, filename s
 		i := strings.IndexByte(data[p0+1:], '\n')
 		if i < 0 {
 			fmt.Fprintf(os.Stderr, "%s: found $$ // cgo but no newline in %s\n", os.Args[0], filename)
-			if *flagU {
-				errorexit()
+			if *pstate.flagU {
+				pstate.errorexit()
 			}
 			return
 		}
@@ -93,22 +93,22 @@ func ldpkg(ctxt *Link, f *bio.Reader, lib *sym.Library, length int64, filename s
 		}
 		if p1 < 0 {
 			fmt.Fprintf(os.Stderr, "%s: cannot find end of // cgo section in %s\n", os.Args[0], filename)
-			if *flagU {
-				errorexit()
+			if *pstate.flagU {
+				pstate.errorexit()
 			}
 			return
 		}
 		p1 += p0
 
-		loadcgo(ctxt, filename, objabi.PathToPrefix(lib.Pkg), data[p0:p1])
+		pstate.loadcgo(ctxt, filename, objabi.PathToPrefix(lib.Pkg), data[p0:p1])
 	}
 }
 
-func loadcgo(ctxt *Link, file string, pkg string, p string) {
+func (pstate *PackageState) loadcgo(ctxt *Link, file string, pkg string, p string) {
 	var directives [][]string
 	if err := json.NewDecoder(strings.NewReader(p)).Decode(&directives); err != nil {
 		fmt.Fprintf(os.Stderr, "%s: %s: failed decoding cgo directives: %v\n", os.Args[0], file, err)
-		nerrors++
+		pstate.nerrors++
 		return
 	}
 
@@ -129,21 +129,21 @@ func loadcgo(ctxt *Link, file string, pkg string, p string) {
 				lib = f[3]
 			}
 
-			if *FlagD {
+			if *pstate.FlagD {
 				fmt.Fprintf(os.Stderr, "%s: %s: cannot use dynamic imports with -d flag\n", os.Args[0], file)
-				nerrors++
+				pstate.nerrors++
 				return
 			}
 
 			if local == "_" && remote == "_" {
 				// allow #pragma dynimport _ _ "foo.so"
 				// to force a link of foo.so.
-				havedynamic = 1
+				pstate.havedynamic = 1
 
 				if ctxt.HeadType == objabi.Hdarwin {
-					machoadddynlib(lib, ctxt.LinkMode)
+					pstate.machoadddynlib(lib, ctxt.LinkMode)
 				} else {
-					dynlib = append(dynlib, lib)
+					pstate.dynlib = append(pstate.dynlib, lib)
 				}
 				continue
 			}
@@ -161,7 +161,7 @@ func loadcgo(ctxt *Link, file string, pkg string, p string) {
 				if s.Type != sym.SHOSTOBJ {
 					s.Type = sym.SDYNIMPORT
 				}
-				havedynamic = 1
+				pstate.havedynamic = 1
 			}
 			continue
 
@@ -207,10 +207,10 @@ func loadcgo(ctxt *Link, file string, pkg string, p string) {
 
 			if !s.Attr.CgoExport() {
 				s.Extname = remote
-				dynexp = append(dynexp, s)
+				pstate.dynexp = append(pstate.dynexp, s)
 			} else if s.Extname != remote {
 				fmt.Fprintf(os.Stderr, "%s: conflicting cgo_export directives: %s as %s and %s\n", os.Args[0], s.Name, s.Extname, remote)
-				nerrors++
+				pstate.nerrors++
 				return
 			}
 
@@ -226,14 +226,14 @@ func loadcgo(ctxt *Link, file string, pkg string, p string) {
 				break
 			}
 
-			if *flagInterpreter == "" {
-				if interpreter != "" && interpreter != f[1] {
-					fmt.Fprintf(os.Stderr, "%s: conflict dynlinker: %s and %s\n", os.Args[0], interpreter, f[1])
-					nerrors++
+			if *pstate.flagInterpreter == "" {
+				if pstate.interpreter != "" && pstate.interpreter != f[1] {
+					fmt.Fprintf(os.Stderr, "%s: conflict dynlinker: %s and %s\n", os.Args[0], pstate.interpreter, f[1])
+					pstate.nerrors++
 					return
 				}
 
-				interpreter = f[1]
+				pstate.interpreter = f[1]
 			}
 			continue
 
@@ -241,51 +241,49 @@ func loadcgo(ctxt *Link, file string, pkg string, p string) {
 			if len(f) != 2 {
 				break
 			}
-			ldflag = append(ldflag, f[1])
+			pstate.ldflag = append(pstate.ldflag, f[1])
 			continue
 		}
 
 		fmt.Fprintf(os.Stderr, "%s: %s: invalid cgo directive: %q\n", os.Args[0], file, f)
-		nerrors++
+		pstate.nerrors++
 	}
 }
 
-var seenlib = make(map[string]bool)
-
-func adddynlib(ctxt *Link, lib string) {
-	if seenlib[lib] || ctxt.LinkMode == LinkExternal {
+func (pstate *PackageState) adddynlib(ctxt *Link, lib string) {
+	if pstate.seenlib[lib] || ctxt.LinkMode == LinkExternal {
 		return
 	}
-	seenlib[lib] = true
+	pstate.seenlib[lib] = true
 
 	if ctxt.IsELF {
 		s := ctxt.Syms.Lookup(".dynstr", 0)
 		if s.Size == 0 {
-			Addstring(s, "")
+			pstate.Addstring(s, "")
 		}
-		Elfwritedynent(ctxt, ctxt.Syms.Lookup(".dynamic", 0), DT_NEEDED, uint64(Addstring(s, lib)))
+		pstate.Elfwritedynent(ctxt, ctxt.Syms.Lookup(".dynamic", 0), DT_NEEDED, uint64(pstate.Addstring(s, lib)))
 	} else {
-		Errorf(nil, "adddynlib: unsupported binary format")
+		pstate.Errorf(nil, "adddynlib: unsupported binary format")
 	}
 }
 
-func Adddynsym(ctxt *Link, s *sym.Symbol) {
+func (pstate *PackageState) Adddynsym(ctxt *Link, s *sym.Symbol) {
 	if s.Dynid >= 0 || ctxt.LinkMode == LinkExternal {
 		return
 	}
 
 	if ctxt.IsELF {
-		elfadddynsym(ctxt, s)
+		pstate.elfadddynsym(ctxt, s)
 	} else if ctxt.HeadType == objabi.Hdarwin {
-		Errorf(s, "adddynsym: missed symbol (Extname=%s)", s.Extname)
+		pstate.Errorf(s, "adddynsym: missed symbol (Extname=%s)", s.Extname)
 	} else if ctxt.HeadType == objabi.Hwindows {
 		// already taken care of
 	} else {
-		Errorf(s, "adddynsym: unsupported binary format")
+		pstate.Errorf(s, "adddynsym: unsupported binary format")
 	}
 }
 
-func fieldtrack(ctxt *Link) {
+func (pstate *PackageState) fieldtrack(ctxt *Link) {
 	// record field tracking references
 	var buf bytes.Buffer
 	for _, s := range ctxt.Syms.Allsym {
@@ -306,27 +304,27 @@ func fieldtrack(ctxt *Link) {
 		}
 	}
 
-	if *flagFieldTrack == "" {
+	if *pstate.flagFieldTrack == "" {
 		return
 	}
-	s := ctxt.Syms.ROLookup(*flagFieldTrack, 0)
+	s := ctxt.Syms.ROLookup(*pstate.flagFieldTrack, 0)
 	if s == nil || !s.Attr.Reachable() {
 		return
 	}
 	s.Type = sym.SDATA
-	addstrdata(ctxt, *flagFieldTrack, buf.String())
+	pstate.addstrdata(ctxt, *pstate.flagFieldTrack, buf.String())
 }
 
-func (ctxt *Link) addexport() {
+func (ctxt *Link) addexport(pstate *PackageState) {
 	if ctxt.HeadType == objabi.Hdarwin {
 		return
 	}
 
-	for _, exp := range dynexp {
-		Adddynsym(ctxt, exp)
+	for _, exp := range pstate.dynexp {
+		pstate.Adddynsym(ctxt, exp)
 	}
-	for _, lib := range dynlib {
-		adddynlib(ctxt, lib)
+	for _, lib := range pstate.dynlib {
+		pstate.adddynlib(ctxt, lib)
 	}
 }
 
@@ -337,15 +335,13 @@ type Pkg struct {
 	impby   []*Pkg
 }
 
-var pkgall []*Pkg
-
-func (p *Pkg) cycle() *Pkg {
+func (p *Pkg) cycle(pstate *PackageState) *Pkg {
 	if p.checked {
 		return nil
 	}
 
 	if p.mark {
-		nerrors++
+		pstate.nerrors++
 		fmt.Printf("import cycle:\n")
 		fmt.Printf("\t%s\n", p.path)
 		return p
@@ -353,7 +349,7 @@ func (p *Pkg) cycle() *Pkg {
 
 	p.mark = true
 	for _, q := range p.impby {
-		if bad := q.cycle(); bad != nil {
+		if bad := q.cycle(pstate); bad != nil {
 			p.mark = false
 			p.checked = true
 			fmt.Printf("\timports %s\n", p.path)
@@ -369,8 +365,8 @@ func (p *Pkg) cycle() *Pkg {
 	return nil
 }
 
-func importcycles() {
-	for _, p := range pkgall {
-		p.cycle()
+func (pstate *PackageState) importcycles() {
+	for _, p := range pstate.pkgall {
+		p.cycle(pstate)
 	}
 }

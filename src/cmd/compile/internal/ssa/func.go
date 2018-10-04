@@ -5,10 +5,10 @@
 package ssa
 
 import (
-	"cmd/compile/internal/types"
-	"cmd/internal/src"
 	"crypto/sha1"
 	"fmt"
+	"github.com/dave/golib/src/cmd/compile/internal/types"
+	"github.com/dave/golib/src/cmd/internal/src"
 	"io"
 	"math"
 	"os"
@@ -226,7 +226,7 @@ func (f *Func) LogStat(key string, args ...interface{}) {
 }
 
 // freeValue frees a value. It must no longer be referenced or have any args.
-func (f *Func) freeValue(v *Value) {
+func (f *Func) freeValue(pstate *PackageState, v *Value) {
 	if v.Block == nil {
 		f.Fatalf("trying to free an already freed value")
 	}
@@ -240,7 +240,7 @@ func (f *Func) freeValue(v *Value) {
 	id := v.ID
 
 	// Values with zero arguments and OpOffPtr values might be cached, so remove them there.
-	nArgs := opcodeTable[v.Op].argLen
+	nArgs := pstate.opcodeTable[v.Op].argLen
 	if nArgs == 0 || v.Op == OpOffPtr {
 		vv := f.constants[v.AuxInt]
 		for i, cv := range vv {
@@ -471,24 +471,24 @@ func (b *Block) NewValue4(pos src.XPos, op Op, t *types.Type, arg0, arg1, arg2, 
 }
 
 // constVal returns a constant value for c.
-func (f *Func) constVal(op Op, t *types.Type, c int64, setAuxInt bool) *Value {
+func (f *Func) constVal(pstate *PackageState, op Op, t *types.Type, c int64, setAuxInt bool) *Value {
 	if f.constants == nil {
 		f.constants = make(map[int64][]*Value)
 	}
 	vv := f.constants[c]
 	for _, v := range vv {
-		if v.Op == op && v.Type.Compare(t) == types.CMPeq {
+		if v.Op == op && v.Type.Compare(pstate.types, t) == types.CMPeq {
 			if setAuxInt && v.AuxInt != c {
-				panic(fmt.Sprintf("cached const %s should have AuxInt of %d", v.LongString(), c))
+				panic(fmt.Sprintf("cached const %s should have AuxInt of %d", v.LongString(pstate), c))
 			}
 			return v
 		}
 	}
 	var v *Value
 	if setAuxInt {
-		v = f.Entry.NewValue0I(src.NoXPos, op, t, c)
+		v = f.Entry.NewValue0I(pstate.src.NoXPos, op, t, c)
 	} else {
-		v = f.Entry.NewValue0(src.NoXPos, op, t)
+		v = f.Entry.NewValue0(pstate.src.NoXPos, op, t)
 	}
 	f.constants[c] = append(vv, v)
 	return v
@@ -506,48 +506,48 @@ const (
 )
 
 // ConstInt returns an int constant representing its argument.
-func (f *Func) ConstBool(t *types.Type, c bool) *Value {
+func (f *Func) ConstBool(pstate *PackageState, t *types.Type, c bool) *Value {
 	i := int64(0)
 	if c {
 		i = 1
 	}
-	return f.constVal(OpConstBool, t, i, true)
+	return f.constVal(pstate, OpConstBool, t, i, true)
 }
-func (f *Func) ConstInt8(t *types.Type, c int8) *Value {
-	return f.constVal(OpConst8, t, int64(c), true)
+func (f *Func) ConstInt8(pstate *PackageState, t *types.Type, c int8) *Value {
+	return f.constVal(pstate, OpConst8, t, int64(c), true)
 }
-func (f *Func) ConstInt16(t *types.Type, c int16) *Value {
-	return f.constVal(OpConst16, t, int64(c), true)
+func (f *Func) ConstInt16(pstate *PackageState, t *types.Type, c int16) *Value {
+	return f.constVal(pstate, OpConst16, t, int64(c), true)
 }
-func (f *Func) ConstInt32(t *types.Type, c int32) *Value {
-	return f.constVal(OpConst32, t, int64(c), true)
+func (f *Func) ConstInt32(pstate *PackageState, t *types.Type, c int32) *Value {
+	return f.constVal(pstate, OpConst32, t, int64(c), true)
 }
-func (f *Func) ConstInt64(t *types.Type, c int64) *Value {
-	return f.constVal(OpConst64, t, c, true)
+func (f *Func) ConstInt64(pstate *PackageState, t *types.Type, c int64) *Value {
+	return f.constVal(pstate, OpConst64, t, c, true)
 }
-func (f *Func) ConstFloat32(t *types.Type, c float64) *Value {
-	return f.constVal(OpConst32F, t, int64(math.Float64bits(float64(float32(c)))), true)
+func (f *Func) ConstFloat32(pstate *PackageState, t *types.Type, c float64) *Value {
+	return f.constVal(pstate, OpConst32F, t, int64(math.Float64bits(float64(float32(c)))), true)
 }
-func (f *Func) ConstFloat64(t *types.Type, c float64) *Value {
-	return f.constVal(OpConst64F, t, int64(math.Float64bits(c)), true)
+func (f *Func) ConstFloat64(pstate *PackageState, t *types.Type, c float64) *Value {
+	return f.constVal(pstate, OpConst64F, t, int64(math.Float64bits(c)), true)
 }
 
-func (f *Func) ConstSlice(t *types.Type) *Value {
-	return f.constVal(OpConstSlice, t, constSliceMagic, false)
+func (f *Func) ConstSlice(pstate *PackageState, t *types.Type) *Value {
+	return f.constVal(pstate, OpConstSlice, t, constSliceMagic, false)
 }
-func (f *Func) ConstInterface(t *types.Type) *Value {
-	return f.constVal(OpConstInterface, t, constInterfaceMagic, false)
+func (f *Func) ConstInterface(pstate *PackageState, t *types.Type) *Value {
+	return f.constVal(pstate, OpConstInterface, t, constInterfaceMagic, false)
 }
-func (f *Func) ConstNil(t *types.Type) *Value {
-	return f.constVal(OpConstNil, t, constNilMagic, false)
+func (f *Func) ConstNil(pstate *PackageState, t *types.Type) *Value {
+	return f.constVal(pstate, OpConstNil, t, constNilMagic, false)
 }
-func (f *Func) ConstEmptyString(t *types.Type) *Value {
-	v := f.constVal(OpConstString, t, constEmptyStringMagic, false)
+func (f *Func) ConstEmptyString(pstate *PackageState, t *types.Type) *Value {
+	v := f.constVal(pstate, OpConstString, t, constEmptyStringMagic, false)
 	v.Aux = ""
 	return v
 }
-func (f *Func) ConstOffPtrSP(t *types.Type, c int64, sp *Value) *Value {
-	v := f.constVal(OpOffPtr, t, c, true)
+func (f *Func) ConstOffPtrSP(pstate *PackageState, t *types.Type, c int64, sp *Value) *Value {
+	v := f.constVal(pstate, OpOffPtr, t, c, true)
 	if len(v.Args) == 0 {
 		v.AddArg(sp)
 	}
@@ -592,9 +592,9 @@ func (f *Func) sdom() SparseTree {
 }
 
 // loopnest returns the loop nest information for f.
-func (f *Func) loopnest() *loopnest {
+func (f *Func) loopnest(pstate *PackageState) *loopnest {
 	if f.cachedLoopnest == nil {
-		f.cachedLoopnest = loopnestfor(f)
+		f.cachedLoopnest = pstate.loopnestfor(f)
 	}
 	return f.cachedLoopnest
 }

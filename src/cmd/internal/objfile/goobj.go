@@ -7,13 +7,13 @@
 package objfile
 
 import (
-	"cmd/internal/goobj"
-	"cmd/internal/objabi"
-	"cmd/internal/sys"
 	"debug/dwarf"
 	"debug/gosym"
 	"errors"
 	"fmt"
+	"github.com/dave/golib/src/cmd/internal/goobj"
+	"github.com/dave/golib/src/cmd/internal/objabi"
+	"github.com/dave/golib/src/cmd/internal/sys"
 	"os"
 )
 
@@ -23,7 +23,7 @@ type goobjFile struct {
 }
 
 func openGoFile(r *os.File) (*File, error) {
-	f, err := goobj.Parse(r, `""`)
+	f, err := goobj.Parse(r, "\"\"")
 	if err != nil {
 		return nil, err
 	}

@@ -8,7 +8,7 @@ package ssa
 // are always correlated and rewrites the CFG to take
 // advantage of that fact.
 // This optimization is useful for compiling && and || expressions.
-func shortcircuit(f *Func) {
+func (pstate *PackageState) shortcircuit(f *Func) {
 	// Step 1: Replace a phi arg with a constant if that arg
 	// is the control value of a preceding If block.
 	// b1:
@@ -37,12 +37,12 @@ func shortcircuit(f *Func) {
 				}
 				if e.i == 0 {
 					if ct == nil {
-						ct = f.ConstBool(f.Config.Types.Bool, true)
+						ct = f.ConstBool(pstate, f.Config.Types.Bool, true)
 					}
 					v.SetArg(i, ct)
 				} else {
 					if cf == nil {
-						cf = f.ConstBool(f.Config.Types.Bool, false)
+						cf = f.ConstBool(pstate, f.Config.Types.Bool, false)
 					}
 					v.SetArg(i, cf)
 				}

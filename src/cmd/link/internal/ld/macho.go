@@ -5,9 +5,9 @@
 package ld
 
 import (
-	"cmd/internal/objabi"
-	"cmd/internal/sys"
-	"cmd/link/internal/sym"
+	"github.com/dave/golib/src/cmd/internal/objabi"
+	"github.com/dave/golib/src/cmd/internal/sys"
+	"github.com/dave/golib/src/cmd/link/internal/sym"
 	"sort"
 	"strings"
 )
@@ -167,21 +167,6 @@ const (
 	S_ATTR_SOME_INSTRUCTIONS   = 0x00000400
 )
 
-// Mach-O file writing
-// https://developer.apple.com/mac/library/DOCUMENTATION/DeveloperTools/Conceptual/MachORuntime/Reference/reference.html
-
-var machohdr MachoHdr
-
-var load []MachoLoad
-
-var seg [16]MachoSeg
-
-var nseg int
-
-var ndebug int
-
-var nsect int
-
 const (
 	SymKindLocal = 0 + iota
 	SymKindExtdef
@@ -189,81 +174,61 @@ const (
 	NumSymKind
 )
 
-var nkind [NumSymKind]int
-
-var sortsym []*sym.Symbol
-
-var nsortsym int
-
-// Amount of space left for adding load commands
-// that refer to dynamic libraries. Because these have
-// to go in the Mach-O header, we can't just pick a
-// "big enough" header size. The initial header is
-// one page, the non-dynamic library stuff takes
-// up about 1300 bytes; we overestimate that as 2k.
-var loadBudget = INITIAL_MACHO_HEADR - 2*1024
-
-func getMachoHdr() *MachoHdr {
-	return &machohdr
+func (pstate *PackageState) getMachoHdr() *MachoHdr {
+	return &pstate.machohdr
 }
 
-func newMachoLoad(arch *sys.Arch, type_ uint32, ndata uint32) *MachoLoad {
+func (pstate *PackageState) newMachoLoad(arch *sys.Arch, type_ uint32, ndata uint32) *MachoLoad {
 	if arch.PtrSize == 8 && (ndata&1 != 0) {
 		ndata++
 	}
 
-	load = append(load, MachoLoad{})
-	l := &load[len(load)-1]
+	pstate.load = append(pstate.load, MachoLoad{})
+	l := &pstate.load[len(pstate.load)-1]
 	l.type_ = type_
 	l.data = make([]uint32, ndata)
 	return l
 }
 
-func newMachoSeg(name string, msect int) *MachoSeg {
-	if nseg >= len(seg) {
-		Exitf("too many segs")
+func (pstate *PackageState) newMachoSeg(name string, msect int) *MachoSeg {
+	if pstate.nseg >= len(pstate.seg) {
+		pstate.Exitf("too many segs")
 	}
 
-	s := &seg[nseg]
-	nseg++
+	s := &pstate.seg[pstate.nseg]
+	pstate.nseg++
 	s.name = name
 	s.msect = uint32(msect)
 	s.sect = make([]MachoSect, msect)
 	return s
 }
 
-func newMachoSect(seg *MachoSeg, name string, segname string) *MachoSect {
+func (pstate *PackageState) newMachoSect(seg *MachoSeg, name string, segname string) *MachoSect {
 	if seg.nsect >= seg.msect {
-		Exitf("too many sects in segment %s", seg.name)
+		pstate.Exitf("too many sects in segment %s", seg.name)
 	}
 
 	s := &seg.sect[seg.nsect]
 	seg.nsect++
 	s.name = name
 	s.segname = segname
-	nsect++
+	pstate.nsect++
 	return s
 }
 
-// Generic linking code.
-
-var dylib []string
-
-var linkoff int64
-
-func machowrite(arch *sys.Arch, out *OutBuf, linkmode LinkMode) int {
+func (pstate *PackageState) machowrite(arch *sys.Arch, out *OutBuf, linkmode LinkMode) int {
 	o1 := out.Offset()
 
-	loadsize := 4 * 4 * ndebug
-	for i := range load {
-		loadsize += 4 * (len(load[i].data) + 2)
+	loadsize := 4 * 4 * pstate.ndebug
+	for i := range pstate.load {
+		loadsize += 4 * (len(pstate.load[i].data) + 2)
 	}
 	if arch.PtrSize == 8 {
-		loadsize += 18 * 4 * nseg
-		loadsize += 20 * 4 * nsect
+		loadsize += 18 * 4 * pstate.nseg
+		loadsize += 20 * 4 * pstate.nsect
 	} else {
-		loadsize += 14 * 4 * nseg
-		loadsize += 17 * 4 * nsect
+		loadsize += 14 * 4 * pstate.nseg
+		loadsize += 17 * 4 * pstate.nsect
 	}
 
 	if arch.PtrSize == 8 {
@@ -271,16 +236,16 @@ func machowrite(arch *sys.Arch, out *OutBuf, linkmode LinkMode) int {
 	} else {
 		out.Write32(MH_MAGIC)
 	}
-	out.Write32(machohdr.cpu)
-	out.Write32(machohdr.subcpu)
+	out.Write32(pstate.machohdr.cpu)
+	out.Write32(pstate.machohdr.subcpu)
 	if linkmode == LinkExternal {
 		out.Write32(MH_OBJECT) /* file type - mach object */
 	} else {
 		out.Write32(MH_EXECUTE) /* file type - mach executable */
 	}
-	out.Write32(uint32(len(load)) + uint32(nseg) + uint32(ndebug))
+	out.Write32(uint32(len(pstate.load)) + uint32(pstate.nseg) + uint32(pstate.ndebug))
 	out.Write32(uint32(loadsize))
-	if nkind[SymKindUndef] == 0 {
+	if pstate.nkind[SymKindUndef] == 0 {
 		out.Write32(MH_NOUNDEFS) /* flags - no undefines */
 	} else {
 		out.Write32(0) /* flags */
@@ -289,12 +254,12 @@ func machowrite(arch *sys.Arch, out *OutBuf, linkmode LinkMode) int {
 		out.Write32(0) /* reserved */
 	}
 
-	for i := 0; i < nseg; i++ {
-		s := &seg[i]
+	for i := 0; i < pstate.nseg; i++ {
+		s := &pstate.seg[i]
 		if arch.PtrSize == 8 {
 			out.Write32(LC_SEGMENT_64)
 			out.Write32(72 + 80*s.nsect)
-			out.WriteStringN(s.name, 16)
+			out.WriteStringN(pstate, s.name, 16)
 			out.Write64(s.vaddr)
 			out.Write64(s.vsize)
 			out.Write64(s.fileoffset)
@@ -306,7 +271,7 @@ func machowrite(arch *sys.Arch, out *OutBuf, linkmode LinkMode) int {
 		} else {
 			out.Write32(LC_SEGMENT)
 			out.Write32(56 + 68*s.nsect)
-			out.WriteStringN(s.name, 16)
+			out.WriteStringN(pstate, s.name, 16)
 			out.Write32(uint32(s.vaddr))
 			out.Write32(uint32(s.vsize))
 			out.Write32(uint32(s.fileoffset))
@@ -320,8 +285,8 @@ func machowrite(arch *sys.Arch, out *OutBuf, linkmode LinkMode) int {
 		for j := uint32(0); j < s.nsect; j++ {
 			t := &s.sect[j]
 			if arch.PtrSize == 8 {
-				out.WriteStringN(t.name, 16)
-				out.WriteStringN(t.segname, 16)
+				out.WriteStringN(pstate, t.name, 16)
+				out.WriteStringN(pstate, t.segname, 16)
 				out.Write64(t.addr)
 				out.Write64(t.size)
 				out.Write32(t.off)
@@ -333,8 +298,8 @@ func machowrite(arch *sys.Arch, out *OutBuf, linkmode LinkMode) int {
 				out.Write32(t.res2) /* reserved */
 				out.Write32(0)      /* reserved */
 			} else {
-				out.WriteStringN(t.name, 16)
-				out.WriteStringN(t.segname, 16)
+				out.WriteStringN(pstate, t.name, 16)
+				out.WriteStringN(pstate, t.segname, 16)
 				out.Write32(uint32(t.addr))
 				out.Write32(uint32(t.size))
 				out.Write32(t.off)
@@ -348,8 +313,8 @@ func machowrite(arch *sys.Arch, out *OutBuf, linkmode LinkMode) int {
 		}
 	}
 
-	for i := range load {
-		l := &load[i]
+	for i := range pstate.load {
+		l := &pstate.load[i]
 		out.Write32(l.type_)
 		out.Write32(4 * (uint32(len(l.data)) + 2))
 		for j := 0; j < len(l.data); j++ {
@@ -360,8 +325,8 @@ func machowrite(arch *sys.Arch, out *OutBuf, linkmode LinkMode) int {
 	return int(out.Offset() - o1)
 }
 
-func (ctxt *Link) domacho() {
-	if *FlagD {
+func (ctxt *Link) domacho(pstate *PackageState) {
+	if *pstate.FlagD {
 		return
 	}
 
@@ -397,28 +362,28 @@ func (ctxt *Link) domacho() {
 	}
 }
 
-func machoadddynlib(lib string, linkmode LinkMode) {
-	if seenlib[lib] || linkmode == LinkExternal {
+func (pstate *PackageState) machoadddynlib(lib string, linkmode LinkMode) {
+	if pstate.seenlib[lib] || linkmode == LinkExternal {
 		return
 	}
-	seenlib[lib] = true
+	pstate.seenlib[lib] = true
 
 	// Will need to store the library name rounded up
 	// and 24 bytes of header metadata. If not enough
 	// space, grab another page of initial space at the
 	// beginning of the output file.
-	loadBudget -= (len(lib)+7)/8*8 + 24
+	pstate.loadBudget -= (len(lib)+7)/8*8 + 24
 
-	if loadBudget < 0 {
-		HEADR += 4096
-		*FlagTextAddr += 4096
-		loadBudget += 4096
+	if pstate.loadBudget < 0 {
+		pstate.HEADR += 4096
+		*pstate.FlagTextAddr += 4096
+		pstate.loadBudget += 4096
 	}
 
-	dylib = append(dylib, lib)
+	pstate.dylib = append(pstate.dylib, lib)
 }
 
-func machoshbits(ctxt *Link, mseg *MachoSeg, sect *sym.Section, segname string) {
+func (pstate *PackageState) machoshbits(ctxt *Link, mseg *MachoSeg, sect *sym.Section, segname string) {
 	buf := "__" + strings.Replace(sect.Name[1:], ".", "_", -1)
 
 	var msect *MachoSect
@@ -428,9 +393,9 @@ func machoshbits(ctxt *Link, mseg *MachoSeg, sect *sym.Section, segname string) 
 		// Darwin external linker on arm64 and on amd64 and arm in c-shared/c-archive buildmode
 		// complains about absolute relocs in __TEXT, so if the section is not
 		// executable, put it in __DATA segment.
-		msect = newMachoSect(mseg, buf, "__DATA")
+		msect = pstate.newMachoSect(mseg, buf, "__DATA")
 	} else {
-		msect = newMachoSect(mseg, buf, segname)
+		msect = pstate.newMachoSect(mseg, buf, segname)
 	}
 
 	if sect.Rellen > 0 {
@@ -447,7 +412,7 @@ func machoshbits(ctxt *Link, mseg *MachoSeg, sect *sym.Section, segname string) 
 	if sect.Vaddr < sect.Seg.Vaddr+sect.Seg.Filelen {
 		// data in file
 		if sect.Length > sect.Seg.Vaddr+sect.Seg.Filelen-sect.Vaddr {
-			Errorf(nil, "macho cannot represent section %s crossing data and bss", sect.Name)
+			pstate.Errorf(nil, "macho cannot represent section %s crossing data and bss", sect.Name)
 		}
 		msect.off = uint32(sect.Seg.Fileoff + sect.Vaddr - sect.Seg.Vaddr)
 	} else {
@@ -486,14 +451,14 @@ func machoshbits(ctxt *Link, mseg *MachoSeg, sect *sym.Section, segname string) 
 	}
 }
 
-func Asmbmacho(ctxt *Link) {
+func (pstate *PackageState) Asmbmacho(ctxt *Link) {
 	/* apple MACH */
-	va := *FlagTextAddr - int64(HEADR)
+	va := *pstate.FlagTextAddr - int64(pstate.HEADR)
 
-	mh := getMachoHdr()
+	mh := pstate.getMachoHdr()
 	switch ctxt.Arch.Family {
 	default:
-		Exitf("unknown macho architecture: %v", ctxt.Arch.Family)
+		pstate.Exitf("unknown macho architecture: %v", ctxt.Arch.Family)
 
 	case sys.ARM:
 		mh.cpu = MACHO_CPU_ARM
@@ -515,28 +480,28 @@ func Asmbmacho(ctxt *Link) {
 	var ms *MachoSeg
 	if ctxt.LinkMode == LinkExternal {
 		/* segment for entire file */
-		ms = newMachoSeg("", 40)
+		ms = pstate.newMachoSeg("", 40)
 
-		ms.fileoffset = Segtext.Fileoff
+		ms.fileoffset = pstate.Segtext.Fileoff
 		if ctxt.Arch.Family == sys.ARM || ctxt.BuildMode == BuildModeCArchive {
-			ms.filesize = Segdata.Fileoff + Segdata.Filelen - Segtext.Fileoff
+			ms.filesize = pstate.Segdata.Fileoff + pstate.Segdata.Filelen - pstate.Segtext.Fileoff
 		} else {
-			ms.filesize = Segdwarf.Fileoff + Segdwarf.Filelen - Segtext.Fileoff
-			ms.vsize = Segdwarf.Vaddr + Segdwarf.Length - Segtext.Vaddr
+			ms.filesize = pstate.Segdwarf.Fileoff + pstate.Segdwarf.Filelen - pstate.Segtext.Fileoff
+			ms.vsize = pstate.Segdwarf.Vaddr + pstate.Segdwarf.Length - pstate.Segtext.Vaddr
 		}
 	}
 
 	/* segment for zero page */
 	if ctxt.LinkMode != LinkExternal {
-		ms = newMachoSeg("__PAGEZERO", 0)
+		ms = pstate.newMachoSeg("__PAGEZERO", 0)
 		ms.vsize = uint64(va)
 	}
 
 	/* text */
-	v := Rnd(int64(uint64(HEADR)+Segtext.Length), int64(*FlagRound))
+	v := Rnd(int64(uint64(pstate.HEADR)+pstate.Segtext.Length), int64(*pstate.FlagRound))
 
 	if ctxt.LinkMode != LinkExternal {
-		ms = newMachoSeg("__TEXT", 20)
+		ms = pstate.newMachoSeg("__TEXT", 20)
 		ms.vaddr = uint64(va)
 		ms.vsize = uint64(v)
 		ms.fileoffset = 0
@@ -545,74 +510,74 @@ func Asmbmacho(ctxt *Link) {
 		ms.prot2 = 5
 	}
 
-	for _, sect := range Segtext.Sections {
-		machoshbits(ctxt, ms, sect, "__TEXT")
+	for _, sect := range pstate.Segtext.Sections {
+		pstate.machoshbits(ctxt, ms, sect, "__TEXT")
 	}
 
 	/* data */
 	if ctxt.LinkMode != LinkExternal {
-		w := int64(Segdata.Length)
-		ms = newMachoSeg("__DATA", 20)
+		w := int64(pstate.Segdata.Length)
+		ms = pstate.newMachoSeg("__DATA", 20)
 		ms.vaddr = uint64(va) + uint64(v)
 		ms.vsize = uint64(w)
 		ms.fileoffset = uint64(v)
-		ms.filesize = Segdata.Filelen
+		ms.filesize = pstate.Segdata.Filelen
 		ms.prot1 = 3
 		ms.prot2 = 3
 	}
 
-	for _, sect := range Segdata.Sections {
-		machoshbits(ctxt, ms, sect, "__DATA")
+	for _, sect := range pstate.Segdata.Sections {
+		pstate.machoshbits(ctxt, ms, sect, "__DATA")
 	}
 
 	/* dwarf */
-	if !*FlagW {
+	if !*pstate.FlagW {
 		if ctxt.LinkMode != LinkExternal {
-			ms = newMachoSeg("__DWARF", 20)
-			ms.vaddr = Segdwarf.Vaddr
+			ms = pstate.newMachoSeg("__DWARF", 20)
+			ms.vaddr = pstate.Segdwarf.Vaddr
 			ms.vsize = 0
-			ms.fileoffset = Segdwarf.Fileoff
-			ms.filesize = Segdwarf.Filelen
+			ms.fileoffset = pstate.Segdwarf.Fileoff
+			ms.filesize = pstate.Segdwarf.Filelen
 		}
-		for _, sect := range Segdwarf.Sections {
-			machoshbits(ctxt, ms, sect, "__DWARF")
+		for _, sect := range pstate.Segdwarf.Sections {
+			pstate.machoshbits(ctxt, ms, sect, "__DWARF")
 		}
 	}
 
 	if ctxt.LinkMode != LinkExternal {
 		switch ctxt.Arch.Family {
 		default:
-			Exitf("unknown macho architecture: %v", ctxt.Arch.Family)
+			pstate.Exitf("unknown macho architecture: %v", ctxt.Arch.Family)
 
 		case sys.ARM:
-			ml := newMachoLoad(ctxt.Arch, LC_UNIXTHREAD, 17+2)
-			ml.data[0] = 1                           /* thread type */
-			ml.data[1] = 17                          /* word count */
-			ml.data[2+15] = uint32(Entryvalue(ctxt)) /* start pc */
+			ml := pstate.newMachoLoad(ctxt.Arch, LC_UNIXTHREAD, 17+2)
+			ml.data[0] = 1                                  /* thread type */
+			ml.data[1] = 17                                 /* word count */
+			ml.data[2+15] = uint32(pstate.Entryvalue(ctxt)) /* start pc */
 
 		case sys.AMD64:
-			ml := newMachoLoad(ctxt.Arch, LC_UNIXTHREAD, 42+2)
-			ml.data[0] = 4                           /* thread type */
-			ml.data[1] = 42                          /* word count */
-			ml.data[2+32] = uint32(Entryvalue(ctxt)) /* start pc */
-			ml.data[2+32+1] = uint32(Entryvalue(ctxt) >> 32)
+			ml := pstate.newMachoLoad(ctxt.Arch, LC_UNIXTHREAD, 42+2)
+			ml.data[0] = 4                                  /* thread type */
+			ml.data[1] = 42                                 /* word count */
+			ml.data[2+32] = uint32(pstate.Entryvalue(ctxt)) /* start pc */
+			ml.data[2+32+1] = uint32(pstate.Entryvalue(ctxt) >> 32)
 
 		case sys.ARM64:
-			ml := newMachoLoad(ctxt.Arch, LC_UNIXTHREAD, 68+2)
-			ml.data[0] = 6                           /* thread type */
-			ml.data[1] = 68                          /* word count */
-			ml.data[2+64] = uint32(Entryvalue(ctxt)) /* start pc */
-			ml.data[2+64+1] = uint32(Entryvalue(ctxt) >> 32)
+			ml := pstate.newMachoLoad(ctxt.Arch, LC_UNIXTHREAD, 68+2)
+			ml.data[0] = 6                                  /* thread type */
+			ml.data[1] = 68                                 /* word count */
+			ml.data[2+64] = uint32(pstate.Entryvalue(ctxt)) /* start pc */
+			ml.data[2+64+1] = uint32(pstate.Entryvalue(ctxt) >> 32)
 
 		case sys.I386:
-			ml := newMachoLoad(ctxt.Arch, LC_UNIXTHREAD, 16+2)
-			ml.data[0] = 1                           /* thread type */
-			ml.data[1] = 16                          /* word count */
-			ml.data[2+10] = uint32(Entryvalue(ctxt)) /* start pc */
+			ml := pstate.newMachoLoad(ctxt.Arch, LC_UNIXTHREAD, 16+2)
+			ml.data[0] = 1                                  /* thread type */
+			ml.data[1] = 16                                 /* word count */
+			ml.data[2+10] = uint32(pstate.Entryvalue(ctxt)) /* start pc */
 		}
 	}
 
-	if !*FlagD {
+	if !*pstate.FlagD {
 		// must match domacholink below
 		s1 := ctxt.Syms.Lookup(".machosymtab", 0)
 		s2 := ctxt.Syms.Lookup(".linkedit.plt", 0)
@@ -620,30 +585,30 @@ func Asmbmacho(ctxt *Link) {
 		s4 := ctxt.Syms.Lookup(".machosymstr", 0)
 
 		if ctxt.LinkMode != LinkExternal {
-			ms := newMachoSeg("__LINKEDIT", 0)
-			ms.vaddr = uint64(va) + uint64(v) + uint64(Rnd(int64(Segdata.Length), int64(*FlagRound)))
+			ms := pstate.newMachoSeg("__LINKEDIT", 0)
+			ms.vaddr = uint64(va) + uint64(v) + uint64(Rnd(int64(pstate.Segdata.Length), int64(*pstate.FlagRound)))
 			ms.vsize = uint64(s1.Size) + uint64(s2.Size) + uint64(s3.Size) + uint64(s4.Size)
-			ms.fileoffset = uint64(linkoff)
+			ms.fileoffset = uint64(pstate.linkoff)
 			ms.filesize = ms.vsize
 			ms.prot1 = 7
 			ms.prot2 = 3
 		}
 
-		ml := newMachoLoad(ctxt.Arch, LC_SYMTAB, 4)
-		ml.data[0] = uint32(linkoff)                               /* symoff */
-		ml.data[1] = uint32(nsortsym)                              /* nsyms */
-		ml.data[2] = uint32(linkoff + s1.Size + s2.Size + s3.Size) /* stroff */
-		ml.data[3] = uint32(s4.Size)                               /* strsize */
+		ml := pstate.newMachoLoad(ctxt.Arch, LC_SYMTAB, 4)
+		ml.data[0] = uint32(pstate.linkoff)                               /* symoff */
+		ml.data[1] = uint32(pstate.nsortsym)                              /* nsyms */
+		ml.data[2] = uint32(pstate.linkoff + s1.Size + s2.Size + s3.Size) /* stroff */
+		ml.data[3] = uint32(s4.Size)                                      /* strsize */
 
-		machodysymtab(ctxt)
+		pstate.machodysymtab(ctxt)
 
 		if ctxt.LinkMode != LinkExternal {
-			ml := newMachoLoad(ctxt.Arch, LC_LOAD_DYLINKER, 6)
+			ml := pstate.newMachoLoad(ctxt.Arch, LC_LOAD_DYLINKER, 6)
 			ml.data[0] = 12 /* offset to string */
 			stringtouint32(ml.data[1:], "/usr/lib/dyld")
 
-			for _, lib := range dylib {
-				ml = newMachoLoad(ctxt.Arch, LC_LOAD_DYLIB, 4+(uint32(len(lib))+1+7)/8*2)
+			for _, lib := range pstate.dylib {
+				ml = pstate.newMachoLoad(ctxt.Arch, LC_LOAD_DYLIB, 4+(uint32(len(lib))+1+7)/8*2)
 				ml.data[0] = 24 /* offset of string from beginning of load */
 				ml.data[1] = 0  /* time stamp */
 				ml.data[2] = 0  /* version */
@@ -662,14 +627,14 @@ func Asmbmacho(ctxt *Link) {
 		// and we can assume OS X.
 		//
 		// See golang.org/issues/12941.
-		ml := newMachoLoad(ctxt.Arch, LC_VERSION_MIN_MACOSX, 2)
+		ml := pstate.newMachoLoad(ctxt.Arch, LC_VERSION_MIN_MACOSX, 2)
 		ml.data[0] = 10<<16 | 7<<8 | 0<<0 // OS X version 10.7.0
 		ml.data[1] = 10<<16 | 7<<8 | 0<<0 // SDK 10.7.0
 	}
 
-	a := machowrite(ctxt.Arch, ctxt.Out, ctxt.LinkMode)
-	if int32(a) > HEADR {
-		Exitf("HEADR too small: %d > %d", a, HEADR)
+	a := pstate.machowrite(ctxt.Arch, ctxt.Out, ctxt.LinkMode)
+	if int32(a) > pstate.HEADR {
+		pstate.Exitf("HEADR too small: %d > %d", a, pstate.HEADR)
 	}
 }
 
@@ -683,7 +648,7 @@ func symkind(s *sym.Symbol) int {
 	return SymKindLocal
 }
 
-func addsym(ctxt *Link, s *sym.Symbol, name string, type_ SymbolType, addr int64, gotype *sym.Symbol) {
+func (pstate *PackageState) addsym(ctxt *Link, s *sym.Symbol, name string, type_ SymbolType, addr int64, gotype *sym.Symbol) {
 	if s == nil {
 		return
 	}
@@ -696,12 +661,12 @@ func addsym(ctxt *Link, s *sym.Symbol, name string, type_ SymbolType, addr int64
 		break
 	}
 
-	if sortsym != nil {
-		sortsym[nsortsym] = s
-		nkind[symkind(s)]++
+	if pstate.sortsym != nil {
+		pstate.sortsym[pstate.nsortsym] = s
+		pstate.nkind[symkind(s)]++
 	}
 
-	nsortsym++
+	pstate.nsortsym++
 }
 
 type machoscmp []*sym.Symbol
@@ -727,31 +692,31 @@ func (x machoscmp) Less(i, j int) bool {
 	return s1.Extname < s2.Extname
 }
 
-func machogenasmsym(ctxt *Link) {
-	genasmsym(ctxt, addsym)
+func (pstate *PackageState) machogenasmsym(ctxt *Link) {
+	pstate.genasmsym(ctxt, pstate.addsym)
 	for _, s := range ctxt.Syms.Allsym {
 		if s.Type == sym.SDYNIMPORT || s.Type == sym.SHOSTOBJ {
 			if s.Attr.Reachable() {
-				addsym(ctxt, s, "", DataSym, 0, nil)
+				pstate.addsym(ctxt, s, "", DataSym, 0, nil)
 			}
 		}
 	}
 }
 
-func machosymorder(ctxt *Link) {
+func (pstate *PackageState) machosymorder(ctxt *Link) {
 	// On Mac OS X Mountain Lion, we must sort exported symbols
 	// So we sort them here and pre-allocate dynid for them
 	// See https://golang.org/issue/4029
-	for i := range dynexp {
-		dynexp[i].Attr |= sym.AttrReachable
+	for i := range pstate.dynexp {
+		pstate.dynexp[i].Attr |= sym.AttrReachable
 	}
-	machogenasmsym(ctxt)
-	sortsym = make([]*sym.Symbol, nsortsym)
-	nsortsym = 0
-	machogenasmsym(ctxt)
-	sort.Sort(machoscmp(sortsym[:nsortsym]))
-	for i := 0; i < nsortsym; i++ {
-		sortsym[i].Dynid = int32(i)
+	pstate.machogenasmsym(ctxt)
+	pstate.sortsym = make([]*sym.Symbol, pstate.nsortsym)
+	pstate.nsortsym = 0
+	pstate.machogenasmsym(ctxt)
+	sort.Sort(machoscmp(pstate.sortsym[:pstate.nsortsym]))
+	for i := 0; i < pstate.nsortsym; i++ {
+		pstate.sortsym[i].Dynid = int32(i)
 	}
 }
 
@@ -759,11 +724,11 @@ func machosymorder(ctxt *Link) {
 //
 // When dynamically linking, all non-local variables and plugin-exported
 // symbols need to be exported.
-func machoShouldExport(ctxt *Link, s *sym.Symbol) bool {
+func (pstate *PackageState) machoShouldExport(ctxt *Link, s *sym.Symbol) bool {
 	if !ctxt.DynlinkingGo() || s.Attr.Local() {
 		return false
 	}
-	if ctxt.BuildMode == BuildModePlugin && strings.HasPrefix(s.Extname, objabi.PathToPrefix(*flagPluginPath)) {
+	if ctxt.BuildMode == BuildModePlugin && strings.HasPrefix(s.Extname, objabi.PathToPrefix(*pstate.flagPluginPath)) {
 		return true
 	}
 	if strings.HasPrefix(s.Name, "go.itab.") {
@@ -781,15 +746,15 @@ func machoShouldExport(ctxt *Link, s *sym.Symbol) bool {
 	return s.Type >= sym.SELFSECT // only writable sections
 }
 
-func machosymtab(ctxt *Link) {
+func (pstate *PackageState) machosymtab(ctxt *Link) {
 	symtab := ctxt.Syms.Lookup(".machosymtab", 0)
 	symstr := ctxt.Syms.Lookup(".machosymstr", 0)
 
-	for i := 0; i < nsortsym; i++ {
-		s := sortsym[i]
+	for i := 0; i < pstate.nsortsym; i++ {
+		s := pstate.sortsym[i]
 		symtab.AddUint32(ctxt.Arch, uint32(symstr.Size))
 
-		export := machoShouldExport(ctxt, s)
+		export := pstate.machoShouldExport(ctxt, s)
 
 		// In normal buildmodes, only add _ to C symbols, as
 		// Go symbols have dot in the name.
@@ -804,7 +769,7 @@ func machosymtab(ctxt *Link) {
 		}
 
 		// replace "·" as ".", because DTrace cannot handle it.
-		Addstring(symstr, strings.Replace(s.Extname, "·", ".", -1))
+		pstate.Addstring(symstr, strings.Replace(s.Extname, "·", ".", -1))
 
 		if s.Type == sym.SDYNIMPORT || s.Type == sym.SHOSTOBJ {
 			symtab.AddUint8(0x01)                             // type N_EXT, external symbol
@@ -822,31 +787,31 @@ func machosymtab(ctxt *Link) {
 				o = o.Outer
 			}
 			if o.Sect == nil {
-				Errorf(s, "missing section for symbol")
+				pstate.Errorf(s, "missing section for symbol")
 				symtab.AddUint8(0)
 			} else {
 				symtab.AddUint8(uint8(o.Sect.Extnum))
 			}
 			symtab.AddUint16(ctxt.Arch, 0) // desc
-			symtab.AddUintXX(ctxt.Arch, uint64(Symaddr(s)), ctxt.Arch.PtrSize)
+			symtab.AddUintXX(ctxt.Arch, uint64(pstate.Symaddr(s)), ctxt.Arch.PtrSize)
 		}
 	}
 }
 
-func machodysymtab(ctxt *Link) {
-	ml := newMachoLoad(ctxt.Arch, LC_DYSYMTAB, 18)
+func (pstate *PackageState) machodysymtab(ctxt *Link) {
+	ml := pstate.newMachoLoad(ctxt.Arch, LC_DYSYMTAB, 18)
 
 	n := 0
-	ml.data[0] = uint32(n)                   /* ilocalsym */
-	ml.data[1] = uint32(nkind[SymKindLocal]) /* nlocalsym */
-	n += nkind[SymKindLocal]
+	ml.data[0] = uint32(n)                          /* ilocalsym */
+	ml.data[1] = uint32(pstate.nkind[SymKindLocal]) /* nlocalsym */
+	n += pstate.nkind[SymKindLocal]
 
-	ml.data[2] = uint32(n)                    /* iextdefsym */
-	ml.data[3] = uint32(nkind[SymKindExtdef]) /* nextdefsym */
-	n += nkind[SymKindExtdef]
+	ml.data[2] = uint32(n)                           /* iextdefsym */
+	ml.data[3] = uint32(pstate.nkind[SymKindExtdef]) /* nextdefsym */
+	n += pstate.nkind[SymKindExtdef]
 
-	ml.data[4] = uint32(n)                   /* iundefsym */
-	ml.data[5] = uint32(nkind[SymKindUndef]) /* nundefsym */
+	ml.data[4] = uint32(n)                          /* iundefsym */
+	ml.data[5] = uint32(pstate.nkind[SymKindUndef]) /* nundefsym */
 
 	ml.data[6] = 0  /* tocoffset */
 	ml.data[7] = 0  /* ntoc */
@@ -860,8 +825,8 @@ func machodysymtab(ctxt *Link) {
 
 	s2 := ctxt.Syms.Lookup(".linkedit.plt", 0)
 	s3 := ctxt.Syms.Lookup(".linkedit.got", 0)
-	ml.data[12] = uint32(linkoff + s1.Size)       /* indirectsymoff */
-	ml.data[13] = uint32((s2.Size + s3.Size) / 4) /* nindirectsyms */
+	ml.data[12] = uint32(pstate.linkoff + s1.Size) /* indirectsymoff */
+	ml.data[13] = uint32((s2.Size + s3.Size) / 4)  /* nindirectsyms */
 
 	ml.data[14] = 0 /* extreloff */
 	ml.data[15] = 0 /* nextrel */
@@ -869,8 +834,8 @@ func machodysymtab(ctxt *Link) {
 	ml.data[17] = 0 /* nlocrel */
 }
 
-func Domacholink(ctxt *Link) int64 {
-	machosymtab(ctxt)
+func (pstate *PackageState) Domacholink(ctxt *Link) int64 {
+	pstate.machosymtab(ctxt)
 
 	// write data that will be linkedit section
 	s1 := ctxt.Syms.Lookup(".machosymtab", 0)
@@ -903,8 +868,8 @@ func Domacholink(ctxt *Link) int64 {
 	size := int(s1.Size + s2.Size + s3.Size + s4.Size)
 
 	if size > 0 {
-		linkoff = Rnd(int64(uint64(HEADR)+Segtext.Length), int64(*FlagRound)) + Rnd(int64(Segdata.Filelen), int64(*FlagRound)) + Rnd(int64(Segdwarf.Filelen), int64(*FlagRound))
-		ctxt.Out.SeekSet(linkoff)
+		pstate.linkoff = Rnd(int64(uint64(pstate.HEADR)+pstate.Segtext.Length), int64(*pstate.FlagRound)) + Rnd(int64(pstate.Segdata.Filelen), int64(*pstate.FlagRound)) + Rnd(int64(pstate.Segdwarf.Filelen), int64(*pstate.FlagRound))
+		ctxt.Out.SeekSet(pstate, pstate.linkoff)
 
 		ctxt.Out.Write(s1.P[:s1.Size])
 		ctxt.Out.Write(s2.P[:s2.Size])
@@ -912,10 +877,10 @@ func Domacholink(ctxt *Link) int64 {
 		ctxt.Out.Write(s4.P[:s4.Size])
 	}
 
-	return Rnd(int64(size), int64(*FlagRound))
+	return Rnd(int64(size), int64(*pstate.FlagRound))
 }
 
-func machorelocsect(ctxt *Link, sect *sym.Section, syms []*sym.Symbol) {
+func (pstate *PackageState) machorelocsect(ctxt *Link, sect *sym.Section, syms []*sym.Symbol) {
 	// If main section has no bits, nothing to relocate.
 	if sect.Vaddr >= sect.Seg.Vaddr+sect.Seg.Filelen {
 		return
@@ -946,14 +911,14 @@ func machorelocsect(ctxt *Link, sect *sym.Section, syms []*sym.Symbol) {
 				continue
 			}
 			if r.Xsym == nil {
-				Errorf(s, "missing xsym in relocation")
+				pstate.Errorf(s, "missing xsym in relocation")
 				continue
 			}
 			if !r.Xsym.Attr.Reachable() {
-				Errorf(s, "unreachable reloc %d (%s) target %v", r.Type, sym.RelocName(ctxt.Arch, r.Type), r.Xsym.Name)
+				pstate.Errorf(s, "unreachable reloc %d (%s) target %v", r.Type, pstate.sym.RelocName(ctxt.Arch, r.Type), r.Xsym.Name)
 			}
-			if !thearch.Machoreloc1(ctxt.Arch, ctxt.Out, s, r, int64(uint64(s.Value+int64(r.Off))-sect.Vaddr)) {
-				Errorf(s, "unsupported obj reloc %d (%s)/%d to %s", r.Type, sym.RelocName(ctxt.Arch, r.Type), r.Siz, r.Sym.Name)
+			if !pstate.thearch.Machoreloc1(ctxt.Arch, ctxt.Out, s, r, int64(uint64(s.Value+int64(r.Off))-sect.Vaddr)) {
+				pstate.Errorf(s, "unsupported obj reloc %d (%s)/%d to %s", r.Type, pstate.sym.RelocName(ctxt.Arch, r.Type), r.Siz, r.Sym.Name)
 			}
 		}
 	}
@@ -961,19 +926,19 @@ func machorelocsect(ctxt *Link, sect *sym.Section, syms []*sym.Symbol) {
 	sect.Rellen = uint64(ctxt.Out.Offset()) - sect.Reloff
 }
 
-func Machoemitreloc(ctxt *Link) {
+func (pstate *PackageState) Machoemitreloc(ctxt *Link) {
 	for ctxt.Out.Offset()&7 != 0 {
 		ctxt.Out.Write8(0)
 	}
 
-	machorelocsect(ctxt, Segtext.Sections[0], ctxt.Textp)
-	for _, sect := range Segtext.Sections[1:] {
-		machorelocsect(ctxt, sect, datap)
+	pstate.machorelocsect(ctxt, pstate.Segtext.Sections[0], ctxt.Textp)
+	for _, sect := range pstate.Segtext.Sections[1:] {
+		pstate.machorelocsect(ctxt, sect, pstate.datap)
 	}
-	for _, sect := range Segdata.Sections {
-		machorelocsect(ctxt, sect, datap)
+	for _, sect := range pstate.Segdata.Sections {
+		pstate.machorelocsect(ctxt, sect, pstate.datap)
 	}
-	for _, sect := range Segdwarf.Sections {
-		machorelocsect(ctxt, sect, dwarfp)
+	for _, sect := range pstate.Segdwarf.Sections {
+		pstate.machorelocsect(ctxt, sect, pstate.dwarfp)
 	}
 }

@@ -5,27 +5,27 @@
 package ssa
 
 import (
-	"cmd/compile/internal/types"
+	"github.com/dave/golib/src/cmd/compile/internal/types"
 )
 
 // decompose converts phi ops on compound builtin types into phi
 // ops on simple types, then invokes rewrite rules to decompose
 // other ops on those types.
-func decomposeBuiltIn(f *Func) {
+func (pstate *PackageState) decomposeBuiltIn(f *Func) {
 	// Decompose phis
 	for _, b := range f.Blocks {
 		for _, v := range b.Values {
 			if v.Op != OpPhi {
 				continue
 			}
-			decomposeBuiltInPhi(v)
+			pstate.decomposeBuiltInPhi(v)
 		}
 	}
 
 	// Decompose other values
-	applyRewrite(f, rewriteBlockdec, rewriteValuedec)
+	pstate.applyRewrite(f, rewriteBlockdec, pstate.rewriteValuedec)
 	if f.Config.RegSize == 4 {
-		applyRewrite(f, rewriteBlockdec64, rewriteValuedec64)
+		pstate.applyRewrite(f, rewriteBlockdec64, pstate.rewriteValuedec64)
 	}
 
 	// Split up named values into their components.
@@ -33,7 +33,7 @@ func decomposeBuiltIn(f *Func) {
 	for _, name := range f.Names {
 		t := name.Type
 		switch {
-		case t.IsInteger() && t.Size() > f.Config.RegSize:
+		case t.IsInteger() && t.Size(pstate.types) > f.Config.RegSize:
 			hiName, loName := f.fe.SplitInt64(name)
 			newNames = append(newNames, hiName, loName)
 			for _, v := range f.NamedValues[name] {
@@ -93,7 +93,7 @@ func decomposeBuiltIn(f *Func) {
 		case t.IsFloat():
 			// floats are never decomposed, even ones bigger than RegSize
 			newNames = append(newNames, name)
-		case t.Size() > f.Config.RegSize:
+		case t.Size(pstate.types) > f.Config.RegSize:
 			f.Fatalf("undecomposed named type %s %v", name, t)
 		default:
 			newNames = append(newNames, name)
@@ -102,12 +102,12 @@ func decomposeBuiltIn(f *Func) {
 	f.Names = newNames
 }
 
-func decomposeBuiltInPhi(v *Value) {
+func (pstate *PackageState) decomposeBuiltInPhi(v *Value) {
 	switch {
-	case v.Type.IsInteger() && v.Type.Size() > v.Block.Func.Config.RegSize:
+	case v.Type.IsInteger() && v.Type.Size(pstate.types) > v.Block.Func.Config.RegSize:
 		decomposeInt64Phi(v)
 	case v.Type.IsComplex():
-		decomposeComplexPhi(v)
+		pstate.decomposeComplexPhi(v)
 	case v.Type.IsString():
 		decomposeStringPhi(v)
 	case v.Type.IsSlice():
@@ -115,8 +115,8 @@ func decomposeBuiltInPhi(v *Value) {
 	case v.Type.IsInterface():
 		decomposeInterfacePhi(v)
 	case v.Type.IsFloat():
-		// floats are never decomposed, even ones bigger than RegSize
-	case v.Type.Size() > v.Block.Func.Config.RegSize:
+	// floats are never decomposed, even ones bigger than RegSize
+	case v.Type.Size(pstate.types) > v.Block.Func.Config.RegSize:
 		v.Fatalf("undecomposed type %s", v.Type)
 	}
 }
@@ -176,10 +176,10 @@ func decomposeInt64Phi(v *Value) {
 	v.AddArg(lo)
 }
 
-func decomposeComplexPhi(v *Value) {
+func (pstate *PackageState) decomposeComplexPhi(v *Value) {
 	cfgtypes := &v.Block.Func.Config.Types
 	var partType *types.Type
-	switch z := v.Type.Size(); z {
+	switch z := v.Type.Size(pstate.types); z {
 	case 8:
 		partType = cfgtypes.Float32
 	case 16:
@@ -214,13 +214,13 @@ func decomposeInterfacePhi(v *Value) {
 	v.AddArg(data)
 }
 
-func decomposeUser(f *Func) {
+func (pstate *PackageState) decomposeUser(f *Func) {
 	for _, b := range f.Blocks {
 		for _, v := range b.Values {
 			if v.Op != OpPhi {
 				continue
 			}
-			decomposeUserPhi(v)
+			pstate.decomposeUserPhi(v)
 		}
 	}
 	// Split up named values into their components.
@@ -230,9 +230,9 @@ func decomposeUser(f *Func) {
 		t := name.Type
 		switch {
 		case t.IsStruct():
-			newNames = decomposeUserStructInto(f, name, newNames)
+			newNames = pstate.decomposeUserStructInto(f, name, newNames)
 		case t.IsArray():
-			newNames = decomposeUserArrayInto(f, name, newNames)
+			newNames = pstate.decomposeUserArrayInto(f, name, newNames)
 		default:
 			f.Names[i] = name
 			i++
@@ -245,14 +245,14 @@ func decomposeUser(f *Func) {
 // decomposeUserArrayInto creates names for the element(s) of arrays referenced
 // by name where possible, and appends those new names to slots, which is then
 // returned.
-func decomposeUserArrayInto(f *Func, name LocalSlot, slots []LocalSlot) []LocalSlot {
+func (pstate *PackageState) decomposeUserArrayInto(f *Func, name LocalSlot, slots []LocalSlot) []LocalSlot {
 	t := name.Type
-	if t.NumElem() == 0 {
+	if t.NumElem(pstate.types) == 0 {
 		// TODO(khr): Not sure what to do here.  Probably nothing.
 		// Names for empty arrays aren't important.
 		return slots
 	}
-	if t.NumElem() != 1 {
+	if t.NumElem(pstate.types) != 1 {
 		// shouldn't get here due to CanSSA
 		f.Fatalf("array not of size 1")
 	}
@@ -266,10 +266,10 @@ func decomposeUserArrayInto(f *Func, name LocalSlot, slots []LocalSlot) []LocalS
 	// delete the name for the array as a whole
 	delete(f.NamedValues, name)
 
-	if t.Elem().IsArray() {
-		return decomposeUserArrayInto(f, elemName, slots)
-	} else if t.Elem().IsStruct() {
-		return decomposeUserStructInto(f, elemName, slots)
+	if t.Elem(pstate.types).IsArray() {
+		return pstate.decomposeUserArrayInto(f, elemName, slots)
+	} else if t.Elem(pstate.types).IsStruct() {
+		return pstate.decomposeUserStructInto(f, elemName, slots)
 	}
 
 	return append(slots, elemName)
@@ -278,10 +278,10 @@ func decomposeUserArrayInto(f *Func, name LocalSlot, slots []LocalSlot) []LocalS
 // decomposeUserStructInto creates names for the fields(s) of structs referenced
 // by name where possible, and appends those new names to slots, which is then
 // returned.
-func decomposeUserStructInto(f *Func, name LocalSlot, slots []LocalSlot) []LocalSlot {
+func (pstate *PackageState) decomposeUserStructInto(f *Func, name LocalSlot, slots []LocalSlot) []LocalSlot {
 	fnames := []LocalSlot{} // slots for struct in name
 	t := name.Type
-	n := t.NumFields()
+	n := t.NumFields(pstate.types)
 
 	for i := 0; i < n; i++ {
 		fs := f.fe.SplitStruct(name, i)
@@ -309,37 +309,37 @@ func decomposeUserStructInto(f *Func, name LocalSlot, slots []LocalSlot) []Local
 	// now that this f.NamedValues contains values for the struct
 	// fields, recurse into nested structs
 	for i := 0; i < n; i++ {
-		if name.Type.FieldType(i).IsStruct() {
-			slots = decomposeUserStructInto(f, fnames[i], slots)
+		if name.Type.FieldType(pstate.types, i).IsStruct() {
+			slots = pstate.decomposeUserStructInto(f, fnames[i], slots)
 			delete(f.NamedValues, fnames[i])
-		} else if name.Type.FieldType(i).IsArray() {
-			slots = decomposeUserArrayInto(f, fnames[i], slots)
+		} else if name.Type.FieldType(pstate.types, i).IsArray() {
+			slots = pstate.decomposeUserArrayInto(f, fnames[i], slots)
 			delete(f.NamedValues, fnames[i])
 		}
 	}
 	return slots
 }
-func decomposeUserPhi(v *Value) {
+func (pstate *PackageState) decomposeUserPhi(v *Value) {
 	switch {
 	case v.Type.IsStruct():
-		decomposeStructPhi(v)
+		pstate.decomposeStructPhi(v)
 	case v.Type.IsArray():
-		decomposeArrayPhi(v)
+		pstate.decomposeArrayPhi(v)
 	}
 }
 
 // decomposeStructPhi replaces phi-of-struct with structmake(phi-for-each-field),
 // and then recursively decomposes the phis for each field.
-func decomposeStructPhi(v *Value) {
+func (pstate *PackageState) decomposeStructPhi(v *Value) {
 	t := v.Type
-	n := t.NumFields()
+	n := t.NumFields(pstate.types)
 	var fields [MaxStruct]*Value
 	for i := 0; i < n; i++ {
-		fields[i] = v.Block.NewValue0(v.Pos, OpPhi, t.FieldType(i))
+		fields[i] = v.Block.NewValue0(v.Pos, OpPhi, t.FieldType(pstate.types, i))
 	}
 	for _, a := range v.Args {
 		for i := 0; i < n; i++ {
-			fields[i].AddArg(a.Block.NewValue1I(v.Pos, OpStructSelect, t.FieldType(i), int64(i), a))
+			fields[i].AddArg(a.Block.NewValue1I(v.Pos, OpStructSelect, t.FieldType(pstate.types, i), int64(i), a))
 		}
 	}
 	v.reset(StructMakeOp(n))
@@ -347,30 +347,30 @@ func decomposeStructPhi(v *Value) {
 
 	// Recursively decompose phis for each field.
 	for _, f := range fields[:n] {
-		decomposeUserPhi(f)
+		pstate.decomposeUserPhi(f)
 	}
 }
 
 // decomposeArrayPhi replaces phi-of-array with arraymake(phi-of-array-element),
 // and then recursively decomposes the element phi.
-func decomposeArrayPhi(v *Value) {
+func (pstate *PackageState) decomposeArrayPhi(v *Value) {
 	t := v.Type
-	if t.NumElem() == 0 {
+	if t.NumElem(pstate.types) == 0 {
 		v.reset(OpArrayMake0)
 		return
 	}
-	if t.NumElem() != 1 {
+	if t.NumElem(pstate.types) != 1 {
 		v.Fatalf("SSAable array must have no more than 1 element")
 	}
-	elem := v.Block.NewValue0(v.Pos, OpPhi, t.Elem())
+	elem := v.Block.NewValue0(v.Pos, OpPhi, t.Elem(pstate.types))
 	for _, a := range v.Args {
-		elem.AddArg(a.Block.NewValue1I(v.Pos, OpArraySelect, t.Elem(), 0, a))
+		elem.AddArg(a.Block.NewValue1I(v.Pos, OpArraySelect, t.Elem(pstate.types), 0, a))
 	}
 	v.reset(OpArrayMake1)
 	v.AddArg(elem)
 
 	// Recursively decompose elem phi.
-	decomposeUserPhi(elem)
+	pstate.decomposeUserPhi(elem)
 }
 
 // MaxStruct is the maximum number of fields a struct

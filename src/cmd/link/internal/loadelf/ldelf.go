@@ -7,13 +7,13 @@ package loadelf
 
 import (
 	"bytes"
-	"cmd/internal/bio"
-	"cmd/internal/objabi"
-	"cmd/internal/sys"
-	"cmd/link/internal/sym"
 	"debug/elf"
 	"encoding/binary"
 	"fmt"
+	"github.com/dave/golib/src/cmd/internal/bio"
+	"github.com/dave/golib/src/cmd/internal/objabi"
+	"github.com/dave/golib/src/cmd/internal/sys"
+	"github.com/dave/golib/src/cmd/link/internal/sym"
 	"io"
 	"log"
 	"sort"
@@ -322,8 +322,6 @@ type ElfSym struct {
 	sym   *sym.Symbol
 }
 
-var ElfMagic = [4]uint8{0x7F, 'E', 'L', 'F'}
-
 const (
 	TagFile               = 1
 	TagCPUName            = 4
@@ -473,7 +471,7 @@ func Load(arch *sys.Arch, syms *sym.Symbols, f *bio.Reader, pkg string, length i
 	}
 	hdr := new(ElfHdrBytes)
 	binary.Read(bytes.NewReader(hdrbuf[:]), binary.BigEndian, hdr) // only byte arrays; byte order doesn't matter
-	if string(hdr.Ident[:4]) != "\x7FELF" {
+	if string(hdr.Ident[:4]) != "\u007fELF" {
 		return errorf("malformed elf file, bad header")
 	}
 	var e binary.ByteOrder

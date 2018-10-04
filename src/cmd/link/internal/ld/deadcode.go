@@ -5,10 +5,10 @@
 package ld
 
 import (
-	"cmd/internal/objabi"
-	"cmd/internal/sys"
-	"cmd/link/internal/sym"
 	"fmt"
+	"github.com/dave/golib/src/cmd/internal/objabi"
+	"github.com/dave/golib/src/cmd/internal/sys"
+	"github.com/dave/golib/src/cmd/link/internal/sym"
 	"strings"
 	"unicode"
 )
@@ -45,9 +45,9 @@ import (
 // of reachable types are marked reachable.
 //
 // Any unreached text symbols are removed from ctxt.Textp.
-func deadcode(ctxt *Link) {
+func (pstate *PackageState) deadcode(ctxt *Link) {
 	if ctxt.Debugvlog != 0 {
-		ctxt.Logf("%5.2f deadcode\n", Cputime())
+		ctxt.Logf("%5.2f deadcode\n", pstate.Cputime())
 	}
 
 	d := &deadcodepass{
@@ -57,8 +57,8 @@ func deadcode(ctxt *Link) {
 
 	// First, flood fill any symbols directly reachable in the call
 	// graph from *flagEntrySymbol. Ignore all methods not directly called.
-	d.init()
-	d.flood()
+	d.init(pstate)
+	d.flood(pstate)
 
 	callSym := ctxt.Syms.ROLookup("reflect.Value.Call", 0)
 	methSym := ctxt.Syms.ROLookup("reflect.Value.Method", 0)
@@ -87,7 +87,7 @@ func deadcode(ctxt *Link) {
 		var rem []methodref
 		for _, m := range d.markableMethods {
 			if (reflectSeen && m.isExported()) || d.ifaceMethod[m.m] {
-				d.markMethod(m)
+				d.markMethod(pstate, m)
 			} else {
 				rem = append(rem, m)
 			}
@@ -98,7 +98,7 @@ func deadcode(ctxt *Link) {
 			// No new work was discovered. Done.
 			break
 		}
-		d.flood()
+		d.flood(pstate)
 	}
 
 	// Remove all remaining unreached R_METHODOFF relocations.
@@ -175,14 +175,14 @@ func (d *deadcodepass) cleanupReloc(r *sym.Reloc) {
 }
 
 // mark appends a symbol to the mark queue for flood filling.
-func (d *deadcodepass) mark(s, parent *sym.Symbol) {
+func (d *deadcodepass) mark(pstate *PackageState, s, parent *sym.Symbol) {
 	if s == nil || s.Attr.Reachable() {
 		return
 	}
 	if s.Attr.ReflectMethod() {
 		d.reflectMethod = true
 	}
-	if *flagDumpDep {
+	if *pstate.flagDumpDep {
 		p := "_"
 		if parent != nil {
 			p = parent.Name
@@ -195,16 +195,16 @@ func (d *deadcodepass) mark(s, parent *sym.Symbol) {
 }
 
 // markMethod marks a method as reachable.
-func (d *deadcodepass) markMethod(m methodref) {
+func (d *deadcodepass) markMethod(pstate *PackageState, m methodref) {
 	for _, r := range m.r {
-		d.mark(r.Sym, m.src)
+		d.mark(pstate, r.Sym, m.src)
 		r.Type = objabi.R_ADDROFF
 	}
 }
 
 // init marks all initial symbols as reachable.
 // In a typical binary, this is *flagEntrySymbol.
-func (d *deadcodepass) init() {
+func (d *deadcodepass) init(pstate *PackageState) {
 	var names []string
 
 	if d.ctxt.Arch.Family == sys.ARM {
@@ -217,7 +217,7 @@ func (d *deadcodepass) init() {
 		// building a shared library.
 		for _, s := range d.ctxt.Syms.Allsym {
 			if s.Type != 0 && s.Type != sym.SDYNIMPORT {
-				d.mark(s, nil)
+				d.mark(pstate, s, nil)
 			}
 		}
 	} else {
@@ -230,38 +230,38 @@ func (d *deadcodepass) init() {
 			// The external linker refers main symbol directly.
 			if d.ctxt.LinkMode == LinkExternal && (d.ctxt.BuildMode == BuildModeExe || d.ctxt.BuildMode == BuildModePIE) {
 				if d.ctxt.HeadType == objabi.Hwindows && d.ctxt.Arch.Family == sys.I386 {
-					*flagEntrySymbol = "_main"
+					*pstate.flagEntrySymbol = "_main"
 				} else {
-					*flagEntrySymbol = "main"
+					*pstate.flagEntrySymbol = "main"
 				}
 			}
-			names = append(names, *flagEntrySymbol)
+			names = append(names, *pstate.flagEntrySymbol)
 			if d.ctxt.BuildMode == BuildModePlugin {
-				names = append(names, objabi.PathToPrefix(*flagPluginPath)+".init", objabi.PathToPrefix(*flagPluginPath)+".main", "go.plugin.tabs")
+				names = append(names, objabi.PathToPrefix(*pstate.flagPluginPath)+".init", objabi.PathToPrefix(*pstate.flagPluginPath)+".main", "go.plugin.tabs")
 
 				// We don't keep the go.plugin.exports symbol,
 				// but we do keep the symbols it refers to.
 				exports := d.ctxt.Syms.ROLookup("go.plugin.exports", 0)
 				if exports != nil {
 					for _, r := range exports.R {
-						d.mark(r.Sym, nil)
+						d.mark(pstate, r.Sym, nil)
 					}
 				}
 			}
 		}
-		for _, s := range dynexp {
-			d.mark(s, nil)
+		for _, s := range pstate.dynexp {
+			d.mark(pstate, s, nil)
 		}
 	}
 
 	for _, name := range names {
-		d.mark(d.ctxt.Syms.ROLookup(name, 0), nil)
+		d.mark(pstate, d.ctxt.Syms.ROLookup(name, 0), nil)
 	}
 }
 
 // flood fills symbols reachable from the markQueue symbols.
 // As it goes, it collects methodref and interface method declarations.
-func (d *deadcodepass) flood() {
+func (d *deadcodepass) flood(pstate *PackageState) {
 	for len(d.markQueue) > 0 {
 		s := d.markQueue[0]
 		d.markQueue = d.markQueue[1:]
@@ -271,7 +271,7 @@ func (d *deadcodepass) flood() {
 			}
 			if s.FuncInfo != nil {
 				for _, a := range s.FuncInfo.Autom {
-					d.mark(a.Gotype, s)
+					d.mark(pstate, a.Gotype, s)
 				}
 			}
 
@@ -284,7 +284,7 @@ func (d *deadcodepass) flood() {
 				continue
 			}
 			if decodetypeKind(d.ctxt.Arch, s)&kindMask == kindInterface {
-				for _, sig := range decodeIfaceMethods(d.ctxt.Arch, s) {
+				for _, sig := range pstate.decodeIfaceMethods(d.ctxt.Arch, s) {
 					if d.ctxt.Debugvlog > 1 {
 						d.ctxt.Logf("reached iface method: %s\n", sig)
 					}
@@ -307,7 +307,7 @@ func (d *deadcodepass) flood() {
 				continue
 			}
 			if r.Type != objabi.R_METHODOFF {
-				d.mark(r.Sym, s)
+				d.mark(pstate, r.Sym, s)
 				continue
 			}
 			// Collect rtype pointers to methods for
@@ -328,7 +328,7 @@ func (d *deadcodepass) flood() {
 			// Decode runtime type information for type methods
 			// to help work out which methods can be called
 			// dynamically via interfaces.
-			methodsigs := decodetypeMethods(d.ctxt.Arch, s)
+			methodsigs := pstate.decodetypeMethods(d.ctxt.Arch, s)
 			if len(methods) != len(methodsigs) {
 				panic(fmt.Sprintf("%q has %d method relocations for %d methods", s.Name, len(methods), len(methodsigs)))
 			}
@@ -345,11 +345,11 @@ func (d *deadcodepass) flood() {
 
 		if s.FuncInfo != nil {
 			for i := range s.FuncInfo.Funcdata {
-				d.mark(s.FuncInfo.Funcdata[i], s)
+				d.mark(pstate, s.FuncInfo.Funcdata[i], s)
 			}
 		}
-		d.mark(s.Gotype, s)
-		d.mark(s.Sub, s)
-		d.mark(s.Outer, s)
+		d.mark(pstate, s.Gotype, s)
+		d.mark(pstate, s.Sub, s)
+		d.mark(pstate, s.Outer, s)
 	}
 }

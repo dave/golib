@@ -30,13 +30,13 @@
 package ppc64
 
 import (
-	"cmd/internal/obj"
 	"fmt"
+	"github.com/dave/golib/src/cmd/internal/obj"
 )
 
-func init() {
-	obj.RegisterRegister(obj.RBasePPC64, REG_DCR0+1024, rconv)
-	obj.RegisterOpcode(obj.ABasePPC64, Anames)
+func (pstate *PackageState) init() {
+	pstate.obj.RegisterRegister(obj.RBasePPC64, REG_DCR0+1024, rconv)
+	pstate.obj.RegisterOpcode(obj.ABasePPC64, pstate.Anames)
 }
 
 func rconv(r int) string {
@@ -93,10 +93,10 @@ func rconv(r int) string {
 	return fmt.Sprintf("Rgok(%d)", r-obj.RBasePPC64)
 }
 
-func DRconv(a int) string {
+func (pstate *PackageState) DRconv(a int) string {
 	s := "C_??"
 	if a >= C_NONE && a <= C_NCLASS {
-		s = cnames9[a]
+		s = pstate.cnames9[a]
 	}
 	var fp string
 	fp += s

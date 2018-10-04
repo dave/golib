@@ -5,8 +5,8 @@
 package types
 
 import (
-	"cmd/internal/obj"
-	"cmd/internal/src"
+	"github.com/dave/golib/src/cmd/internal/obj"
+	"github.com/dave/golib/src/cmd/internal/src"
 	"unicode"
 	"unicode/utf8"
 )
@@ -70,11 +70,11 @@ func (sym *Sym) LinksymName() string {
 	return sym.Pkg.Prefix + "." + sym.Name
 }
 
-func (sym *Sym) Linksym() *obj.LSym {
+func (sym *Sym) Linksym(pstate *PackageState) *obj.LSym {
 	if sym == nil {
 		return nil
 	}
-	return Ctxt.Lookup(sym.LinksymName())
+	return pstate.Ctxt.Lookup(sym.LinksymName())
 }
 
 // Less reports whether symbol a is ordered before symbol b.

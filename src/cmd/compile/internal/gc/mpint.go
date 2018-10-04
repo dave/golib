@@ -70,10 +70,10 @@ func (a *Mpint) SetFloat(b *Mpflt) bool {
 	return false
 }
 
-func (a *Mpint) Add(b *Mpint) {
+func (a *Mpint) Add(pstate *PackageState, b *Mpint) {
 	if a.Ovf || b.Ovf {
-		if nsavederrors+nerrors == 0 {
-			Fatalf("ovf in Mpint Add")
+		if pstate.nsavederrors+pstate.nerrors == 0 {
+			pstate.Fatalf("ovf in Mpint Add")
 		}
 		a.SetOverflow()
 		return
@@ -82,14 +82,14 @@ func (a *Mpint) Add(b *Mpint) {
 	a.Val.Add(&a.Val, &b.Val)
 
 	if a.checkOverflow(0) {
-		yyerror("constant addition overflow")
+		pstate.yyerror("constant addition overflow")
 	}
 }
 
-func (a *Mpint) Sub(b *Mpint) {
+func (a *Mpint) Sub(pstate *PackageState, b *Mpint) {
 	if a.Ovf || b.Ovf {
-		if nsavederrors+nerrors == 0 {
-			Fatalf("ovf in Mpint Sub")
+		if pstate.nsavederrors+pstate.nerrors == 0 {
+			pstate.Fatalf("ovf in Mpint Sub")
 		}
 		a.SetOverflow()
 		return
@@ -98,14 +98,14 @@ func (a *Mpint) Sub(b *Mpint) {
 	a.Val.Sub(&a.Val, &b.Val)
 
 	if a.checkOverflow(0) {
-		yyerror("constant subtraction overflow")
+		pstate.yyerror("constant subtraction overflow")
 	}
 }
 
-func (a *Mpint) Mul(b *Mpint) {
+func (a *Mpint) Mul(pstate *PackageState, b *Mpint) {
 	if a.Ovf || b.Ovf {
-		if nsavederrors+nerrors == 0 {
-			Fatalf("ovf in Mpint Mul")
+		if pstate.nsavederrors+pstate.nerrors == 0 {
+			pstate.Fatalf("ovf in Mpint Mul")
 		}
 		a.SetOverflow()
 		return
@@ -114,14 +114,14 @@ func (a *Mpint) Mul(b *Mpint) {
 	a.Val.Mul(&a.Val, &b.Val)
 
 	if a.checkOverflow(0) {
-		yyerror("constant multiplication overflow")
+		pstate.yyerror("constant multiplication overflow")
 	}
 }
 
-func (a *Mpint) Quo(b *Mpint) {
+func (a *Mpint) Quo(pstate *PackageState, b *Mpint) {
 	if a.Ovf || b.Ovf {
-		if nsavederrors+nerrors == 0 {
-			Fatalf("ovf in Mpint Quo")
+		if pstate.nsavederrors+pstate.nerrors == 0 {
+			pstate.Fatalf("ovf in Mpint Quo")
 		}
 		a.SetOverflow()
 		return
@@ -131,14 +131,14 @@ func (a *Mpint) Quo(b *Mpint) {
 
 	if a.checkOverflow(0) {
 		// can only happen for div-0 which should be checked elsewhere
-		yyerror("constant division overflow")
+		pstate.yyerror("constant division overflow")
 	}
 }
 
-func (a *Mpint) Rem(b *Mpint) {
+func (a *Mpint) Rem(pstate *PackageState, b *Mpint) {
 	if a.Ovf || b.Ovf {
-		if nsavederrors+nerrors == 0 {
-			Fatalf("ovf in Mpint Rem")
+		if pstate.nsavederrors+pstate.nerrors == 0 {
+			pstate.Fatalf("ovf in Mpint Rem")
 		}
 		a.SetOverflow()
 		return
@@ -148,14 +148,14 @@ func (a *Mpint) Rem(b *Mpint) {
 
 	if a.checkOverflow(0) {
 		// should never happen
-		yyerror("constant modulo overflow")
+		pstate.yyerror("constant modulo overflow")
 	}
 }
 
-func (a *Mpint) Or(b *Mpint) {
+func (a *Mpint) Or(pstate *PackageState, b *Mpint) {
 	if a.Ovf || b.Ovf {
-		if nsavederrors+nerrors == 0 {
-			Fatalf("ovf in Mpint Or")
+		if pstate.nsavederrors+pstate.nerrors == 0 {
+			pstate.Fatalf("ovf in Mpint Or")
 		}
 		a.SetOverflow()
 		return
@@ -164,10 +164,10 @@ func (a *Mpint) Or(b *Mpint) {
 	a.Val.Or(&a.Val, &b.Val)
 }
 
-func (a *Mpint) And(b *Mpint) {
+func (a *Mpint) And(pstate *PackageState, b *Mpint) {
 	if a.Ovf || b.Ovf {
-		if nsavederrors+nerrors == 0 {
-			Fatalf("ovf in Mpint And")
+		if pstate.nsavederrors+pstate.nerrors == 0 {
+			pstate.Fatalf("ovf in Mpint And")
 		}
 		a.SetOverflow()
 		return
@@ -176,10 +176,10 @@ func (a *Mpint) And(b *Mpint) {
 	a.Val.And(&a.Val, &b.Val)
 }
 
-func (a *Mpint) AndNot(b *Mpint) {
+func (a *Mpint) AndNot(pstate *PackageState, b *Mpint) {
 	if a.Ovf || b.Ovf {
-		if nsavederrors+nerrors == 0 {
-			Fatalf("ovf in Mpint AndNot")
+		if pstate.nsavederrors+pstate.nerrors == 0 {
+			pstate.Fatalf("ovf in Mpint AndNot")
 		}
 		a.SetOverflow()
 		return
@@ -188,10 +188,10 @@ func (a *Mpint) AndNot(b *Mpint) {
 	a.Val.AndNot(&a.Val, &b.Val)
 }
 
-func (a *Mpint) Xor(b *Mpint) {
+func (a *Mpint) Xor(pstate *PackageState, b *Mpint) {
 	if a.Ovf || b.Ovf {
-		if nsavederrors+nerrors == 0 {
-			Fatalf("ovf in Mpint Xor")
+		if pstate.nsavederrors+pstate.nerrors == 0 {
+			pstate.Fatalf("ovf in Mpint Xor")
 		}
 		a.SetOverflow()
 		return
@@ -200,45 +200,45 @@ func (a *Mpint) Xor(b *Mpint) {
 	a.Val.Xor(&a.Val, &b.Val)
 }
 
-func (a *Mpint) Lsh(b *Mpint) {
+func (a *Mpint) Lsh(pstate *PackageState, b *Mpint) {
 	if a.Ovf || b.Ovf {
-		if nsavederrors+nerrors == 0 {
-			Fatalf("ovf in Mpint Lsh")
+		if pstate.nsavederrors+pstate.nerrors == 0 {
+			pstate.Fatalf("ovf in Mpint Lsh")
 		}
 		a.SetOverflow()
 		return
 	}
 
-	s := b.Int64()
+	s := b.Int64(pstate)
 	if s < 0 || s >= Mpprec {
 		msg := "shift count too large"
 		if s < 0 {
 			msg = "invalid negative shift count"
 		}
-		yyerror("%s: %d", msg, s)
+		pstate.yyerror("%s: %d", msg, s)
 		a.SetInt64(0)
 		return
 	}
 
 	if a.checkOverflow(int(s)) {
-		yyerror("constant shift overflow")
+		pstate.yyerror("constant shift overflow")
 		return
 	}
 	a.Val.Lsh(&a.Val, uint(s))
 }
 
-func (a *Mpint) Rsh(b *Mpint) {
+func (a *Mpint) Rsh(pstate *PackageState, b *Mpint) {
 	if a.Ovf || b.Ovf {
-		if nsavederrors+nerrors == 0 {
-			Fatalf("ovf in Mpint Rsh")
+		if pstate.nsavederrors+pstate.nerrors == 0 {
+			pstate.Fatalf("ovf in Mpint Rsh")
 		}
 		a.SetOverflow()
 		return
 	}
 
-	s := b.Int64()
+	s := b.Int64(pstate)
 	if s < 0 {
-		yyerror("invalid negative shift count: %d", s)
+		pstate.yyerror("invalid negative shift count: %d", s)
 		if a.Val.Sign() < 0 {
 			a.SetInt64(-1)
 		} else {
@@ -265,10 +265,10 @@ func (a *Mpint) Neg() {
 	a.Val.Neg(&a.Val)
 }
 
-func (a *Mpint) Int64() int64 {
+func (a *Mpint) Int64(pstate *PackageState) int64 {
 	if a.Ovf {
-		if nsavederrors+nerrors == 0 {
-			Fatalf("constant overflow")
+		if pstate.nsavederrors+pstate.nerrors == 0 {
+			pstate.Fatalf("constant overflow")
 		}
 		return 0
 	}
@@ -280,7 +280,7 @@ func (a *Mpint) SetInt64(c int64) {
 	a.Val.SetInt64(c)
 }
 
-func (a *Mpint) SetString(as string) {
+func (a *Mpint) SetString(pstate *PackageState, as string) {
 	_, ok := a.Val.SetString(as, 0)
 	if !ok {
 		// required syntax is [+-][0[x]]d*
@@ -290,12 +290,12 @@ func (a *Mpint) SetString(as string) {
 		// - malformed octal constant
 		// - malformed decimal constant
 		// TODO(gri) use different conversion function
-		yyerror("malformed integer constant: %s", as)
+		pstate.yyerror("malformed integer constant: %s", as)
 		a.Val.SetUint64(0)
 		return
 	}
 	if a.checkOverflow(0) {
-		yyerror("constant too large: %s", as)
+		pstate.yyerror("constant too large: %s", as)
 	}
 }
 

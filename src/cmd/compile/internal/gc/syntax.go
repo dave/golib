@@ -7,11 +7,11 @@
 package gc
 
 import (
-	"cmd/compile/internal/ssa"
-	"cmd/compile/internal/syntax"
-	"cmd/compile/internal/types"
-	"cmd/internal/obj"
-	"cmd/internal/src"
+	"github.com/dave/golib/src/cmd/compile/internal/ssa"
+	"github.com/dave/golib/src/cmd/compile/internal/syntax"
+	"github.com/dave/golib/src/cmd/compile/internal/types"
+	"github.com/dave/golib/src/cmd/internal/obj"
+	"github.com/dave/golib/src/cmd/internal/src"
 )
 
 // A Node is a single node in the syntax tree.
@@ -63,34 +63,34 @@ func (n *Node) ResetAux() {
 	n.aux = 0
 }
 
-func (n *Node) SubOp() Op {
+func (n *Node) SubOp(pstate *PackageState) Op {
 	switch n.Op {
 	case OASOP, OCMPIFACE, OCMPSTR, ONAME:
 	default:
-		Fatalf("unexpected op: %v", n.Op)
+		pstate.Fatalf("unexpected op: %v", n.Op)
 	}
 	return Op(n.aux)
 }
 
-func (n *Node) SetSubOp(op Op) {
+func (n *Node) SetSubOp(pstate *PackageState, op Op) {
 	switch n.Op {
 	case OASOP, OCMPIFACE, OCMPSTR, ONAME:
 	default:
-		Fatalf("unexpected op: %v", n.Op)
+		pstate.Fatalf("unexpected op: %v", n.Op)
 	}
 	n.aux = uint8(op)
 }
 
-func (n *Node) IndexMapLValue() bool {
+func (n *Node) IndexMapLValue(pstate *PackageState) bool {
 	if n.Op != OINDEXMAP {
-		Fatalf("unexpected op: %v", n.Op)
+		pstate.Fatalf("unexpected op: %v", n.Op)
 	}
 	return n.aux != 0
 }
 
-func (n *Node) SetIndexMapLValue(b bool) {
+func (n *Node) SetIndexMapLValue(pstate *PackageState, b bool) {
 	if n.Op != OINDEXMAP {
-		Fatalf("unexpected op: %v", n.Op)
+		pstate.Fatalf("unexpected op: %v", n.Op)
 	}
 	if b {
 		n.aux = 1
@@ -99,16 +99,16 @@ func (n *Node) SetIndexMapLValue(b bool) {
 	}
 }
 
-func (n *Node) TChanDir() types.ChanDir {
+func (n *Node) TChanDir(pstate *PackageState) types.ChanDir {
 	if n.Op != OTCHAN {
-		Fatalf("unexpected op: %v", n.Op)
+		pstate.Fatalf("unexpected op: %v", n.Op)
 	}
 	return types.ChanDir(n.aux)
 }
 
-func (n *Node) SetTChanDir(dir types.ChanDir) {
+func (n *Node) SetTChanDir(pstate *PackageState, dir types.ChanDir) {
 	if n.Op != OTCHAN {
-		Fatalf("unexpected op: %v", n.Op)
+		pstate.Fatalf("unexpected op: %v", n.Op)
 	}
 	n.aux = uint8(dir)
 }
@@ -223,11 +223,11 @@ func (n *Node) Val() Val {
 }
 
 // SetVal sets the Val for the node, which must not have been used with SetOpt.
-func (n *Node) SetVal(v Val) {
+func (n *Node) SetVal(pstate *PackageState, v Val) {
 	if n.HasOpt() {
-		Debug['h'] = 1
+		pstate.Debug['h'] = 1
 		Dump("have Opt", n)
-		Fatalf("have Opt")
+		pstate.Fatalf("have Opt")
 	}
 	n.SetHasVal(true)
 	n.E = v.U
@@ -243,14 +243,14 @@ func (n *Node) Opt() interface{} {
 
 // SetOpt sets the optimizer data for the node, which must not have been used with SetVal.
 // SetOpt(nil) is ignored for Vals to simplify call sites that are clearing Opts.
-func (n *Node) SetOpt(x interface{}) {
+func (n *Node) SetOpt(pstate *PackageState, x interface{}) {
 	if x == nil && n.HasVal() {
 		return
 	}
 	if n.HasVal() {
-		Debug['h'] = 1
+		pstate.Debug['h'] = 1
 		Dump("have Val", n)
-		Fatalf("have Val")
+		pstate.Fatalf("have Val")
 	}
 	n.SetHasOpt(true)
 	n.E = x
@@ -556,9 +556,9 @@ func (f *Func) SetInlinabilityChecked(b bool) { f.flags.set(funcInlinabilityChec
 func (f *Func) SetExportInline(b bool)        { f.flags.set(funcExportInline, b) }
 func (f *Func) SetInstrumentBody(b bool)      { f.flags.set(funcInstrumentBody, b) }
 
-func (f *Func) setWBPos(pos src.XPos) {
-	if Debug_wb != 0 {
-		Warnl(pos, "write barrier")
+func (f *Func) setWBPos(pstate *PackageState, pos src.XPos) {
+	if pstate.Debug_wb != 0 {
+		pstate.Warnl(pos, "write barrier")
 	}
 	if !f.WBPos.IsKnown() {
 		f.WBPos = pos

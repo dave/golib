@@ -30,9 +30,9 @@
 package s390x
 
 import (
-	"cmd/internal/obj"
-	"cmd/internal/objabi"
-	"cmd/internal/sys"
+	"github.com/dave/golib/src/cmd/internal/obj"
+	"github.com/dave/golib/src/cmd/internal/objabi"
+	"github.com/dave/golib/src/cmd/internal/sys"
 	"math"
 )
 
@@ -76,7 +76,7 @@ func progedit(ctxt *obj.Link, p *obj.Prog, newprog obj.ProgAlloc) {
 			p.From.Offset = 0
 		}
 
-		// put constants not loadable by LOAD IMMEDIATE into memory
+	// put constants not loadable by LOAD IMMEDIATE into memory
 	case AMOVD:
 		if p.From.Type == obj.TYPE_CONST {
 			val := p.From.Offset
@@ -713,25 +713,4 @@ func (c *ctxtz) stacksplitPost(p *obj.Prog, pPre *obj.Prog, pPreempt *obj.Prog, 
 	p.To.Type = obj.TYPE_BRANCH
 	p.Pcond = c.cursym.Func.Text.Link
 	return p
-}
-
-var unaryDst = map[obj.As]bool{
-	ASTCK:  true,
-	ASTCKC: true,
-	ASTCKE: true,
-	ASTCKF: true,
-	ANEG:   true,
-	ANEGW:  true,
-	AVONE:  true,
-	AVZERO: true,
-}
-
-var Links390x = obj.LinkArch{
-	Arch:           sys.ArchS390X,
-	Init:           buildop,
-	Preprocess:     preprocess,
-	Assemble:       spanz,
-	Progedit:       progedit,
-	UnaryDst:       unaryDst,
-	DWARFRegisters: S390XDWARFRegisters,
 }

@@ -5,20 +5,20 @@
 package ssa
 
 import (
-	"cmd/compile/internal/types"
-	"cmd/internal/obj"
-	"cmd/internal/src"
+	"github.com/dave/golib/src/cmd/compile/internal/types"
+	"github.com/dave/golib/src/cmd/internal/obj"
+	"github.com/dave/golib/src/cmd/internal/src"
 	"strings"
 )
 
 // needwb returns whether we need write barrier for store op v.
 // v must be Store/Move/Zero.
-func needwb(v *Value) bool {
+func (pstate *PackageState) needwb(v *Value) bool {
 	t, ok := v.Aux.(*types.Type)
 	if !ok {
-		v.Fatalf("store aux is not a type: %s", v.LongString())
+		v.Fatalf("store aux is not a type: %s", v.LongString(pstate))
 	}
-	if !t.HasHeapPointer() {
+	if !t.HasHeapPointer(pstate.types) {
 		return false
 	}
 	if IsStackAddr(v.Args[0]) {
@@ -39,7 +39,7 @@ func needwb(v *Value) bool {
 //
 // A sequence of WB stores for many pointer fields of a single type will
 // be emitted together, with a single branch.
-func writebarrier(f *Func) {
+func (pstate *PackageState) writebarrier(f *Func) {
 	if !f.fe.UseWriteBarrier() {
 		return
 	}
@@ -57,7 +57,7 @@ func writebarrier(f *Func) {
 		for _, v := range b.Values {
 			switch v.Op {
 			case OpStore, OpMove, OpZero:
-				if needwb(v) {
+				if pstate.needwb(v) {
 					switch v.Op {
 					case OpStore:
 						v.Op = OpStoreWB
@@ -100,7 +100,7 @@ func writebarrier(f *Func) {
 			gcWriteBarrier = f.fe.Syslook("gcWriteBarrier")
 			typedmemmove = f.fe.Syslook("typedmemmove")
 			typedmemclr = f.fe.Syslook("typedmemclr")
-			const0 = f.ConstInt32(f.Config.Types.UInt32, 0)
+			const0 = f.ConstInt32(pstate, f.Config.Types.UInt32, 0)
 
 			// allocate auxiliary data structures for computing store order
 			sset = f.newSparseSet(f.NumValues())
@@ -109,7 +109,7 @@ func writebarrier(f *Func) {
 		}
 
 		// order values in store order
-		b.Values = storeOrder(b.Values, sset, storeNumber)
+		b.Values = pstate.storeOrder(b.Values, sset, storeNumber)
 
 		firstSplit := true
 	again:
@@ -143,7 +143,7 @@ func writebarrier(f *Func) {
 		b.Values = b.Values[:start]
 
 		// find the memory before the WB stores
-		mem := stores[0].MemoryArg()
+		mem := stores[0].MemoryArg(pstate)
 		pos := stores[0].Pos
 		bThen := f.NewBlock(BlockPlain)
 		bElse := f.NewBlock(BlockPlain)
@@ -202,11 +202,11 @@ func writebarrier(f *Func) {
 			case OpMoveWB:
 				fn = typedmemmove
 				val = w.Args[1]
-				typ = w.Aux.(*types.Type).Symbol()
+				typ = w.Aux.(*types.Type).Symbol(pstate.types)
 				nWBops--
 			case OpZeroWB:
 				fn = typedmemclr
-				typ = w.Aux.(*types.Type).Symbol()
+				typ = w.Aux.(*types.Type).Symbol(pstate.types)
 				nWBops--
 			case OpVarDef, OpVarLive, OpVarKill:
 			}
@@ -216,28 +216,28 @@ func writebarrier(f *Func) {
 			case OpStoreWB, OpMoveWB, OpZeroWB:
 				volatile := w.Op == OpMoveWB && isVolatile(val)
 				if w.Op == OpStoreWB {
-					memThen = bThen.NewValue3A(pos, OpWB, types.TypeMem, gcWriteBarrier, ptr, val, memThen)
+					memThen = bThen.NewValue3A(pos, OpWB, pstate.types.TypeMem, gcWriteBarrier, ptr, val, memThen)
 				} else {
-					memThen = wbcall(pos, bThen, fn, typ, ptr, val, memThen, sp, sb, volatile)
+					memThen = pstate.wbcall(pos, bThen, fn, typ, ptr, val, memThen, sp, sb, volatile)
 				}
 				// Note that we set up a writebarrier function call.
 				f.fe.SetWBPos(pos)
 			case OpVarDef, OpVarLive, OpVarKill:
-				memThen = bThen.NewValue1A(pos, w.Op, types.TypeMem, w.Aux, memThen)
+				memThen = bThen.NewValue1A(pos, w.Op, pstate.types.TypeMem, w.Aux, memThen)
 			}
 
 			// else block: normal store
 			switch w.Op {
 			case OpStoreWB:
-				memElse = bElse.NewValue3A(pos, OpStore, types.TypeMem, w.Aux, ptr, val, memElse)
+				memElse = bElse.NewValue3A(pos, OpStore, pstate.types.TypeMem, w.Aux, ptr, val, memElse)
 			case OpMoveWB:
-				memElse = bElse.NewValue3I(pos, OpMove, types.TypeMem, w.AuxInt, ptr, val, memElse)
+				memElse = bElse.NewValue3I(pos, OpMove, pstate.types.TypeMem, w.AuxInt, ptr, val, memElse)
 				memElse.Aux = w.Aux
 			case OpZeroWB:
-				memElse = bElse.NewValue2I(pos, OpZero, types.TypeMem, w.AuxInt, ptr, memElse)
+				memElse = bElse.NewValue2I(pos, OpZero, pstate.types.TypeMem, w.AuxInt, ptr, memElse)
 				memElse.Aux = w.Aux
 			case OpVarDef, OpVarLive, OpVarKill:
-				memElse = bElse.NewValue1A(pos, w.Op, types.TypeMem, w.Aux, memElse)
+				memElse = bElse.NewValue1A(pos, w.Op, pstate.types.TypeMem, w.Aux, memElse)
 			}
 		}
 
@@ -249,7 +249,7 @@ func writebarrier(f *Func) {
 		bEnd.Values = append(bEnd.Values, last)
 		last.Block = bEnd
 		last.reset(OpPhi)
-		last.Type = types.TypeMem
+		last.Type = pstate.types.TypeMem
 		last.AddArg(memThen)
 		last.AddArg(memElse)
 		for _, w := range stores {
@@ -259,7 +259,7 @@ func writebarrier(f *Func) {
 		}
 		for _, w := range stores {
 			if w != last {
-				f.freeValue(w)
+				f.freeValue(pstate, w)
 			}
 		}
 
@@ -295,7 +295,7 @@ func writebarrier(f *Func) {
 
 // wbcall emits write barrier runtime call in b, returns memory.
 // if valIsVolatile, it moves val into temp space before making the call.
-func wbcall(pos src.XPos, b *Block, fn, typ *obj.LSym, ptr, val, mem, sp, sb *Value, valIsVolatile bool) *Value {
+func (pstate *PackageState) wbcall(pos src.XPos, b *Block, fn, typ *obj.LSym, ptr, val, mem, sp, sb *Value, valIsVolatile bool) *Value {
 	config := b.Func.Config
 
 	var tmp GCNode
@@ -303,12 +303,12 @@ func wbcall(pos src.XPos, b *Block, fn, typ *obj.LSym, ptr, val, mem, sp, sb *Va
 		// Copy to temp location if the source is volatile (will be clobbered by
 		// a function call). Marshaling the args to typedmemmove might clobber the
 		// value we're trying to move.
-		t := val.Type.Elem()
+		t := val.Type.Elem(pstate.types)
 		tmp = b.Func.fe.Auto(val.Pos, t)
-		mem = b.NewValue1A(pos, OpVarDef, types.TypeMem, tmp, mem)
-		tmpaddr := b.NewValue1A(pos, OpAddr, t.PtrTo(), tmp, sp)
-		siz := t.Size()
-		mem = b.NewValue3I(pos, OpMove, types.TypeMem, siz, tmpaddr, val, mem)
+		mem = b.NewValue1A(pos, OpVarDef, pstate.types.TypeMem, tmp, mem)
+		tmpaddr := b.NewValue1A(pos, OpAddr, t.PtrTo(pstate.types), tmp, sp)
+		siz := t.Size(pstate.types)
+		mem = b.NewValue3I(pos, OpMove, pstate.types.TypeMem, siz, tmpaddr, val, mem)
 		mem.Aux = t
 		val = tmpaddr
 	}
@@ -318,31 +318,31 @@ func wbcall(pos src.XPos, b *Block, fn, typ *obj.LSym, ptr, val, mem, sp, sb *Va
 
 	if typ != nil { // for typedmemmove
 		taddr := b.NewValue1A(pos, OpAddr, b.Func.Config.Types.Uintptr, typ, sb)
-		off = round(off, taddr.Type.Alignment())
-		arg := b.NewValue1I(pos, OpOffPtr, taddr.Type.PtrTo(), off, sp)
-		mem = b.NewValue3A(pos, OpStore, types.TypeMem, ptr.Type, arg, taddr, mem)
-		off += taddr.Type.Size()
+		off = round(off, taddr.Type.Alignment(pstate.types))
+		arg := b.NewValue1I(pos, OpOffPtr, taddr.Type.PtrTo(pstate.types), off, sp)
+		mem = b.NewValue3A(pos, OpStore, pstate.types.TypeMem, ptr.Type, arg, taddr, mem)
+		off += taddr.Type.Size(pstate.types)
 	}
 
-	off = round(off, ptr.Type.Alignment())
-	arg := b.NewValue1I(pos, OpOffPtr, ptr.Type.PtrTo(), off, sp)
-	mem = b.NewValue3A(pos, OpStore, types.TypeMem, ptr.Type, arg, ptr, mem)
-	off += ptr.Type.Size()
+	off = round(off, ptr.Type.Alignment(pstate.types))
+	arg := b.NewValue1I(pos, OpOffPtr, ptr.Type.PtrTo(pstate.types), off, sp)
+	mem = b.NewValue3A(pos, OpStore, pstate.types.TypeMem, ptr.Type, arg, ptr, mem)
+	off += ptr.Type.Size(pstate.types)
 
 	if val != nil {
-		off = round(off, val.Type.Alignment())
-		arg = b.NewValue1I(pos, OpOffPtr, val.Type.PtrTo(), off, sp)
-		mem = b.NewValue3A(pos, OpStore, types.TypeMem, val.Type, arg, val, mem)
-		off += val.Type.Size()
+		off = round(off, val.Type.Alignment(pstate.types))
+		arg = b.NewValue1I(pos, OpOffPtr, val.Type.PtrTo(pstate.types), off, sp)
+		mem = b.NewValue3A(pos, OpStore, pstate.types.TypeMem, val.Type, arg, val, mem)
+		off += val.Type.Size(pstate.types)
 	}
 	off = round(off, config.PtrSize)
 
 	// issue call
-	mem = b.NewValue1A(pos, OpStaticCall, types.TypeMem, fn, mem)
+	mem = b.NewValue1A(pos, OpStaticCall, pstate.types.TypeMem, fn, mem)
 	mem.AuxInt = off - config.ctxt.FixedFrameSize()
 
 	if valIsVolatile {
-		mem = b.NewValue1A(pos, OpVarKill, types.TypeMem, tmp, mem) // mark temp dead
+		mem = b.NewValue1A(pos, OpVarKill, pstate.types.TypeMem, tmp, mem) // mark temp dead
 	}
 
 	return mem
@@ -392,7 +392,7 @@ func IsSanitizerSafeAddr(v *Value) bool {
 			// test sym.Type==objabi.SRODATA, but we don't
 			// initialize sym.Type until after function
 			// compilation.
-			if strings.HasPrefix(sym.Name, `"".statictmp_`) {
+			if strings.HasPrefix(sym.Name, "\"\".statictmp_") {
 				return true
 			}
 		}

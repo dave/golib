@@ -5,7 +5,7 @@
 package ssa
 
 import (
-	"cmd/internal/src"
+	"github.com/dave/golib/src/cmd/internal/src"
 	"math"
 )
 
@@ -82,19 +82,19 @@ func (s *biasedSparseMap) getEntry(i int) (x uint, v int32) {
 }
 
 // add inserts x->0 into s, provided that x is in the range of keys stored in s.
-func (s *biasedSparseMap) add(x uint) {
+func (s *biasedSparseMap) add(pstate *PackageState, x uint) {
 	if int(x) < s.first || int(x) >= s.cap() {
 		return
 	}
-	s.s.set(ID(int(x)-s.first), 0, src.NoXPos)
+	s.s.set(ID(int(x)-s.first), 0, pstate.src.NoXPos)
 }
 
 // add inserts x->v into s, provided that x is in the range of keys stored in s.
-func (s *biasedSparseMap) set(x uint, v int32) {
+func (s *biasedSparseMap) set(pstate *PackageState, x uint, v int32) {
 	if int(x) < s.first || int(x) >= s.cap() {
 		return
 	}
-	s.s.set(ID(int(x)-s.first), v, src.NoXPos)
+	s.s.set(ID(int(x)-s.first), v, pstate.src.NoXPos)
 }
 
 // remove removes key x from s.

@@ -22,7 +22,7 @@ type ValHeap struct {
 	score []int8
 }
 
-func (h ValHeap) Len() int      { return len(h.a) }
+func (h ValHeap) Len() int { return len(h.a) }
 func (h ValHeap) Swap(i, j int) { a := h.a; a[i], a[j] = a[j], a[i] }
 
 func (h *ValHeap) Push(x interface{}) {
@@ -62,7 +62,7 @@ func (h ValHeap) Less(i, j int) bool {
 // will appear in the assembly output. For now it generates a
 // reasonable valid schedule using a priority queue. TODO(khr):
 // schedule smarter.
-func schedule(f *Func) {
+func (pstate *PackageState) schedule(f *Func) {
 	// For each value, the number of times it is used in the block
 	// by values that have not been scheduled yet.
 	uses := make([]int32, f.NumValues())
@@ -113,7 +113,7 @@ func schedule(f *Func) {
 			case v.Op == OpVarDef:
 				// We want all the vardefs next.
 				score[v.ID] = ScoreVarDef
-			case v.Type.IsMemory():
+			case v.Type.IsMemory(pstate.types):
 				// Schedule stores as early as possible. This tends to
 				// reduce register pressure. It also helps make sure
 				// VARDEF ops are scheduled before the corresponding LEA.
@@ -125,7 +125,7 @@ func schedule(f *Func) {
 				// false dependency on the other part of the tuple.
 				// Also ensures tuple is never spilled.
 				score[v.ID] = ScoreReadTuple
-			case v.Type.IsFlags() || v.Type.IsTuple():
+			case v.Type.IsFlags(pstate.types) || v.Type.IsTuple():
 				// Schedule flag register generation as late as possible.
 				// This makes sure that we only have one live flags
 				// value at a time.
@@ -141,9 +141,9 @@ func schedule(f *Func) {
 		// Store chains for different blocks overwrite each other, so
 		// the calculated store chain is good only for this block.
 		for _, v := range b.Values {
-			if v.Op != OpPhi && v.Type.IsMemory() {
+			if v.Op != OpPhi && v.Type.IsMemory(pstate.types) {
 				for _, w := range v.Args {
-					if w.Type.IsMemory() {
+					if w.Type.IsMemory(pstate.types) {
 						nextMem[w.ID] = v
 					}
 				}
@@ -163,7 +163,7 @@ func schedule(f *Func) {
 					uses[w.ID]++
 				}
 				// Any load must come before the following store.
-				if !v.Type.IsMemory() && w.Type.IsMemory() {
+				if !v.Type.IsMemory(pstate.types) && w.Type.IsMemory(pstate.types) {
 					// v is a load.
 					s := nextMem[w.ID]
 					if s == nil || s.Block != b {
@@ -297,7 +297,7 @@ func schedule(f *Func) {
 // Auxiliary data structures are passed in as arguments, so
 // that they can be allocated in the caller and be reused.
 // This function takes care of reset them.
-func storeOrder(values []*Value, sset *sparseSet, storeNumber []int32) []*Value {
+func (pstate *PackageState) storeOrder(values []*Value, sset *sparseSet, storeNumber []int32) []*Value {
 	if len(values) == 0 {
 		return values
 	}
@@ -313,12 +313,12 @@ func storeOrder(values []*Value, sset *sparseSet, storeNumber []int32) []*Value 
 	hasNilCheck := false
 	sset.clear() // sset is the set of stores that are used in other values
 	for _, v := range values {
-		if v.Type.IsMemory() {
+		if v.Type.IsMemory(pstate.types) {
 			stores = append(stores, v)
 			if v.Op == OpInitMem || v.Op == OpPhi {
 				continue
 			}
-			sset.add(v.MemoryArg().ID) // record that v's memory arg is used
+			sset.add(v.MemoryArg(pstate).ID) // record that v's memory arg is used
 		}
 		if v.Op == OpNilCheck {
 			hasNilCheck = true
@@ -361,7 +361,7 @@ func storeOrder(values []*Value, sset *sparseSet, storeNumber []int32) []*Value 
 			}
 			break
 		}
-		w = w.MemoryArg()
+		w = w.MemoryArg(pstate)
 	}
 	var stack []*Value
 	for _, v := range values {

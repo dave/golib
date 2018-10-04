@@ -21,8 +21,8 @@ package ssa
 //  entry:
 //    CMPQ ...
 //    JLT loop
-func loopRotate(f *Func) {
-	loopnest := f.loopnest()
+func (pstate *PackageState) loopRotate(f *Func) {
+	loopnest := f.loopnest(pstate)
 	if loopnest.hasIrreducible {
 		return
 	}

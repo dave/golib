@@ -5,25 +5,25 @@
 package mips64
 
 import (
-	"cmd/compile/internal/gc"
-	"cmd/compile/internal/ssa"
-	"cmd/internal/obj/mips"
-	"cmd/internal/objabi"
+	"github.com/dave/golib/src/cmd/compile/internal/gc"
+	"github.com/dave/golib/src/cmd/compile/internal/ssa"
+	"github.com/dave/golib/src/cmd/internal/obj/mips"
+	"github.com/dave/golib/src/cmd/internal/objabi"
 )
 
-func Init(arch *gc.Arch) {
-	arch.LinkArch = &mips.Linkmips64
-	if objabi.GOARCH == "mips64le" {
-		arch.LinkArch = &mips.Linkmips64le
+func (pstate *PackageState) Init(arch *gc.Arch) {
+	arch.LinkArch = &pstate.mips.Linkmips64
+	if pstate.objabi.GOARCH == "mips64le" {
+		arch.LinkArch = &pstate.mips.Linkmips64le
 	}
 	arch.REGSP = mips.REGSP
 	arch.MAXWIDTH = 1 << 50
-	arch.SoftFloat = objabi.GOMIPS64 == "softfloat"
-	arch.ZeroRange = zerorange
-	arch.ZeroAuto = zeroAuto
-	arch.Ginsnop = ginsnop
+	arch.SoftFloat = pstate.objabi.GOMIPS64 == "softfloat"
+	arch.ZeroRange = pstate.zerorange
+	arch.ZeroAuto = pstate.zeroAuto
+	arch.Ginsnop = pstate.ginsnop
 
 	arch.SSAMarkMoves = func(s *gc.SSAGenState, b *ssa.Block) {}
-	arch.SSAGenValue = ssaGenValue
-	arch.SSAGenBlock = ssaGenBlock
+	arch.SSAGenValue = pstate.ssaGenValue
+	arch.SSAGenBlock = pstate.ssaGenBlock
 }

@@ -23,7 +23,7 @@ package ssa
 //   x = (OpPhi (ConstBool [true]) (ConstBool [false]))
 //
 // In this case we can replace x with a copy of b.
-func phiopt(f *Func) {
+func (pstate *PackageState) phiopt(f *Func) {
 	sdom := f.sdom()
 	for _, b := range f.Blocks {
 		if len(b.Preds) != 2 || len(b.Values) == 0 {
@@ -64,7 +64,7 @@ func phiopt(f *Func) {
 
 			// Look for conversions from bool to 0/1.
 			if v.Type.IsInteger() {
-				phioptint(v, b0, reverse)
+				pstate.phioptint(v, b0, reverse)
 			}
 
 			if !v.Type.IsBoolean() {
@@ -122,7 +122,7 @@ func phiopt(f *Func) {
 	}
 }
 
-func phioptint(v *Value, b0 *Block, reverse int) {
+func (pstate *PackageState) phioptint(v *Value, b0 *Block, reverse int) {
 	a0 := v.Args[0]
 	a1 := v.Args[1]
 	if a0.Op != a1.Op {
@@ -148,7 +148,7 @@ func phioptint(v *Value, b0 *Block, reverse int) {
 		negate = !negate
 	}
 
-	switch v.Type.Size() {
+	switch v.Type.Size(pstate.types) {
 	case 1:
 		v.reset(OpCopy)
 	case 2:
@@ -158,7 +158,7 @@ func phioptint(v *Value, b0 *Block, reverse int) {
 	case 8:
 		v.reset(OpZeroExt8to64)
 	default:
-		v.Fatalf("bad int size %d", v.Type.Size())
+		v.Fatalf("bad int size %d", v.Type.Size(pstate.types))
 	}
 
 	a := b0.Control
@@ -169,6 +169,6 @@ func phioptint(v *Value, b0 *Block, reverse int) {
 
 	f := b0.Func
 	if f.pass.debug > 0 {
-		f.Warnl(v.Block.Pos, "converted OpPhi bool -> int%d", v.Type.Size()*8)
+		f.Warnl(v.Block.Pos, "converted OpPhi bool -> int%d", v.Type.Size(pstate.types)*8)
 	}
 }

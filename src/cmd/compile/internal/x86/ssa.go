@@ -8,17 +8,17 @@ import (
 	"fmt"
 	"math"
 
-	"cmd/compile/internal/gc"
-	"cmd/compile/internal/ssa"
-	"cmd/compile/internal/types"
-	"cmd/internal/obj"
-	"cmd/internal/obj/x86"
+	"github.com/dave/golib/src/cmd/compile/internal/gc"
+	"github.com/dave/golib/src/cmd/compile/internal/ssa"
+	"github.com/dave/golib/src/cmd/compile/internal/types"
+	"github.com/dave/golib/src/cmd/internal/obj"
+	"github.com/dave/golib/src/cmd/internal/obj/x86"
 )
 
 // markMoves marks any MOVXconst ops that need to avoid clobbering flags.
-func ssaMarkMoves(s *gc.SSAGenState, b *ssa.Block) {
+func (pstate *PackageState) ssaMarkMoves(s *gc.SSAGenState, b *ssa.Block) {
 	flive := b.FlagsLiveAtEnd
-	if b.Control != nil && b.Control.Type.IsFlags() {
+	if b.Control != nil && b.Control.Type.IsFlags(pstate.types) {
 		flive = true
 	}
 	for i := len(b.Values) - 1; i >= 0; i-- {
@@ -27,11 +27,11 @@ func ssaMarkMoves(s *gc.SSAGenState, b *ssa.Block) {
 			// The "mark" is any non-nil Aux value.
 			v.Aux = v
 		}
-		if v.Type.IsFlags() {
+		if v.Type.IsFlags(pstate.types) {
 			flive = false
 		}
 		for _, a := range v.Args {
-			if a.Type.IsFlags() {
+			if a.Type.IsFlags(pstate.types) {
 				flive = true
 			}
 		}
@@ -39,22 +39,22 @@ func ssaMarkMoves(s *gc.SSAGenState, b *ssa.Block) {
 }
 
 // loadByType returns the load instruction of the given type.
-func loadByType(t *types.Type) obj.As {
+func (pstate *PackageState) loadByType(t *types.Type) obj.As {
 	// Avoid partial register write
-	if !t.IsFloat() && t.Size() <= 2 {
-		if t.Size() == 1 {
+	if !t.IsFloat() && t.Size(pstate.types) <= 2 {
+		if t.Size(pstate.types) == 1 {
 			return x86.AMOVBLZX
 		} else {
 			return x86.AMOVWLZX
 		}
 	}
 	// Otherwise, there's no difference between load and store opcodes.
-	return storeByType(t)
+	return pstate.storeByType(t)
 }
 
 // storeByType returns the store instruction of the given type.
-func storeByType(t *types.Type) obj.As {
-	width := t.Size()
+func (pstate *PackageState) storeByType(t *types.Type) obj.As {
+	width := t.Size(pstate.types)
 	if t.IsFloat() {
 		switch width {
 		case 4:
@@ -76,18 +76,18 @@ func storeByType(t *types.Type) obj.As {
 }
 
 // moveByType returns the reg->reg move instruction of the given type.
-func moveByType(t *types.Type) obj.As {
+func (pstate *PackageState) moveByType(t *types.Type) obj.As {
 	if t.IsFloat() {
-		switch t.Size() {
+		switch t.Size(pstate.types) {
 		case 4:
 			return x86.AMOVSS
 		case 8:
 			return x86.AMOVSD
 		default:
-			panic(fmt.Sprintf("bad float register width %d:%s", t.Size(), t))
+			panic(fmt.Sprintf("bad float register width %d:%s", t.Size(pstate.types), t))
 		}
 	} else {
-		switch t.Size() {
+		switch t.Size(pstate.types) {
 		case 1:
 			// Avoids partial register write
 			return x86.AMOVL
@@ -96,7 +96,7 @@ func moveByType(t *types.Type) obj.As {
 		case 4:
 			return x86.AMOVL
 		default:
-			panic(fmt.Sprintf("bad int register width %d:%s", t.Size(), t))
+			panic(fmt.Sprintf("bad int register width %d:%s", t.Size(pstate.types), t))
 		}
 	}
 }
@@ -105,8 +105,8 @@ func moveByType(t *types.Type) obj.As {
 //     dest := dest(To) op src(From)
 // and also returns the created obj.Prog so it
 // may be further adjusted (offset, scale, etc).
-func opregreg(s *gc.SSAGenState, op obj.As, dest, src int16) *obj.Prog {
-	p := s.Prog(op)
+func (pstate *PackageState) opregreg(s *gc.SSAGenState, op obj.As, dest, src int16) *obj.Prog {
+	p := s.Prog(pstate.gc, op)
 	p.From.Type = obj.TYPE_REG
 	p.To.Type = obj.TYPE_REG
 	p.To.Reg = dest
@@ -114,27 +114,27 @@ func opregreg(s *gc.SSAGenState, op obj.As, dest, src int16) *obj.Prog {
 	return p
 }
 
-func ssaGenValue(s *gc.SSAGenState, v *ssa.Value) {
+func (pstate *PackageState) ssaGenValue(s *gc.SSAGenState, v *ssa.Value) {
 	switch v.Op {
 	case ssa.Op386ADDL:
-		r := v.Reg()
-		r1 := v.Args[0].Reg()
-		r2 := v.Args[1].Reg()
+		r := v.Reg(pstate.ssa)
+		r1 := v.Args[0].Reg(pstate.ssa)
+		r2 := v.Args[1].Reg(pstate.ssa)
 		switch {
 		case r == r1:
-			p := s.Prog(v.Op.Asm())
+			p := s.Prog(pstate.gc, v.Op.Asm(pstate.ssa))
 			p.From.Type = obj.TYPE_REG
 			p.From.Reg = r2
 			p.To.Type = obj.TYPE_REG
 			p.To.Reg = r
 		case r == r2:
-			p := s.Prog(v.Op.Asm())
+			p := s.Prog(pstate.gc, v.Op.Asm(pstate.ssa))
 			p.From.Type = obj.TYPE_REG
 			p.From.Reg = r1
 			p.To.Type = obj.TYPE_REG
 			p.To.Reg = r
 		default:
-			p := s.Prog(x86.ALEAL)
+			p := s.Prog(pstate.gc, x86.ALEAL)
 			p.From.Type = obj.TYPE_MEM
 			p.From.Reg = r1
 			p.From.Scale = 1
@@ -157,27 +157,27 @@ func ssaGenValue(s *gc.SSAGenState, v *ssa.Value) {
 		ssa.Op386PXOR,
 		ssa.Op386ADCL,
 		ssa.Op386SBBL:
-		r := v.Reg()
-		if r != v.Args[0].Reg() {
-			v.Fatalf("input[0] and output not in same register %s", v.LongString())
+		r := v.Reg(pstate.ssa)
+		if r != v.Args[0].Reg(pstate.ssa) {
+			v.Fatalf("input[0] and output not in same register %s", v.LongString(pstate.ssa))
 		}
-		opregreg(s, v.Op.Asm(), r, v.Args[1].Reg())
+		pstate.opregreg(s, v.Op.Asm(pstate.ssa), r, v.Args[1].Reg(pstate.ssa))
 
 	case ssa.Op386ADDLcarry, ssa.Op386SUBLcarry:
 		// output 0 is carry/borrow, output 1 is the low 32 bits.
-		r := v.Reg0()
-		if r != v.Args[0].Reg() {
-			v.Fatalf("input[0] and output[0] not in same register %s", v.LongString())
+		r := v.Reg0(pstate.ssa)
+		if r != v.Args[0].Reg(pstate.ssa) {
+			v.Fatalf("input[0] and output[0] not in same register %s", v.LongString(pstate.ssa))
 		}
-		opregreg(s, v.Op.Asm(), r, v.Args[1].Reg())
+		pstate.opregreg(s, v.Op.Asm(pstate.ssa), r, v.Args[1].Reg(pstate.ssa))
 
 	case ssa.Op386ADDLconstcarry, ssa.Op386SUBLconstcarry:
 		// output 0 is carry/borrow, output 1 is the low 32 bits.
-		r := v.Reg0()
-		if r != v.Args[0].Reg() {
-			v.Fatalf("input[0] and output[0] not in same register %s", v.LongString())
+		r := v.Reg0(pstate.ssa)
+		if r != v.Args[0].Reg(pstate.ssa) {
+			v.Fatalf("input[0] and output[0] not in same register %s", v.LongString(pstate.ssa))
 		}
-		p := s.Prog(v.Op.Asm())
+		p := s.Prog(pstate.gc, v.Op.Asm(pstate.ssa))
 		p.From.Type = obj.TYPE_CONST
 		p.From.Offset = v.AuxInt
 		p.To.Type = obj.TYPE_REG
@@ -190,7 +190,7 @@ func ssaGenValue(s *gc.SSAGenState, v *ssa.Value) {
 
 		// Arg[0] is already in AX as it's the only register we allow
 		// and AX is the only output
-		x := v.Args[1].Reg()
+		x := v.Args[1].Reg(pstate.ssa)
 
 		// CPU faults upon signed overflow, which occurs when most
 		// negative int is divided by -1.
@@ -201,14 +201,14 @@ func ssaGenValue(s *gc.SSAGenState, v *ssa.Value) {
 			var c *obj.Prog
 			switch v.Op {
 			case ssa.Op386DIVL, ssa.Op386MODL:
-				c = s.Prog(x86.ACMPL)
-				j = s.Prog(x86.AJEQ)
-				s.Prog(x86.ACDQ) //TODO: fix
+				c = s.Prog(pstate.gc, x86.ACMPL)
+				j = s.Prog(pstate.gc, x86.AJEQ)
+				s.Prog(pstate.gc, x86.ACDQ) //TODO: fix
 
 			case ssa.Op386DIVW, ssa.Op386MODW:
-				c = s.Prog(x86.ACMPW)
-				j = s.Prog(x86.AJEQ)
-				s.Prog(x86.ACWD)
+				c = s.Prog(pstate.gc, x86.ACMPW)
+				j = s.Prog(pstate.gc, x86.AJEQ)
+				s.Prog(pstate.gc, x86.ACWD)
 			}
 			c.From.Type = obj.TYPE_REG
 			c.From.Reg = x
@@ -222,31 +222,31 @@ func ssaGenValue(s *gc.SSAGenState, v *ssa.Value) {
 		// signed ints were sign extended above
 		if v.Op == ssa.Op386DIVLU || v.Op == ssa.Op386MODLU ||
 			v.Op == ssa.Op386DIVWU || v.Op == ssa.Op386MODWU {
-			c := s.Prog(x86.AXORL)
+			c := s.Prog(pstate.gc, x86.AXORL)
 			c.From.Type = obj.TYPE_REG
 			c.From.Reg = x86.REG_DX
 			c.To.Type = obj.TYPE_REG
 			c.To.Reg = x86.REG_DX
 		}
 
-		p := s.Prog(v.Op.Asm())
+		p := s.Prog(pstate.gc, v.Op.Asm(pstate.ssa))
 		p.From.Type = obj.TYPE_REG
 		p.From.Reg = x
 
 		// signed division, rest of the check for -1 case
 		if j != nil {
-			j2 := s.Prog(obj.AJMP)
+			j2 := s.Prog(pstate.gc, obj.AJMP)
 			j2.To.Type = obj.TYPE_BRANCH
 
 			var n *obj.Prog
 			if v.Op == ssa.Op386DIVL || v.Op == ssa.Op386DIVW {
 				// n * -1 = -n
-				n = s.Prog(x86.ANEGL)
+				n = s.Prog(pstate.gc, x86.ANEGL)
 				n.To.Type = obj.TYPE_REG
 				n.To.Reg = x86.REG_AX
 			} else {
 				// n % -1 == 0
-				n = s.Prog(x86.AXORL)
+				n = s.Prog(pstate.gc, x86.AXORL)
 				n.From.Type = obj.TYPE_REG
 				n.From.Reg = x86.REG_DX
 				n.To.Type = obj.TYPE_REG
@@ -264,14 +264,14 @@ func ssaGenValue(s *gc.SSAGenState, v *ssa.Value) {
 
 		// Arg[0] is already in AX as it's the only register we allow
 		// and DX is the only output we care about (the high bits)
-		p := s.Prog(v.Op.Asm())
+		p := s.Prog(pstate.gc, v.Op.Asm(pstate.ssa))
 		p.From.Type = obj.TYPE_REG
-		p.From.Reg = v.Args[1].Reg()
+		p.From.Reg = v.Args[1].Reg(pstate.ssa)
 
 		// IMULB puts the high portion in AH instead of DL,
 		// so move it to DL for consistency
-		if v.Type.Size() == 1 {
-			m := s.Prog(x86.AMOVB)
+		if v.Type.Size(pstate.types) == 1 {
+			m := s.Prog(pstate.gc, x86.AMOVB)
 			m.From.Type = obj.TYPE_REG
 			m.From.Reg = x86.REG_AH
 			m.To.Type = obj.TYPE_REG
@@ -280,53 +280,53 @@ func ssaGenValue(s *gc.SSAGenState, v *ssa.Value) {
 
 	case ssa.Op386MULLQU:
 		// AX * args[1], high 32 bits in DX (result[0]), low 32 bits in AX (result[1]).
-		p := s.Prog(v.Op.Asm())
+		p := s.Prog(pstate.gc, v.Op.Asm(pstate.ssa))
 		p.From.Type = obj.TYPE_REG
-		p.From.Reg = v.Args[1].Reg()
+		p.From.Reg = v.Args[1].Reg(pstate.ssa)
 
 	case ssa.Op386AVGLU:
 		// compute (x+y)/2 unsigned.
 		// Do a 32-bit add, the overflow goes into the carry.
 		// Shift right once and pull the carry back into the 31st bit.
-		r := v.Reg()
-		if r != v.Args[0].Reg() {
-			v.Fatalf("input[0] and output not in same register %s", v.LongString())
+		r := v.Reg(pstate.ssa)
+		if r != v.Args[0].Reg(pstate.ssa) {
+			v.Fatalf("input[0] and output not in same register %s", v.LongString(pstate.ssa))
 		}
-		p := s.Prog(x86.AADDL)
+		p := s.Prog(pstate.gc, x86.AADDL)
 		p.From.Type = obj.TYPE_REG
 		p.To.Type = obj.TYPE_REG
 		p.To.Reg = r
-		p.From.Reg = v.Args[1].Reg()
-		p = s.Prog(x86.ARCRL)
+		p.From.Reg = v.Args[1].Reg(pstate.ssa)
+		p = s.Prog(pstate.gc, x86.ARCRL)
 		p.From.Type = obj.TYPE_CONST
 		p.From.Offset = 1
 		p.To.Type = obj.TYPE_REG
 		p.To.Reg = r
 
 	case ssa.Op386ADDLconst:
-		r := v.Reg()
-		a := v.Args[0].Reg()
+		r := v.Reg(pstate.ssa)
+		a := v.Args[0].Reg(pstate.ssa)
 		if r == a {
 			if v.AuxInt == 1 {
-				p := s.Prog(x86.AINCL)
+				p := s.Prog(pstate.gc, x86.AINCL)
 				p.To.Type = obj.TYPE_REG
 				p.To.Reg = r
 				return
 			}
 			if v.AuxInt == -1 {
-				p := s.Prog(x86.ADECL)
+				p := s.Prog(pstate.gc, x86.ADECL)
 				p.To.Type = obj.TYPE_REG
 				p.To.Reg = r
 				return
 			}
-			p := s.Prog(v.Op.Asm())
+			p := s.Prog(pstate.gc, v.Op.Asm(pstate.ssa))
 			p.From.Type = obj.TYPE_CONST
 			p.From.Offset = v.AuxInt
 			p.To.Type = obj.TYPE_REG
 			p.To.Reg = r
 			return
 		}
-		p := s.Prog(x86.ALEAL)
+		p := s.Prog(pstate.gc, x86.ALEAL)
 		p.From.Type = obj.TYPE_MEM
 		p.From.Reg = a
 		p.From.Offset = v.AuxInt
@@ -334,13 +334,13 @@ func ssaGenValue(s *gc.SSAGenState, v *ssa.Value) {
 		p.To.Reg = r
 
 	case ssa.Op386MULLconst:
-		r := v.Reg()
-		p := s.Prog(v.Op.Asm())
+		r := v.Reg(pstate.ssa)
+		p := s.Prog(pstate.gc, v.Op.Asm(pstate.ssa))
 		p.From.Type = obj.TYPE_CONST
 		p.From.Offset = v.AuxInt
 		p.To.Type = obj.TYPE_REG
 		p.To.Reg = r
-		p.SetFrom3(obj.Addr{Type: obj.TYPE_REG, Reg: v.Args[0].Reg()})
+		p.SetFrom3(obj.Addr{Type: obj.TYPE_REG, Reg: v.Args[0].Reg(pstate.ssa)})
 
 	case ssa.Op386SUBLconst,
 		ssa.Op386ADCLconst,
@@ -352,26 +352,26 @@ func ssaGenValue(s *gc.SSAGenState, v *ssa.Value) {
 		ssa.Op386SHRLconst, ssa.Op386SHRWconst, ssa.Op386SHRBconst,
 		ssa.Op386SARLconst, ssa.Op386SARWconst, ssa.Op386SARBconst,
 		ssa.Op386ROLLconst, ssa.Op386ROLWconst, ssa.Op386ROLBconst:
-		r := v.Reg()
-		if r != v.Args[0].Reg() {
-			v.Fatalf("input[0] and output not in same register %s", v.LongString())
+		r := v.Reg(pstate.ssa)
+		if r != v.Args[0].Reg(pstate.ssa) {
+			v.Fatalf("input[0] and output not in same register %s", v.LongString(pstate.ssa))
 		}
-		p := s.Prog(v.Op.Asm())
+		p := s.Prog(pstate.gc, v.Op.Asm(pstate.ssa))
 		p.From.Type = obj.TYPE_CONST
 		p.From.Offset = v.AuxInt
 		p.To.Type = obj.TYPE_REG
 		p.To.Reg = r
 	case ssa.Op386SBBLcarrymask:
-		r := v.Reg()
-		p := s.Prog(v.Op.Asm())
+		r := v.Reg(pstate.ssa)
+		p := s.Prog(pstate.gc, v.Op.Asm(pstate.ssa))
 		p.From.Type = obj.TYPE_REG
 		p.From.Reg = r
 		p.To.Type = obj.TYPE_REG
 		p.To.Reg = r
 	case ssa.Op386LEAL1, ssa.Op386LEAL2, ssa.Op386LEAL4, ssa.Op386LEAL8:
-		r := v.Args[0].Reg()
-		i := v.Args[1].Reg()
-		p := s.Prog(x86.ALEAL)
+		r := v.Args[0].Reg(pstate.ssa)
+		i := v.Args[1].Reg(pstate.ssa)
+		p := s.Prog(pstate.gc, x86.ALEAL)
 		switch v.Op {
 		case ssa.Op386LEAL1:
 			p.From.Scale = 1
@@ -388,42 +388,42 @@ func ssaGenValue(s *gc.SSAGenState, v *ssa.Value) {
 		p.From.Type = obj.TYPE_MEM
 		p.From.Reg = r
 		p.From.Index = i
-		gc.AddAux(&p.From, v)
+		pstate.gc.AddAux(&p.From, v)
 		p.To.Type = obj.TYPE_REG
-		p.To.Reg = v.Reg()
+		p.To.Reg = v.Reg(pstate.ssa)
 	case ssa.Op386LEAL:
-		p := s.Prog(x86.ALEAL)
+		p := s.Prog(pstate.gc, x86.ALEAL)
 		p.From.Type = obj.TYPE_MEM
-		p.From.Reg = v.Args[0].Reg()
-		gc.AddAux(&p.From, v)
+		p.From.Reg = v.Args[0].Reg(pstate.ssa)
+		pstate.gc.AddAux(&p.From, v)
 		p.To.Type = obj.TYPE_REG
-		p.To.Reg = v.Reg()
+		p.To.Reg = v.Reg(pstate.ssa)
 	case ssa.Op386CMPL, ssa.Op386CMPW, ssa.Op386CMPB,
 		ssa.Op386TESTL, ssa.Op386TESTW, ssa.Op386TESTB:
-		opregreg(s, v.Op.Asm(), v.Args[1].Reg(), v.Args[0].Reg())
+		pstate.opregreg(s, v.Op.Asm(pstate.ssa), v.Args[1].Reg(pstate.ssa), v.Args[0].Reg(pstate.ssa))
 	case ssa.Op386UCOMISS, ssa.Op386UCOMISD:
 		// Go assembler has swapped operands for UCOMISx relative to CMP,
 		// must account for that right here.
-		opregreg(s, v.Op.Asm(), v.Args[0].Reg(), v.Args[1].Reg())
+		pstate.opregreg(s, v.Op.Asm(pstate.ssa), v.Args[0].Reg(pstate.ssa), v.Args[1].Reg(pstate.ssa))
 	case ssa.Op386CMPLconst, ssa.Op386CMPWconst, ssa.Op386CMPBconst:
-		p := s.Prog(v.Op.Asm())
+		p := s.Prog(pstate.gc, v.Op.Asm(pstate.ssa))
 		p.From.Type = obj.TYPE_REG
-		p.From.Reg = v.Args[0].Reg()
+		p.From.Reg = v.Args[0].Reg(pstate.ssa)
 		p.To.Type = obj.TYPE_CONST
 		p.To.Offset = v.AuxInt
 	case ssa.Op386TESTLconst, ssa.Op386TESTWconst, ssa.Op386TESTBconst:
-		p := s.Prog(v.Op.Asm())
+		p := s.Prog(pstate.gc, v.Op.Asm(pstate.ssa))
 		p.From.Type = obj.TYPE_CONST
 		p.From.Offset = v.AuxInt
 		p.To.Type = obj.TYPE_REG
-		p.To.Reg = v.Args[0].Reg()
+		p.To.Reg = v.Args[0].Reg(pstate.ssa)
 	case ssa.Op386MOVLconst:
-		x := v.Reg()
+		x := v.Reg(pstate.ssa)
 
 		// If flags aren't live (indicated by v.Aux == nil),
 		// then we can rewrite MOV $0, AX into XOR AX, AX.
 		if v.AuxInt == 0 && v.Aux == nil {
-			p := s.Prog(x86.AXORL)
+			p := s.Prog(pstate.gc, x86.AXORL)
 			p.From.Type = obj.TYPE_REG
 			p.From.Reg = x
 			p.To.Type = obj.TYPE_REG
@@ -431,160 +431,160 @@ func ssaGenValue(s *gc.SSAGenState, v *ssa.Value) {
 			break
 		}
 
-		p := s.Prog(v.Op.Asm())
+		p := s.Prog(pstate.gc, v.Op.Asm(pstate.ssa))
 		p.From.Type = obj.TYPE_CONST
 		p.From.Offset = v.AuxInt
 		p.To.Type = obj.TYPE_REG
 		p.To.Reg = x
 	case ssa.Op386MOVSSconst, ssa.Op386MOVSDconst:
-		x := v.Reg()
-		p := s.Prog(v.Op.Asm())
+		x := v.Reg(pstate.ssa)
+		p := s.Prog(pstate.gc, v.Op.Asm(pstate.ssa))
 		p.From.Type = obj.TYPE_FCONST
 		p.From.Val = math.Float64frombits(uint64(v.AuxInt))
 		p.To.Type = obj.TYPE_REG
 		p.To.Reg = x
 	case ssa.Op386MOVSSconst1, ssa.Op386MOVSDconst1:
-		p := s.Prog(x86.ALEAL)
+		p := s.Prog(pstate.gc, x86.ALEAL)
 		p.From.Type = obj.TYPE_MEM
 		p.From.Name = obj.NAME_EXTERN
 		f := math.Float64frombits(uint64(v.AuxInt))
 		if v.Op == ssa.Op386MOVSDconst1 {
-			p.From.Sym = gc.Ctxt.Float64Sym(f)
+			p.From.Sym = pstate.gc.Ctxt.Float64Sym(f)
 		} else {
-			p.From.Sym = gc.Ctxt.Float32Sym(float32(f))
+			p.From.Sym = pstate.gc.Ctxt.Float32Sym(float32(f))
 		}
 		p.To.Type = obj.TYPE_REG
-		p.To.Reg = v.Reg()
+		p.To.Reg = v.Reg(pstate.ssa)
 	case ssa.Op386MOVSSconst2, ssa.Op386MOVSDconst2:
-		p := s.Prog(v.Op.Asm())
+		p := s.Prog(pstate.gc, v.Op.Asm(pstate.ssa))
 		p.From.Type = obj.TYPE_MEM
-		p.From.Reg = v.Args[0].Reg()
+		p.From.Reg = v.Args[0].Reg(pstate.ssa)
 		p.To.Type = obj.TYPE_REG
-		p.To.Reg = v.Reg()
+		p.To.Reg = v.Reg(pstate.ssa)
 
 	case ssa.Op386MOVSSload, ssa.Op386MOVSDload, ssa.Op386MOVLload, ssa.Op386MOVWload, ssa.Op386MOVBload, ssa.Op386MOVBLSXload, ssa.Op386MOVWLSXload:
-		p := s.Prog(v.Op.Asm())
+		p := s.Prog(pstate.gc, v.Op.Asm(pstate.ssa))
 		p.From.Type = obj.TYPE_MEM
-		p.From.Reg = v.Args[0].Reg()
-		gc.AddAux(&p.From, v)
+		p.From.Reg = v.Args[0].Reg(pstate.ssa)
+		pstate.gc.AddAux(&p.From, v)
 		p.To.Type = obj.TYPE_REG
-		p.To.Reg = v.Reg()
+		p.To.Reg = v.Reg(pstate.ssa)
 	case ssa.Op386MOVSDloadidx8:
-		p := s.Prog(v.Op.Asm())
+		p := s.Prog(pstate.gc, v.Op.Asm(pstate.ssa))
 		p.From.Type = obj.TYPE_MEM
-		p.From.Reg = v.Args[0].Reg()
-		gc.AddAux(&p.From, v)
+		p.From.Reg = v.Args[0].Reg(pstate.ssa)
+		pstate.gc.AddAux(&p.From, v)
 		p.From.Scale = 8
-		p.From.Index = v.Args[1].Reg()
+		p.From.Index = v.Args[1].Reg(pstate.ssa)
 		p.To.Type = obj.TYPE_REG
-		p.To.Reg = v.Reg()
+		p.To.Reg = v.Reg(pstate.ssa)
 	case ssa.Op386MOVLloadidx4, ssa.Op386MOVSSloadidx4:
-		p := s.Prog(v.Op.Asm())
+		p := s.Prog(pstate.gc, v.Op.Asm(pstate.ssa))
 		p.From.Type = obj.TYPE_MEM
-		p.From.Reg = v.Args[0].Reg()
-		gc.AddAux(&p.From, v)
+		p.From.Reg = v.Args[0].Reg(pstate.ssa)
+		pstate.gc.AddAux(&p.From, v)
 		p.From.Scale = 4
-		p.From.Index = v.Args[1].Reg()
+		p.From.Index = v.Args[1].Reg(pstate.ssa)
 		p.To.Type = obj.TYPE_REG
-		p.To.Reg = v.Reg()
+		p.To.Reg = v.Reg(pstate.ssa)
 	case ssa.Op386MOVWloadidx2:
-		p := s.Prog(v.Op.Asm())
+		p := s.Prog(pstate.gc, v.Op.Asm(pstate.ssa))
 		p.From.Type = obj.TYPE_MEM
-		p.From.Reg = v.Args[0].Reg()
-		gc.AddAux(&p.From, v)
+		p.From.Reg = v.Args[0].Reg(pstate.ssa)
+		pstate.gc.AddAux(&p.From, v)
 		p.From.Scale = 2
-		p.From.Index = v.Args[1].Reg()
+		p.From.Index = v.Args[1].Reg(pstate.ssa)
 		p.To.Type = obj.TYPE_REG
-		p.To.Reg = v.Reg()
+		p.To.Reg = v.Reg(pstate.ssa)
 	case ssa.Op386MOVBloadidx1, ssa.Op386MOVWloadidx1, ssa.Op386MOVLloadidx1, ssa.Op386MOVSSloadidx1, ssa.Op386MOVSDloadidx1:
-		r := v.Args[0].Reg()
-		i := v.Args[1].Reg()
+		r := v.Args[0].Reg(pstate.ssa)
+		i := v.Args[1].Reg(pstate.ssa)
 		if i == x86.REG_SP {
 			r, i = i, r
 		}
-		p := s.Prog(v.Op.Asm())
+		p := s.Prog(pstate.gc, v.Op.Asm(pstate.ssa))
 		p.From.Type = obj.TYPE_MEM
 		p.From.Reg = r
 		p.From.Scale = 1
 		p.From.Index = i
-		gc.AddAux(&p.From, v)
+		pstate.gc.AddAux(&p.From, v)
 		p.To.Type = obj.TYPE_REG
-		p.To.Reg = v.Reg()
+		p.To.Reg = v.Reg(pstate.ssa)
 	case ssa.Op386ADDLload, ssa.Op386SUBLload, ssa.Op386ANDLload, ssa.Op386ORLload, ssa.Op386XORLload,
 		ssa.Op386ADDSDload, ssa.Op386ADDSSload, ssa.Op386SUBSDload, ssa.Op386SUBSSload, ssa.Op386MULSDload, ssa.Op386MULSSload:
-		p := s.Prog(v.Op.Asm())
+		p := s.Prog(pstate.gc, v.Op.Asm(pstate.ssa))
 		p.From.Type = obj.TYPE_MEM
-		p.From.Reg = v.Args[1].Reg()
-		gc.AddAux(&p.From, v)
+		p.From.Reg = v.Args[1].Reg(pstate.ssa)
+		pstate.gc.AddAux(&p.From, v)
 		p.To.Type = obj.TYPE_REG
-		p.To.Reg = v.Reg()
-		if v.Reg() != v.Args[0].Reg() {
-			v.Fatalf("input[0] and output not in same register %s", v.LongString())
+		p.To.Reg = v.Reg(pstate.ssa)
+		if v.Reg(pstate.ssa) != v.Args[0].Reg(pstate.ssa) {
+			v.Fatalf("input[0] and output not in same register %s", v.LongString(pstate.ssa))
 		}
 	case ssa.Op386MOVSSstore, ssa.Op386MOVSDstore, ssa.Op386MOVLstore, ssa.Op386MOVWstore, ssa.Op386MOVBstore,
 		ssa.Op386ADDLmodify, ssa.Op386SUBLmodify, ssa.Op386ANDLmodify, ssa.Op386ORLmodify, ssa.Op386XORLmodify:
-		p := s.Prog(v.Op.Asm())
+		p := s.Prog(pstate.gc, v.Op.Asm(pstate.ssa))
 		p.From.Type = obj.TYPE_REG
-		p.From.Reg = v.Args[1].Reg()
+		p.From.Reg = v.Args[1].Reg(pstate.ssa)
 		p.To.Type = obj.TYPE_MEM
-		p.To.Reg = v.Args[0].Reg()
-		gc.AddAux(&p.To, v)
+		p.To.Reg = v.Args[0].Reg(pstate.ssa)
+		pstate.gc.AddAux(&p.To, v)
 	case ssa.Op386MOVSDstoreidx8:
-		p := s.Prog(v.Op.Asm())
+		p := s.Prog(pstate.gc, v.Op.Asm(pstate.ssa))
 		p.From.Type = obj.TYPE_REG
-		p.From.Reg = v.Args[2].Reg()
+		p.From.Reg = v.Args[2].Reg(pstate.ssa)
 		p.To.Type = obj.TYPE_MEM
-		p.To.Reg = v.Args[0].Reg()
+		p.To.Reg = v.Args[0].Reg(pstate.ssa)
 		p.To.Scale = 8
-		p.To.Index = v.Args[1].Reg()
-		gc.AddAux(&p.To, v)
+		p.To.Index = v.Args[1].Reg(pstate.ssa)
+		pstate.gc.AddAux(&p.To, v)
 	case ssa.Op386MOVSSstoreidx4, ssa.Op386MOVLstoreidx4:
-		p := s.Prog(v.Op.Asm())
+		p := s.Prog(pstate.gc, v.Op.Asm(pstate.ssa))
 		p.From.Type = obj.TYPE_REG
-		p.From.Reg = v.Args[2].Reg()
+		p.From.Reg = v.Args[2].Reg(pstate.ssa)
 		p.To.Type = obj.TYPE_MEM
-		p.To.Reg = v.Args[0].Reg()
+		p.To.Reg = v.Args[0].Reg(pstate.ssa)
 		p.To.Scale = 4
-		p.To.Index = v.Args[1].Reg()
-		gc.AddAux(&p.To, v)
+		p.To.Index = v.Args[1].Reg(pstate.ssa)
+		pstate.gc.AddAux(&p.To, v)
 	case ssa.Op386MOVWstoreidx2:
-		p := s.Prog(v.Op.Asm())
+		p := s.Prog(pstate.gc, v.Op.Asm(pstate.ssa))
 		p.From.Type = obj.TYPE_REG
-		p.From.Reg = v.Args[2].Reg()
+		p.From.Reg = v.Args[2].Reg(pstate.ssa)
 		p.To.Type = obj.TYPE_MEM
-		p.To.Reg = v.Args[0].Reg()
+		p.To.Reg = v.Args[0].Reg(pstate.ssa)
 		p.To.Scale = 2
-		p.To.Index = v.Args[1].Reg()
-		gc.AddAux(&p.To, v)
+		p.To.Index = v.Args[1].Reg(pstate.ssa)
+		pstate.gc.AddAux(&p.To, v)
 	case ssa.Op386MOVBstoreidx1, ssa.Op386MOVWstoreidx1, ssa.Op386MOVLstoreidx1, ssa.Op386MOVSSstoreidx1, ssa.Op386MOVSDstoreidx1:
-		r := v.Args[0].Reg()
-		i := v.Args[1].Reg()
+		r := v.Args[0].Reg(pstate.ssa)
+		i := v.Args[1].Reg(pstate.ssa)
 		if i == x86.REG_SP {
 			r, i = i, r
 		}
-		p := s.Prog(v.Op.Asm())
+		p := s.Prog(pstate.gc, v.Op.Asm(pstate.ssa))
 		p.From.Type = obj.TYPE_REG
-		p.From.Reg = v.Args[2].Reg()
+		p.From.Reg = v.Args[2].Reg(pstate.ssa)
 		p.To.Type = obj.TYPE_MEM
 		p.To.Reg = r
 		p.To.Scale = 1
 		p.To.Index = i
-		gc.AddAux(&p.To, v)
+		pstate.gc.AddAux(&p.To, v)
 	case ssa.Op386MOVLstoreconst, ssa.Op386MOVWstoreconst, ssa.Op386MOVBstoreconst:
-		p := s.Prog(v.Op.Asm())
+		p := s.Prog(pstate.gc, v.Op.Asm(pstate.ssa))
 		p.From.Type = obj.TYPE_CONST
-		sc := v.AuxValAndOff()
+		sc := v.AuxValAndOff(pstate.ssa)
 		p.From.Offset = sc.Val()
 		p.To.Type = obj.TYPE_MEM
-		p.To.Reg = v.Args[0].Reg()
-		gc.AddAux2(&p.To, v, sc.Off())
+		p.To.Reg = v.Args[0].Reg(pstate.ssa)
+		pstate.gc.AddAux2(&p.To, v, sc.Off())
 	case ssa.Op386MOVLstoreconstidx1, ssa.Op386MOVLstoreconstidx4, ssa.Op386MOVWstoreconstidx1, ssa.Op386MOVWstoreconstidx2, ssa.Op386MOVBstoreconstidx1:
-		p := s.Prog(v.Op.Asm())
+		p := s.Prog(pstate.gc, v.Op.Asm(pstate.ssa))
 		p.From.Type = obj.TYPE_CONST
-		sc := v.AuxValAndOff()
+		sc := v.AuxValAndOff(pstate.ssa)
 		p.From.Offset = sc.Val()
-		r := v.Args[0].Reg()
-		i := v.Args[1].Reg()
+		r := v.Args[0].Reg(pstate.ssa)
+		i := v.Args[1].Reg(pstate.ssa)
 		switch v.Op {
 		case ssa.Op386MOVBstoreconstidx1, ssa.Op386MOVWstoreconstidx1, ssa.Op386MOVLstoreconstidx1:
 			p.To.Scale = 1
@@ -599,61 +599,61 @@ func ssaGenValue(s *gc.SSAGenState, v *ssa.Value) {
 		p.To.Type = obj.TYPE_MEM
 		p.To.Reg = r
 		p.To.Index = i
-		gc.AddAux2(&p.To, v, sc.Off())
+		pstate.gc.AddAux2(&p.To, v, sc.Off())
 	case ssa.Op386MOVWLSX, ssa.Op386MOVBLSX, ssa.Op386MOVWLZX, ssa.Op386MOVBLZX,
 		ssa.Op386CVTSL2SS, ssa.Op386CVTSL2SD,
 		ssa.Op386CVTTSS2SL, ssa.Op386CVTTSD2SL,
 		ssa.Op386CVTSS2SD, ssa.Op386CVTSD2SS:
-		opregreg(s, v.Op.Asm(), v.Reg(), v.Args[0].Reg())
+		pstate.opregreg(s, v.Op.Asm(pstate.ssa), v.Reg(pstate.ssa), v.Args[0].Reg(pstate.ssa))
 	case ssa.Op386DUFFZERO:
-		p := s.Prog(obj.ADUFFZERO)
+		p := s.Prog(pstate.gc, obj.ADUFFZERO)
 		p.To.Type = obj.TYPE_ADDR
-		p.To.Sym = gc.Duffzero
+		p.To.Sym = pstate.gc.Duffzero
 		p.To.Offset = v.AuxInt
 	case ssa.Op386DUFFCOPY:
-		p := s.Prog(obj.ADUFFCOPY)
+		p := s.Prog(pstate.gc, obj.ADUFFCOPY)
 		p.To.Type = obj.TYPE_ADDR
-		p.To.Sym = gc.Duffcopy
+		p.To.Sym = pstate.gc.Duffcopy
 		p.To.Offset = v.AuxInt
 
 	case ssa.OpCopy: // TODO: use MOVLreg for reg->reg copies instead of OpCopy?
-		if v.Type.IsMemory() {
+		if v.Type.IsMemory(pstate.types) {
 			return
 		}
-		x := v.Args[0].Reg()
-		y := v.Reg()
+		x := v.Args[0].Reg(pstate.ssa)
+		y := v.Reg(pstate.ssa)
 		if x != y {
-			opregreg(s, moveByType(v.Type), y, x)
+			pstate.opregreg(s, pstate.moveByType(v.Type), y, x)
 		}
 	case ssa.OpLoadReg:
-		if v.Type.IsFlags() {
-			v.Fatalf("load flags not implemented: %v", v.LongString())
+		if v.Type.IsFlags(pstate.types) {
+			v.Fatalf("load flags not implemented: %v", v.LongString(pstate.ssa))
 			return
 		}
-		p := s.Prog(loadByType(v.Type))
-		gc.AddrAuto(&p.From, v.Args[0])
+		p := s.Prog(pstate.gc, pstate.loadByType(v.Type))
+		pstate.gc.AddrAuto(&p.From, v.Args[0])
 		p.To.Type = obj.TYPE_REG
-		p.To.Reg = v.Reg()
+		p.To.Reg = v.Reg(pstate.ssa)
 
 	case ssa.OpStoreReg:
-		if v.Type.IsFlags() {
-			v.Fatalf("store flags not implemented: %v", v.LongString())
+		if v.Type.IsFlags(pstate.types) {
+			v.Fatalf("store flags not implemented: %v", v.LongString(pstate.ssa))
 			return
 		}
-		p := s.Prog(storeByType(v.Type))
+		p := s.Prog(pstate.gc, pstate.storeByType(v.Type))
 		p.From.Type = obj.TYPE_REG
-		p.From.Reg = v.Args[0].Reg()
-		gc.AddrAuto(&p.To, v)
+		p.From.Reg = v.Args[0].Reg(pstate.ssa)
+		pstate.gc.AddrAuto(&p.To, v)
 	case ssa.Op386LoweredGetClosurePtr:
 		// Closure pointer is DX.
-		gc.CheckLoweredGetClosurePtr(v)
+		pstate.gc.CheckLoweredGetClosurePtr(v)
 	case ssa.Op386LoweredGetG:
-		r := v.Reg()
+		r := v.Reg(pstate.ssa)
 		// See the comments in cmd/internal/obj/x86/obj6.go
 		// near CanUse1InsnTLS for a detailed explanation of these instructions.
-		if x86.CanUse1InsnTLS(gc.Ctxt) {
+		if pstate.x86.CanUse1InsnTLS(pstate.gc.Ctxt) {
 			// MOVL (TLS), r
-			p := s.Prog(x86.AMOVL)
+			p := s.Prog(pstate.gc, x86.AMOVL)
 			p.From.Type = obj.TYPE_MEM
 			p.From.Reg = x86.REG_TLS
 			p.To.Type = obj.TYPE_REG
@@ -661,12 +661,12 @@ func ssaGenValue(s *gc.SSAGenState, v *ssa.Value) {
 		} else {
 			// MOVL TLS, r
 			// MOVL (r)(TLS*1), r
-			p := s.Prog(x86.AMOVL)
+			p := s.Prog(pstate.gc, x86.AMOVL)
 			p.From.Type = obj.TYPE_REG
 			p.From.Reg = x86.REG_TLS
 			p.To.Type = obj.TYPE_REG
 			p.To.Reg = r
-			q := s.Prog(x86.AMOVL)
+			q := s.Prog(pstate.gc, x86.AMOVL)
 			q.From.Type = obj.TYPE_MEM
 			q.From.Reg = r
 			q.From.Index = x86.REG_TLS
@@ -676,48 +676,48 @@ func ssaGenValue(s *gc.SSAGenState, v *ssa.Value) {
 		}
 
 	case ssa.Op386LoweredGetCallerPC:
-		p := s.Prog(x86.AMOVL)
+		p := s.Prog(pstate.gc, x86.AMOVL)
 		p.From.Type = obj.TYPE_MEM
 		p.From.Offset = -4 // PC is stored 4 bytes below first parameter.
 		p.From.Name = obj.NAME_PARAM
 		p.To.Type = obj.TYPE_REG
-		p.To.Reg = v.Reg()
+		p.To.Reg = v.Reg(pstate.ssa)
 
 	case ssa.Op386LoweredGetCallerSP:
 		// caller's SP is the address of the first arg
-		p := s.Prog(x86.AMOVL)
+		p := s.Prog(pstate.gc, x86.AMOVL)
 		p.From.Type = obj.TYPE_ADDR
-		p.From.Offset = -gc.Ctxt.FixedFrameSize() // 0 on 386, just to be consistent with other architectures
+		p.From.Offset = -pstate.gc.Ctxt.FixedFrameSize() // 0 on 386, just to be consistent with other architectures
 		p.From.Name = obj.NAME_PARAM
 		p.To.Type = obj.TYPE_REG
-		p.To.Reg = v.Reg()
+		p.To.Reg = v.Reg(pstate.ssa)
 
 	case ssa.Op386LoweredWB:
-		p := s.Prog(obj.ACALL)
+		p := s.Prog(pstate.gc, obj.ACALL)
 		p.To.Type = obj.TYPE_MEM
 		p.To.Name = obj.NAME_EXTERN
 		p.To.Sym = v.Aux.(*obj.LSym)
 
 	case ssa.Op386CALLstatic, ssa.Op386CALLclosure, ssa.Op386CALLinter:
-		s.Call(v)
+		s.Call(pstate.gc, v)
 	case ssa.Op386NEGL,
 		ssa.Op386BSWAPL,
 		ssa.Op386NOTL:
-		r := v.Reg()
-		if r != v.Args[0].Reg() {
-			v.Fatalf("input[0] and output not in same register %s", v.LongString())
+		r := v.Reg(pstate.ssa)
+		if r != v.Args[0].Reg(pstate.ssa) {
+			v.Fatalf("input[0] and output not in same register %s", v.LongString(pstate.ssa))
 		}
-		p := s.Prog(v.Op.Asm())
+		p := s.Prog(pstate.gc, v.Op.Asm(pstate.ssa))
 		p.To.Type = obj.TYPE_REG
 		p.To.Reg = r
 	case ssa.Op386BSFL, ssa.Op386BSFW,
 		ssa.Op386BSRL, ssa.Op386BSRW,
 		ssa.Op386SQRTSD:
-		p := s.Prog(v.Op.Asm())
+		p := s.Prog(pstate.gc, v.Op.Asm(pstate.ssa))
 		p.From.Type = obj.TYPE_REG
-		p.From.Reg = v.Args[0].Reg()
+		p.From.Reg = v.Args[0].Reg(pstate.ssa)
 		p.To.Type = obj.TYPE_REG
-		p.To.Reg = v.Reg()
+		p.To.Reg = v.Reg(pstate.ssa)
 	case ssa.Op386SETEQ, ssa.Op386SETNE,
 		ssa.Op386SETL, ssa.Op386SETLE,
 		ssa.Op386SETG, ssa.Op386SETGE,
@@ -725,38 +725,38 @@ func ssaGenValue(s *gc.SSAGenState, v *ssa.Value) {
 		ssa.Op386SETB, ssa.Op386SETBE,
 		ssa.Op386SETORD, ssa.Op386SETNAN,
 		ssa.Op386SETA, ssa.Op386SETAE:
-		p := s.Prog(v.Op.Asm())
+		p := s.Prog(pstate.gc, v.Op.Asm(pstate.ssa))
 		p.To.Type = obj.TYPE_REG
-		p.To.Reg = v.Reg()
+		p.To.Reg = v.Reg(pstate.ssa)
 
 	case ssa.Op386SETNEF:
-		p := s.Prog(v.Op.Asm())
+		p := s.Prog(pstate.gc, v.Op.Asm(pstate.ssa))
 		p.To.Type = obj.TYPE_REG
-		p.To.Reg = v.Reg()
-		q := s.Prog(x86.ASETPS)
+		p.To.Reg = v.Reg(pstate.ssa)
+		q := s.Prog(pstate.gc, x86.ASETPS)
 		q.To.Type = obj.TYPE_REG
 		q.To.Reg = x86.REG_AX
-		opregreg(s, x86.AORL, v.Reg(), x86.REG_AX)
+		pstate.opregreg(s, x86.AORL, v.Reg(pstate.ssa), x86.REG_AX)
 
 	case ssa.Op386SETEQF:
-		p := s.Prog(v.Op.Asm())
+		p := s.Prog(pstate.gc, v.Op.Asm(pstate.ssa))
 		p.To.Type = obj.TYPE_REG
-		p.To.Reg = v.Reg()
-		q := s.Prog(x86.ASETPC)
+		p.To.Reg = v.Reg(pstate.ssa)
+		q := s.Prog(pstate.gc, x86.ASETPC)
 		q.To.Type = obj.TYPE_REG
 		q.To.Reg = x86.REG_AX
-		opregreg(s, x86.AANDL, v.Reg(), x86.REG_AX)
+		pstate.opregreg(s, x86.AANDL, v.Reg(pstate.ssa), x86.REG_AX)
 
 	case ssa.Op386InvertFlags:
-		v.Fatalf("InvertFlags should never make it to codegen %v", v.LongString())
+		v.Fatalf("InvertFlags should never make it to codegen %v", v.LongString(pstate.ssa))
 	case ssa.Op386FlagEQ, ssa.Op386FlagLT_ULT, ssa.Op386FlagLT_UGT, ssa.Op386FlagGT_ULT, ssa.Op386FlagGT_UGT:
-		v.Fatalf("Flag* ops should never make it to codegen %v", v.LongString())
+		v.Fatalf("Flag* ops should never make it to codegen %v", v.LongString(pstate.ssa))
 	case ssa.Op386REPSTOSL:
-		s.Prog(x86.AREP)
-		s.Prog(x86.ASTOSL)
+		s.Prog(pstate.gc, x86.AREP)
+		s.Prog(pstate.gc, x86.ASTOSL)
 	case ssa.Op386REPMOVSL:
-		s.Prog(x86.AREP)
-		s.Prog(x86.AMOVSL)
+		s.Prog(pstate.gc, x86.AREP)
+		s.Prog(pstate.gc, x86.AMOVSL)
 	case ssa.Op386LoweredNilCheck:
 		// Issue a load which will fault if the input is nil.
 		// TODO: We currently use the 2-byte instruction TESTB AX, (reg).
@@ -764,60 +764,34 @@ func ssaGenValue(s *gc.SSAGenState, v *ssa.Value) {
 		// but it doesn't have false dependency on AX.
 		// Or maybe allocate an output register and use MOVL (reg),reg2 ?
 		// That trades clobbering flags for clobbering a register.
-		p := s.Prog(x86.ATESTB)
+		p := s.Prog(pstate.gc, x86.ATESTB)
 		p.From.Type = obj.TYPE_REG
 		p.From.Reg = x86.REG_AX
 		p.To.Type = obj.TYPE_MEM
-		p.To.Reg = v.Args[0].Reg()
-		gc.AddAux(&p.To, v)
-		if gc.Debug_checknil != 0 && v.Pos.Line() > 1 { // v.Pos.Line()==1 in generated wrappers
-			gc.Warnl(v.Pos, "generated nil check")
+		p.To.Reg = v.Args[0].Reg(pstate.ssa)
+		pstate.gc.AddAux(&p.To, v)
+		if pstate.gc.Debug_checknil != 0 && v.Pos.Line() > 1 { // v.Pos.Line()==1 in generated wrappers
+			pstate.gc.Warnl(v.Pos, "generated nil check")
 		}
 	case ssa.Op386FCHS:
 		v.Fatalf("FCHS in non-387 mode")
 	case ssa.OpClobber:
-		p := s.Prog(x86.AMOVL)
+		p := s.Prog(pstate.gc, x86.AMOVL)
 		p.From.Type = obj.TYPE_CONST
 		p.From.Offset = 0xdeaddead
 		p.To.Type = obj.TYPE_MEM
 		p.To.Reg = x86.REG_SP
-		gc.AddAux(&p.To, v)
+		pstate.gc.AddAux(&p.To, v)
 	default:
-		v.Fatalf("genValue not implemented: %s", v.LongString())
+		v.Fatalf("genValue not implemented: %s", v.LongString(pstate.ssa))
 	}
 }
 
-var blockJump = [...]struct {
-	asm, invasm obj.As
-}{
-	ssa.Block386EQ:  {x86.AJEQ, x86.AJNE},
-	ssa.Block386NE:  {x86.AJNE, x86.AJEQ},
-	ssa.Block386LT:  {x86.AJLT, x86.AJGE},
-	ssa.Block386GE:  {x86.AJGE, x86.AJLT},
-	ssa.Block386LE:  {x86.AJLE, x86.AJGT},
-	ssa.Block386GT:  {x86.AJGT, x86.AJLE},
-	ssa.Block386ULT: {x86.AJCS, x86.AJCC},
-	ssa.Block386UGE: {x86.AJCC, x86.AJCS},
-	ssa.Block386UGT: {x86.AJHI, x86.AJLS},
-	ssa.Block386ULE: {x86.AJLS, x86.AJHI},
-	ssa.Block386ORD: {x86.AJPC, x86.AJPS},
-	ssa.Block386NAN: {x86.AJPS, x86.AJPC},
-}
-
-var eqfJumps = [2][2]gc.FloatingEQNEJump{
-	{{Jump: x86.AJNE, Index: 1}, {Jump: x86.AJPS, Index: 1}}, // next == b.Succs[0]
-	{{Jump: x86.AJNE, Index: 1}, {Jump: x86.AJPC, Index: 0}}, // next == b.Succs[1]
-}
-var nefJumps = [2][2]gc.FloatingEQNEJump{
-	{{Jump: x86.AJNE, Index: 0}, {Jump: x86.AJPC, Index: 1}}, // next == b.Succs[0]
-	{{Jump: x86.AJNE, Index: 0}, {Jump: x86.AJPS, Index: 0}}, // next == b.Succs[1]
-}
-
-func ssaGenBlock(s *gc.SSAGenState, b, next *ssa.Block) {
+func (pstate *PackageState) ssaGenBlock(s *gc.SSAGenState, b, next *ssa.Block) {
 	switch b.Kind {
 	case ssa.BlockPlain:
 		if b.Succs[0].Block() != next {
-			p := s.Prog(obj.AJMP)
+			p := s.Prog(pstate.gc, obj.AJMP)
 			p.To.Type = obj.TYPE_BRANCH
 			s.Branches = append(s.Branches, gc.Branch{P: p, B: b.Succs[0].Block()})
 		}
@@ -825,56 +799,56 @@ func ssaGenBlock(s *gc.SSAGenState, b, next *ssa.Block) {
 		// defer returns in rax:
 		// 0 if we should continue executing
 		// 1 if we should jump to deferreturn call
-		p := s.Prog(x86.ATESTL)
+		p := s.Prog(pstate.gc, x86.ATESTL)
 		p.From.Type = obj.TYPE_REG
 		p.From.Reg = x86.REG_AX
 		p.To.Type = obj.TYPE_REG
 		p.To.Reg = x86.REG_AX
-		p = s.Prog(x86.AJNE)
+		p = s.Prog(pstate.gc, x86.AJNE)
 		p.To.Type = obj.TYPE_BRANCH
 		s.Branches = append(s.Branches, gc.Branch{P: p, B: b.Succs[1].Block()})
 		if b.Succs[0].Block() != next {
-			p := s.Prog(obj.AJMP)
+			p := s.Prog(pstate.gc, obj.AJMP)
 			p.To.Type = obj.TYPE_BRANCH
 			s.Branches = append(s.Branches, gc.Branch{P: p, B: b.Succs[0].Block()})
 		}
 	case ssa.BlockExit:
-		s.Prog(obj.AUNDEF) // tell plive.go that we never reach here
+		s.Prog(pstate.gc, obj.AUNDEF) // tell plive.go that we never reach here
 	case ssa.BlockRet:
-		s.Prog(obj.ARET)
+		s.Prog(pstate.gc, obj.ARET)
 	case ssa.BlockRetJmp:
-		p := s.Prog(obj.AJMP)
+		p := s.Prog(pstate.gc, obj.AJMP)
 		p.To.Type = obj.TYPE_MEM
 		p.To.Name = obj.NAME_EXTERN
 		p.To.Sym = b.Aux.(*obj.LSym)
 
 	case ssa.Block386EQF:
-		s.FPJump(b, next, &eqfJumps)
+		s.FPJump(pstate.gc, b, next, &pstate.eqfJumps)
 
 	case ssa.Block386NEF:
-		s.FPJump(b, next, &nefJumps)
+		s.FPJump(pstate.gc, b, next, &pstate.nefJumps)
 
 	case ssa.Block386EQ, ssa.Block386NE,
 		ssa.Block386LT, ssa.Block386GE,
 		ssa.Block386LE, ssa.Block386GT,
 		ssa.Block386ULT, ssa.Block386UGT,
 		ssa.Block386ULE, ssa.Block386UGE:
-		jmp := blockJump[b.Kind]
+		jmp := pstate.blockJump[b.Kind]
 		switch next {
 		case b.Succs[0].Block():
-			s.Br(jmp.invasm, b.Succs[1].Block())
+			s.Br(pstate.gc, jmp.invasm, b.Succs[1].Block())
 		case b.Succs[1].Block():
-			s.Br(jmp.asm, b.Succs[0].Block())
+			s.Br(pstate.gc, jmp.asm, b.Succs[0].Block())
 		default:
 			if b.Likely != ssa.BranchUnlikely {
-				s.Br(jmp.asm, b.Succs[0].Block())
-				s.Br(obj.AJMP, b.Succs[1].Block())
+				s.Br(pstate.gc, jmp.asm, b.Succs[0].Block())
+				s.Br(pstate.gc, obj.AJMP, b.Succs[1].Block())
 			} else {
-				s.Br(jmp.invasm, b.Succs[1].Block())
-				s.Br(obj.AJMP, b.Succs[0].Block())
+				s.Br(pstate.gc, jmp.invasm, b.Succs[1].Block())
+				s.Br(pstate.gc, obj.AJMP, b.Succs[0].Block())
 			}
 		}
 	default:
-		b.Fatalf("branch not implemented: %s. Control: %s", b.LongString(), b.Control.LongString())
+		b.Fatalf("branch not implemented: %s. Control: %s", b.LongString(pstate.ssa), b.Control.LongString(pstate.ssa))
 	}
 }

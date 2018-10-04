@@ -30,13 +30,13 @@
 package s390x
 
 import (
-	"cmd/internal/obj"
 	"fmt"
+	"github.com/dave/golib/src/cmd/internal/obj"
 )
 
-func init() {
-	obj.RegisterRegister(obj.RBaseS390X, REG_R0+1024, rconv)
-	obj.RegisterOpcode(obj.ABaseS390X, Anames)
+func (pstate *PackageState) init() {
+	pstate.obj.RegisterRegister(obj.RBaseS390X, REG_R0+1024, rconv)
+	pstate.obj.RegisterOpcode(obj.ABaseS390X, pstate.Anames)
 }
 
 func rconv(r int) string {
@@ -62,10 +62,10 @@ func rconv(r int) string {
 	return fmt.Sprintf("Rgok(%d)", r-obj.RBaseS390X)
 }
 
-func DRconv(a int) string {
+func (pstate *PackageState) DRconv(a int) string {
 	s := "C_??"
 	if a >= C_NONE && a <= C_NCLASS {
-		s = cnamesz[a]
+		s = pstate.cnamesz[a]
 	}
 	var fp string
 	fp += s

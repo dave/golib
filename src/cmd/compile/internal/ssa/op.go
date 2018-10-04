@@ -5,8 +5,8 @@
 package ssa
 
 import (
-	"cmd/internal/obj"
 	"fmt"
+	"github.com/dave/golib/src/cmd/internal/obj"
 )
 
 // An Op encodes the specific operation that a Value performs.
